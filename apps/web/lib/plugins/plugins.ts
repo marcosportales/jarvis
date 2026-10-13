@@ -83,7 +83,6 @@ export type PluginsDeps = {
   store: PluginStore
   oauth: OAuthClient
   connector: Connector
-  catalog?: PluginEntry[]
   now?: () => Date
 }
 
@@ -99,18 +98,17 @@ export function createPlugins({
   store,
   oauth,
   connector,
-  catalog = marketplace,
   now = () => new Date(),
 }: PluginsDeps) {
   const findEntry = (pluginId: string) =>
-    catalog.find((entry) => entry.id === pluginId)
+    marketplace.find((entry) => entry.id === pluginId)
 
   return {
     async listMarketplace(): Promise<MarketplaceItem[]> {
       const installed = new Map(
         (await store.listInstalled()).map((p) => [p.pluginId, p])
       )
-      return catalog.map((entry) => {
+      return marketplace.map((entry) => {
         const record = installed.get(entry.id)
         const state: PluginState = !credentialsFor(entry, env)
           ? "not-configured"
@@ -164,6 +162,10 @@ export function createPlugins({
       redirectUri: string
       callback: OAuthCallback
     }): Promise<CompleteInstallResult> {
+      // A cancelled consent changes nothing, so it needs no state check.
+      if (pending && callback.error) {
+        return { ok: false, pluginId: pending.pluginId, reason: "cancelled" }
+      }
       if (!pending || !callback.state || callback.state !== pending.state) {
         return {
           ok: false,
@@ -172,7 +174,7 @@ export function createPlugins({
         }
       }
       const { pluginId } = pending
-      if (callback.error || !callback.code) {
+      if (!callback.code) {
         return { ok: false, pluginId, reason: "cancelled" }
       }
       const entry = findEntry(pluginId)
@@ -214,13 +216,8 @@ export function createPlugins({
         }
 
         try {
-          const accessToken = await freshAccessToken(entry)
-          const session = await connector.connect({
-            url: entry.connector.mcpUrl,
-            accessToken,
-          })
+          const { session, serverTools } = await openConnector(entry)
           sessions.push(session)
-          const serverTools = await session.tools()
           for (const name of entry.connector.toolAllowlist) {
             const serverTool = serverTools[name]
             if (serverTool) {
@@ -263,6 +260,31 @@ export function createPlugins({
     },
   }
 
+  /**
+   * Connects and lists the server's tools. A token the Connector rejects gets
+   * one refresh before the failure counts as the authorization being gone.
+   */
+  async function openConnector(entry: PluginEntry) {
+    const attempt = async (accessToken: string) => {
+      const session = await connector.connect({
+        url: entry.connector.mcpUrl,
+        accessToken,
+      })
+      try {
+        return { session, serverTools: await session.tools() }
+      } catch (error) {
+        await session.close().catch(() => {})
+        throw error
+      }
+    }
+    try {
+      return await attempt(await freshAccessToken(entry))
+    } catch (error) {
+      if (!(error instanceof ConnectorAuthError)) throw error
+      return attempt(await refreshAccessToken(entry))
+    }
+  }
+
   /** The stored access token, refreshed first if it has (nearly) expired. */
   async function freshAccessToken(entry: PluginEntry) {
     const tokens = await store.getTokens(entry.id)
@@ -270,11 +292,16 @@ export function createPlugins({
     const expiresSoon =
       tokens.expiresAt !== null &&
       tokens.expiresAt.getTime() - EXPIRY_MARGIN_MS <= now().getTime()
-    if (!expiresSoon) return tokens.accessToken
+    return expiresSoon ? refreshAccessToken(entry) : tokens.accessToken
+  }
 
+  /** Gets a new access token with the refresh token and stores it. */
+  async function refreshAccessToken(entry: PluginEntry) {
+    const tokens = await store.getTokens(entry.id)
+    if (!tokens) throw new OAuthAuthError("No tokens stored")
     const credentials = credentialsFor(entry, env)
     if (!tokens.refreshToken || !credentials) {
-      throw new OAuthAuthError("Access token expired and cannot be refreshed")
+      throw new OAuthAuthError("Access token cannot be refreshed")
     }
     const refreshed = await oauth.refresh({
       provider: entry.connector.oauth.provider,
@@ -293,7 +320,11 @@ export function createPlugins({
   async function handleFailure(entry: PluginEntry, error: unknown) {
     console.error(`Plugin ${entry.id} failed during a Turn`, error)
     const needsReconnect = isAuthFailure(error)
-    if (needsReconnect) await store.markDisconnected(entry.id)
+    if (needsReconnect) {
+      await store.markDisconnected(entry.id).catch((storeError: unknown) => {
+        console.error(`Could not mark ${entry.id} disconnected`, storeError)
+      })
+    }
     return failureNotice(entry.name, needsReconnect)
   }
 

@@ -3,10 +3,25 @@ import { generateText, stepCountIs } from "ai"
 import type { TranscriptLine } from "@/lib/jarvis/session"
 import { nan, nanConfig } from "@/lib/jarvis/server/nan"
 import { JARVIS_SYSTEM_PROMPT } from "@/lib/jarvis/server/system-prompt"
+import type { TurnTools } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
 
 /** Bounds how many tool-use rounds a single Reply may take. */
 const MAX_REPLY_STEPS = 5
+
+/** Spoken when the step limit ends the Reply before the model said anything. */
+const FALLBACK_REPLY =
+  "Lo siento, no he podido terminar de consultarlo. ¿Me lo preguntas de otra forma?"
+
+/** A Plugin problem must never fail the Turn, so fall back to no tools. */
+async function loadTurnTools(): Promise<TurnTools> {
+  try {
+    return await getPlugins().toolsForTurn()
+  } catch (error) {
+    console.error("Loading Plugin tools failed", error)
+    return { tools: {}, notices: [], close: async () => {} }
+  }
+}
 
 function isTranscriptLine(value: unknown): value is TranscriptLine {
   if (typeof value !== "object" || value === null) return false
@@ -29,7 +44,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid lines" }, { status: 400 })
   }
 
-  const turn = await getPlugins().toolsForTurn()
+  const turn = await loadTurnTools()
   try {
     const { text } = await generateText({
       model: nan.chat(nanConfig.chatModel),
@@ -44,7 +59,7 @@ export async function POST(request: Request) {
       stopWhen: stepCountIs(MAX_REPLY_STEPS),
     })
 
-    return Response.json({ text })
+    return Response.json({ text: text.trim() || FALLBACK_REPLY })
   } finally {
     await turn.close()
   }

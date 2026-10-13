@@ -76,6 +76,8 @@ function fakeConnector(
     serverTools?: string[]
     connectError?: Error
     toolError?: Error
+    /** Access tokens the server answers with 401. */
+    rejectedTokens?: string[]
   } = {}
 ) {
   const serverTools = options.serverTools ?? GMAIL_SERVER_TOOLS
@@ -86,6 +88,9 @@ function fakeConnector(
     async connect({ url, accessToken }) {
       connections.push({ url, accessToken })
       if (options.connectError) throw options.connectError
+      if (options.rejectedTokens?.includes(accessToken)) {
+        throw new ConnectorAuthError("HTTP 401")
+      }
       const tools: ToolSet = Object.fromEntries(
         serverTools.map((name) => [
           name,
@@ -274,6 +279,26 @@ describe("Plugins", () => {
         pending: begun.pending,
         redirectUri,
         callback: { error: "access_denied", state: begun.pending.state },
+      })
+
+      expect(result).toEqual({
+        ok: false,
+        pluginId: "gmail",
+        reason: "cancelled",
+      })
+      expect(oauth.exchanged).toEqual([])
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("cancelling consent is reported as cancelled even without a state", async () => {
+      const { plugins, oauth } = setup()
+      const begun = await plugins.beginInstall("gmail", { redirectUri })
+      if (!begun.ok) throw new Error("expected Install to begin")
+
+      const result = await plugins.completeInstall({
+        pending: begun.pending,
+        redirectUri,
+        callback: { error: "access_denied" },
       })
 
       expect(result).toEqual({
@@ -502,6 +527,37 @@ describe("Plugins", () => {
       expect(await gmailState(plugins)).toBe("reconnect")
     })
 
+    it("a token rejected at tool-load is refreshed once before giving up", async () => {
+      const { plugins, oauth, connector } = setup({
+        connector: fakeConnector({ rejectedTokens: ["access-1"] }),
+      })
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(oauth.refreshed).toEqual(["refresh-1"])
+      expect(connector.connections.map((c) => c.accessToken)).toEqual([
+        "access-1",
+        "access-2",
+      ])
+      expect(Object.keys(turn.tools)).toContain("gmail_search_threads")
+      expect(turn.notices).toEqual([])
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("a token still rejected after refreshing marks Gmail not Connected", async () => {
+      const { plugins, oauth } = setup({
+        connector: fakeConnector({ rejectedTokens: ["access-1", "access-2"] }),
+      })
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(oauth.refreshed).toEqual(["refresh-1"])
+      expect(turn.notices[0]).toMatch(/reconect/i)
+      expect(await gmailState(plugins)).toBe("reconnect")
+    })
+
     it("a tool call failing returns an explanation for the model instead of throwing", async () => {
       const { plugins } = setup({
         connector: fakeConnector({ toolError: new Error("HTTP 500") }),
@@ -547,7 +603,7 @@ describe("Plugins", () => {
     })
 
     it("Reconnect runs OAuth again and restores Connected", async () => {
-      const { plugins, connector } = setup({
+      const { plugins } = setup({
         connector: fakeConnector({
           connectError: new ConnectorAuthError("HTTP 401"),
         }),
@@ -562,7 +618,6 @@ describe("Plugins", () => {
       })
 
       expect(await gmailState(plugins)).toBe("connected")
-      expect(connector.connections).toHaveLength(1)
     })
 
     it("a healthy Turn has no notices", async () => {
