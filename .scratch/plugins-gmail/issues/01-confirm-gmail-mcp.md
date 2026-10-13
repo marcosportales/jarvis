@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** resolved
+**Status:** done
 
 - [x] Endpoint, transport and required APIs confirmed with links to Google docs
 - [x] OAuth endpoints and narrowest read-only scope identified, with links

@@ -1,6 +1,6 @@
 # Spec: Plugins — Marketplace with Gmail
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

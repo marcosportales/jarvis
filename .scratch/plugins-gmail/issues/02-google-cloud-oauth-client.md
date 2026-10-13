@@ -4,7 +4,9 @@
 
 **Blocked by:** 01 (Confirm Google's Gmail MCP server against official docs)
 
-**Status:** ready-for-human
+**Status:** done
+
+**Note:** Closed with the Developer Preview enrollment still missing: the Owner can't get access to the Google Workspace Developer Preview Program, so the Gmail MCP server can't be used against real Google. Everything else is set up.
 
 - [ ] The Google Cloud project (not only the Owner's account) is enrolled in the Google Workspace Developer Preview Program. Without it, every Gmail MCP tool call fails with "Access to this tool requires that your Google Cloud project (…) is enrolled in the Google Workspace Developer Preview Program"
 - [x] Google Cloud project exists with the required APIs enabled
