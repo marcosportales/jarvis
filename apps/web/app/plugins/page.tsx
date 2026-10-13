@@ -2,8 +2,12 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { connection } from "next/server"
 
+import { Button } from "@workspace/ui/components/button"
+
 import type { MarketplaceItem, PluginState } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
+
+import { installPlugin } from "./actions"
 
 export const metadata: Metadata = {
   title: "Plugins · Jarvis",
@@ -16,10 +20,41 @@ const STATE_LABELS: Record<PluginState, string> = {
   reconnect: "Desconectado",
 }
 
-export default async function PluginsPage() {
+const ERROR_MESSAGES: Record<string, (name: string) => string> = {
+  cancelled: (name) => `Cancelaste la autorización; ${name} no se instaló.`,
+  "invalid-state": (name) =>
+    `La autorización de ${name} no es válida o caducó. Vuelve a intentarlo.`,
+  failed: (name) => `No se pudo conectar ${name}. Vuelve a intentarlo.`,
+  "not-configured": (name) =>
+    `${name} no está configurado: faltan sus credenciales OAuth.`,
+  "unknown-plugin": () => "Ese Plugin no está en el Marketplace.",
+}
+
+function messageFor(
+  params: Record<string, string | string[] | undefined>,
+  items: MarketplaceItem[]
+) {
+  const name =
+    items.find((item) => item.id === params.plugin)?.name ?? "El Plugin"
+  if (params.installed) {
+    return { tone: "success" as const, text: `${name} está conectado.` }
+  }
+  if (typeof params.error === "string") {
+    const describe = ERROR_MESSAGES[params.error] ?? ERROR_MESSAGES.failed!
+    return { tone: "error" as const, text: describe(name) }
+  }
+  return undefined
+}
+
+export default async function PluginsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   // The Marketplace reads local SQLite synchronously; keep it out of prerendering.
   await connection()
   const items = await getPlugins().listMarketplace()
+  const message = messageFor(await searchParams, items)
 
   return (
     <main className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 p-4 pt-10">
@@ -37,6 +72,19 @@ export default async function PluginsPage() {
           Volver a Jarvis
         </Link>
       </header>
+
+      {message && (
+        <p
+          role={message.tone === "error" ? "alert" : "status"}
+          className={
+            message.tone === "error"
+              ? "text-sm text-destructive"
+              : "text-sm text-muted-foreground"
+          }
+        >
+          {message.text}
+        </p>
+      )}
 
       <ul className="flex flex-col gap-3">
         {items.map((item) => (
@@ -58,6 +106,21 @@ function PluginCard({ item }: { item: MarketplaceItem }) {
           {STATE_LABELS[item.state]}
         </span>
       </div>
+      <PluginActions item={item} />
     </li>
   )
+}
+
+function PluginActions({ item }: { item: MarketplaceItem }) {
+  if (item.state === "installable" || item.state === "reconnect") {
+    return (
+      <form action={installPlugin}>
+        <input type="hidden" name="pluginId" value={item.id} />
+        <Button type="submit">
+          {item.state === "reconnect" ? "Reconectar" : "Instalar"}
+        </Button>
+      </form>
+    )
+  }
+  return null
 }

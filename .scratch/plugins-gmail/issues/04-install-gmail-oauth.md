@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 (Confirm Google's Gmail MCP server against official docs), 03 (Marketplace page lists the Gmail Plugin)
 
-**Status:** ready-for-agent
+**Status:** done (manual check pending ticket 02)
 
-- [ ] Install redirects to the provider's consent URL with the read-only scope and CSRF-safe state
-- [ ] OAuth callback stores the Installed Plugin and its tokens; Gmail then shows Connected
-- [ ] Cancelled/failed OAuth or invalid state leaves Gmail not Installed and shows a message
-- [ ] Plugins module tests with a fake OAuth provider cover success, cancel, and failure
+- [x] Install redirects to the provider's consent URL with the read-only scope and CSRF-safe state
+- [x] OAuth callback stores the Installed Plugin and its tokens; Gmail then shows Connected
+- [x] Cancelled/failed OAuth or invalid state leaves Gmail not Installed and shows a message
+- [x] Plugins module tests with a fake OAuth provider cover success, cancel, and failure
 - [ ] Manual (needs ticket 02): installing against real Google ends with Gmail Connected and surviving a server restart
