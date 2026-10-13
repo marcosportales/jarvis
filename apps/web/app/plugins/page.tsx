@@ -7,7 +7,7 @@ import { Button } from "@workspace/ui/components/button"
 import type { MarketplaceItem, PluginState } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
 
-import { installPlugin } from "./actions"
+import { installPlugin, uninstallPlugin } from "./actions"
 
 export const metadata: Metadata = {
   title: "Plugins · Jarvis",
@@ -38,6 +38,12 @@ function messageFor(
     items.find((item) => item.id === params.plugin)?.name ?? "El Plugin"
   if (params.installed) {
     return { tone: "success" as const, text: `${name} está conectado.` }
+  }
+  if (params.uninstalled) {
+    return {
+      tone: "success" as const,
+      text: `${name} se desinstaló; Jarvis ya no tiene acceso.`,
+    }
   }
   if (typeof params.error === "string") {
     const describe = ERROR_MESSAGES[params.error] ?? ERROR_MESSAGES.failed!
@@ -112,15 +118,26 @@ function PluginCard({ item }: { item: MarketplaceItem }) {
 }
 
 function PluginActions({ item }: { item: MarketplaceItem }) {
-  if (item.state === "installable" || item.state === "reconnect") {
-    return (
-      <form action={installPlugin}>
-        <input type="hidden" name="pluginId" value={item.id} />
-        <Button type="submit">
-          {item.state === "reconnect" ? "Reconectar" : "Instalar"}
-        </Button>
-      </form>
-    )
-  }
-  return null
+  const canInstall = item.state === "installable" || item.state === "reconnect"
+  const canUninstall = item.state === "connected" || item.state === "reconnect"
+  return (
+    <div className="flex gap-2">
+      {canUninstall && (
+        <form action={uninstallPlugin}>
+          <input type="hidden" name="pluginId" value={item.id} />
+          <Button type="submit" variant="outline">
+            Desinstalar
+          </Button>
+        </form>
+      )}
+      {canInstall && (
+        <form action={installPlugin}>
+          <input type="hidden" name="pluginId" value={item.id} />
+          <Button type="submit">
+            {item.state === "reconnect" ? "Reconectar" : "Instalar"}
+          </Button>
+        </form>
+      )}
+    </div>
+  )
 }

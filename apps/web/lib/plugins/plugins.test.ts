@@ -23,11 +23,13 @@ function fakeOAuth(
   options: {
     exchange?: OAuthTokens | Error
     refresh?: OAuthTokens | Error
+    revokeError?: Error
   } = {}
 ) {
   const exchanged: { code: string; redirectUri: string; clientId: string }[] =
     []
   const refreshed: string[] = []
+  const revoked: string[] = []
   const oauth: OAuthClient = {
     async exchangeCode({ code, redirectUri, credentials }) {
       exchanged.push({ code, redirectUri, clientId: credentials.clientId })
@@ -50,9 +52,12 @@ function fakeOAuth(
       if (result instanceof Error) throw result
       return result
     },
-    async revoke() {},
+    async revoke({ token }) {
+      revoked.push(token)
+      if (options.revokeError) throw options.revokeError
+    },
   }
-  return { oauth, exchanged, refreshed }
+  return { oauth, exchanged, refreshed, revoked }
 }
 
 /** A Gmail MCP server's tools, read and write, as the Connector returns them. */
@@ -567,6 +572,77 @@ describe("Plugins", () => {
       const turn = await plugins.toolsForTurn()
 
       expect(turn.notices).toEqual([])
+    })
+  })
+
+  describe("Uninstall", () => {
+    it("removes Gmail and revokes its authorization with the provider", async () => {
+      const { plugins, oauth } = setup()
+      await installGmail(plugins)
+
+      await plugins.uninstall("gmail")
+
+      expect(oauth.revoked).toEqual(["refresh-1"])
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("still uninstalls when revocation fails", async () => {
+      const { plugins, oauth } = setup({
+        oauth: fakeOAuth({ revokeError: new Error("HTTP 500") }),
+      })
+      await installGmail(plugins)
+
+      await plugins.uninstall("gmail")
+
+      expect(oauth.revoked).toEqual(["refresh-1"])
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("revokes the access token when there is no refresh token", async () => {
+      const { plugins, oauth } = setup({
+        oauth: fakeOAuth({
+          exchange: {
+            accessToken: "access-1",
+            refreshToken: null,
+            expiresAt: null,
+          },
+        }),
+      })
+      await installGmail(plugins)
+
+      await plugins.uninstall("gmail")
+
+      expect(oauth.revoked).toEqual(["access-1"])
+    })
+
+    it("leaves Jarvis without Gmail's tools", async () => {
+      const { plugins } = setup()
+      await installGmail(plugins)
+
+      await plugins.uninstall("gmail")
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toEqual([])
+    })
+
+    it("can install Gmail again afterwards", async () => {
+      const { plugins } = setup()
+      await installGmail(plugins)
+      await plugins.uninstall("gmail")
+
+      await installGmail(plugins)
+
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("does nothing for a Plugin that isn't Installed", async () => {
+      const { plugins, oauth } = setup()
+
+      await plugins.uninstall("gmail")
+
+      expect(oauth.revoked).toEqual([])
+      expect(await gmailState(plugins)).toBe("installable")
     })
   })
 })

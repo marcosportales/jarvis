@@ -4,10 +4,10 @@
 
 **Blocked by:** 04 (Install Gmail through OAuth, so it's Connected)
 
-**Status:** ready-for-agent
+**Status:** done (manual check pending ticket 02)
 
-- [ ] Uninstall deletes tokens and the Installed record; Plugin shows installable again
-- [ ] Revocation is attempted with the provider; failure to revoke still completes the uninstall
-- [ ] Tools for a Turn no longer include the Plugin's tools (if ticket 05 has landed)
-- [ ] Plugins module tests with a fake OAuth provider cover uninstall with successful and failing revocation
+- [x] Uninstall deletes tokens and the Installed record; Plugin shows installable again
+- [x] Revocation is attempted with the provider; failure to revoke still completes the uninstall
+- [x] Tools for a Turn no longer include the Plugin's tools (if ticket 05 has landed)
+- [x] Plugins module tests with a fake OAuth provider cover uninstall with successful and failing revocation
 - [ ] Manual (needs ticket 02): after Uninstall, asking about email gets "no tengo acceso a tu Gmail" or equivalent

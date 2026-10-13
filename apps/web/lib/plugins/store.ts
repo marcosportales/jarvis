@@ -18,6 +18,8 @@ export type PluginStore = {
   saveTokens(pluginId: string, tokens: OAuthTokens): Promise<void>
   /** The authorization stopped working; the Plugin stays Installed. */
   markDisconnected(pluginId: string): Promise<void>
+  /** Deletes the Installed record and its tokens. */
+  remove(pluginId: string): Promise<void>
 }
 
 export function createSqliteStore(db: PluginsDatabase): PluginStore {
@@ -70,6 +72,13 @@ export function createSqliteStore(db: PluginsDatabase): PluginStore {
     async markDisconnected(pluginId) {
       db.update(installedPlugins)
         .set({ connected: false })
+        .where(eq(installedPlugins.pluginId, pluginId))
+        .run()
+    },
+
+    async remove(pluginId) {
+      // Tokens go with it (ON DELETE CASCADE).
+      db.delete(installedPlugins)
         .where(eq(installedPlugins.pluginId, pluginId))
         .run()
     },

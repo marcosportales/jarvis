@@ -240,6 +240,27 @@ export function createPlugins({
         },
       }
     },
+
+    /**
+     * Deletes the Plugin's tokens and Installed record. Revocation with the
+     * provider is attempted, but failing to revoke doesn't block uninstalling.
+     */
+    async uninstall(pluginId: string): Promise<void> {
+      const entry = findEntry(pluginId)
+      const tokens = await store.getTokens(pluginId)
+      await store.remove(pluginId)
+      if (!entry || !tokens) return
+
+      try {
+        // Revoking the refresh token also invalidates its access tokens.
+        await oauth.revoke({
+          provider: entry.connector.oauth.provider,
+          token: tokens.refreshToken ?? tokens.accessToken,
+        })
+      } catch (error) {
+        console.error(`Revoking ${pluginId} failed; uninstalled anyway`, error)
+      }
+    },
   }
 
   /** The stored access token, refreshed first if it has (nearly) expired. */

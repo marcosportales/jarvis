@@ -38,3 +38,9 @@ export async function installPlugin(formData: FormData) {
   })
   redirect(begun.authorizationUrl)
 }
+
+export async function uninstallPlugin(formData: FormData) {
+  const pluginId = String(formData.get("pluginId"))
+  await getPlugins().uninstall(pluginId)
+  redirect(`/plugins?plugin=${encodeURIComponent(pluginId)}&uninstalled=1`)
+}
