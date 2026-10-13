@@ -3,6 +3,7 @@ import "server-only"
 import fs from "node:fs"
 import path from "node:path"
 
+import { createMcpConnector } from "./connector"
 import { openDatabase, type PluginsDatabase } from "./db"
 import { createOAuthClient } from "./oauth"
 import { createPlugins, type Plugins } from "./plugins"
@@ -28,6 +29,7 @@ export function getPlugins(): Plugins {
     env: process.env,
     store: createSqliteStore(database()),
     oauth: createOAuthClient(),
+    connector: createMcpConnector(),
   })
 }
 

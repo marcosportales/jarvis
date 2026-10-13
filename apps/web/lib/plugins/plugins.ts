@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto"
 
+import type { ToolSet } from "ai"
+
 import { marketplace, type PluginEntry } from "./catalog"
+import type { Connector, ConnectorSession } from "./connector"
 import type { OAuthClient } from "./oauth"
 import type { PluginStore } from "./store"
 
@@ -50,10 +53,17 @@ export type CompleteInstallResult =
       reason: "cancelled" | "invalid-state" | "failed"
     }
 
+/** What Jarvis may use during one Turn. Call `close` when the Turn ends. */
+export type TurnTools = {
+  tools: ToolSet
+  close(): Promise<void>
+}
+
 export type PluginsDeps = {
   env: Env
   store: PluginStore
   oauth: OAuthClient
+  connector: Connector
   catalog?: PluginEntry[]
   now?: () => Date
 }
@@ -69,6 +79,7 @@ export function createPlugins({
   env,
   store,
   oauth,
+  connector,
   catalog = marketplace,
   now = () => new Date(),
 }: PluginsDeps) {
@@ -158,6 +169,34 @@ export function createPlugins({
         return { ok: false, pluginId, reason: "failed" }
       }
       return { ok: true, pluginId }
+    },
+
+    /** The allowlisted tools of every Connected Plugin, named `<plugin>_<tool>`. */
+    async toolsForTurn(): Promise<TurnTools> {
+      const sessions: ConnectorSession[] = []
+      const tools: ToolSet = {}
+      for (const { pluginId, connected } of await store.listInstalled()) {
+        const entry = findEntry(pluginId)
+        const tokens = await store.getTokens(pluginId)
+        if (!entry || !connected || !tokens) continue
+
+        const session = await connector.connect({
+          url: entry.connector.mcpUrl,
+          accessToken: tokens.accessToken,
+        })
+        sessions.push(session)
+        const serverTools = await session.tools()
+        for (const name of entry.connector.toolAllowlist) {
+          const serverTool = serverTools[name]
+          if (serverTool) tools[`${pluginId}_${name}`] = serverTool
+        }
+      }
+      return {
+        tools,
+        async close() {
+          await Promise.allSettled(sessions.map((session) => session.close()))
+        },
+      }
     },
   }
 }

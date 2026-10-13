@@ -1,5 +1,8 @@
+import { tool, type ToolSet } from "ai"
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
 
+import type { Connector } from "./connector"
 import { openDatabase } from "./db"
 import type { OAuthClient, OAuthTokens } from "./oauth"
 import { createPlugins } from "./plugins"
@@ -38,21 +41,73 @@ function fakeOAuth(
   return { oauth, exchanged }
 }
 
+/** A Gmail MCP server's tools, read and write, as the Connector returns them. */
+const GMAIL_SERVER_TOOLS = [
+  "search_threads",
+  "get_thread",
+  "get_message",
+  "list_labels",
+  "list_drafts",
+  "create_draft",
+  "label_thread",
+]
+
+function fakeConnector(serverTools: string[] = GMAIL_SERVER_TOOLS) {
+  const connections: { url: string; accessToken: string }[] = []
+  const toolCalls: { name: string; input: unknown }[] = []
+  let closed = 0
+  const connector: Connector = {
+    async connect({ url, accessToken }) {
+      connections.push({ url, accessToken })
+      const tools: ToolSet = Object.fromEntries(
+        serverTools.map((name) => [
+          name,
+          tool({
+            description: `Gmail ${name}`,
+            inputSchema: z.object({ query: z.string().optional() }),
+            execute: async (input) => {
+              toolCalls.push({ name, input })
+              return { threads: [{ sender: "Ana", subject: "Hola" }] }
+            },
+          }),
+        ])
+      )
+      return {
+        tools: async () => tools,
+        close: async () => {
+          closed++
+        },
+      }
+    },
+  }
+  return { connector, connections, toolCalls, closed: () => closed }
+}
+
 function setup(
   options: {
     env?: Record<string, string | undefined>
     oauth?: ReturnType<typeof fakeOAuth>
+    connector?: ReturnType<typeof fakeConnector>
   } = {}
 ) {
   const store = createSqliteStore(openDatabase(":memory:"))
   const oauth = options.oauth ?? fakeOAuth()
+  const connector = options.connector ?? fakeConnector()
   const plugins = createPlugins({
     env: options.env ?? googleCredentials,
     store,
     oauth: oauth.oauth,
+    connector: connector.connector,
     now: () => NOW,
   })
-  return { plugins, store, oauth }
+  return { plugins, store, oauth, connector }
+}
+
+/** Calls a tool the way the AI SDK does during a Turn. */
+async function callTool(tools: ToolSet, name: string, input: unknown) {
+  const execute = tools[name]?.execute
+  if (!execute) throw new Error(`no tool ${name}`)
+  return execute(input, { toolCallId: "call-1", messages: [], context: {} })
 }
 
 async function gmailState(plugins: ReturnType<typeof setup>["plugins"]) {
@@ -172,6 +227,7 @@ describe("Plugins", () => {
         env: googleCredentials,
         store,
         oauth: oauth.oauth,
+        connector: fakeConnector().connector,
       })
 
       expect(await gmailState(restarted)).toBe("connected")
@@ -237,6 +293,71 @@ describe("Plugins", () => {
         reason: "failed",
       })
       expect(await gmailState(plugins)).toBe("installable")
+    })
+  })
+
+  describe("Tools for a Turn", () => {
+    it("offers no tools when nothing is Installed", async () => {
+      const { plugins, connector } = setup()
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(connector.connections).toEqual([])
+    })
+
+    it("offers only the allowlisted tools of a Connected Plugin", async () => {
+      const { plugins, connector } = setup()
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(Object.keys(turn.tools).sort()).toEqual([
+        "gmail_get_message",
+        "gmail_get_thread",
+        "gmail_list_drafts",
+        "gmail_list_labels",
+        "gmail_search_threads",
+      ])
+      expect(connector.connections).toEqual([
+        { url: "https://gmailmcp.googleapis.com/mcp/v1", accessToken: "access-1" },
+      ])
+    })
+
+    it("skips allowlisted tools the server doesn't expose", async () => {
+      const { plugins } = setup({
+        connector: fakeConnector(["search_threads", "create_draft"]),
+      })
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(Object.keys(turn.tools)).toEqual(["gmail_search_threads"])
+    })
+
+    it("calling a tool reaches the Connector's tool", async () => {
+      const { plugins, connector } = setup()
+      await installGmail(plugins)
+      const turn = await plugins.toolsForTurn()
+
+      const result = await callTool(turn.tools, "gmail_search_threads", {
+        query: "is:unread newer_than:1d",
+      })
+
+      expect(result).toEqual({ threads: [{ sender: "Ana", subject: "Hola" }] })
+      expect(connector.toolCalls).toEqual([
+        { name: "search_threads", input: { query: "is:unread newer_than:1d" } },
+      ])
+    })
+
+    it("closes its Connector sessions when the Turn ends", async () => {
+      const { plugins, connector } = setup()
+      await installGmail(plugins)
+      const turn = await plugins.toolsForTurn()
+
+      await turn.close()
+
+      expect(connector.closed()).toBe(1)
     })
   })
 })

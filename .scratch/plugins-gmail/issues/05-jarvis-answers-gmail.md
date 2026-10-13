@@ -4,11 +4,11 @@
 
 **Blocked by:** 04 (Install Gmail through OAuth, so it's Connected)
 
-**Status:** ready-for-agent
+**Status:** done (manual checks pending ticket 02)
 
-- [ ] Tools for a Turn returns only allowlisted tools, only from Connected Plugins; none when nothing is Connected
-- [ ] Reply step uses those tools with a step limit; client contract unchanged
-- [ ] System prompt covers speaking about email and admitting missing access
-- [ ] Plugins module tests with a fake Connector cover the above
+- [x] Tools for a Turn returns only allowlisted tools, only from Connected Plugins; none when nothing is Connected
+- [x] Reply step uses those tools with a step limit; client contract unchanged
+- [x] System prompt covers speaking about email and admitting missing access
+- [x] Plugins module tests with a fake Connector cover the above
 - [ ] Manual (needs ticket 02): "¿Tengo correos sin leer de hoy?" by voice gets a 1–3 sentence spoken answer matching the real inbox
 - [ ] Manual: with Gmail not Installed, Jarvis says it has no access to Gmail

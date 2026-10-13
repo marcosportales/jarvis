@@ -14,6 +14,7 @@ export type PluginStore = {
   listInstalled(): Promise<InstalledPlugin[]>
   /** Records the Plugin as Installed and Connected with fresh tokens. */
   saveInstall(pluginId: string, tokens: OAuthTokens, at: Date): Promise<void>
+  getTokens(pluginId: string): Promise<OAuthTokens | undefined>
 }
 
 export function createSqliteStore(db: PluginsDatabase): PluginStore {
@@ -40,6 +41,18 @@ export function createSqliteStore(db: PluginsDatabase): PluginStore {
         tx.delete(pluginTokens).where(eq(pluginTokens.pluginId, pluginId)).run()
         tx.insert(pluginTokens).values({ pluginId, ...tokens }).run()
       })
+    },
+
+    async getTokens(pluginId) {
+      return db
+        .select({
+          accessToken: pluginTokens.accessToken,
+          refreshToken: pluginTokens.refreshToken,
+          expiresAt: pluginTokens.expiresAt,
+        })
+        .from(pluginTokens)
+        .where(eq(pluginTokens.pluginId, pluginId))
+        .get()
     },
   }
 }
