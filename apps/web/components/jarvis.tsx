@@ -65,7 +65,7 @@ export function Jarvis() {
   const busy = state === "listening" || state === "thinking"
 
   return (
-    <main className="mx-auto flex h-svh max-w-2xl flex-col gap-4 p-4">
+    <div className="mx-auto flex h-svh w-full max-w-2xl flex-col gap-4 p-4">
       <section className="flex flex-col items-center gap-2 pt-6">
         <button
           type="button"
@@ -137,6 +137,6 @@ export function Jarvis() {
           />
         </PromptInputFooter>
       </PromptInput>
-    </main>
+    </div>
   )
 }

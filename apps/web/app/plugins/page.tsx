@@ -1,5 +1,4 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { connection } from "next/server"
 
 import { Button } from "@workspace/ui/components/button"
@@ -63,20 +62,12 @@ export default async function PluginsPage({
   const message = messageFor(await searchParams, items)
 
   return (
-    <main className="mx-auto flex min-h-svh max-w-2xl flex-col gap-6 p-4 pt-10">
-      <header className="flex items-baseline justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">Plugins</h1>
-          <p className="text-sm text-muted-foreground">
-            Servicios a los que Jarvis puede acceder.
-          </p>
-        </div>
-        <Link
-          href="/"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          Volver a Jarvis
-        </Link>
+    <div className="mx-auto flex min-h-svh w-full max-w-2xl flex-col gap-6 p-4 pt-10">
+      <header>
+        <h1 className="text-xl font-semibold">Plugins</h1>
+        <p className="text-sm text-muted-foreground">
+          Servicios a los que Jarvis puede acceder.
+        </p>
       </header>
 
       {message && (
@@ -97,7 +88,7 @@ export default async function PluginsPage({
           <PluginCard key={item.id} item={item} />
         ))}
       </ul>
-    </main>
+    </div>
   )
 }
 
