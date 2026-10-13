@@ -43,7 +43,7 @@ Open http://localhost:3000/plugins to see the Marketplace. Installed Plugins and
 
 The Gmail Plugin needs a Google OAuth client (see `.scratch/plugins-gmail/issues/02-google-cloud-oauth-client.md`):
 
-1. Join the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview). The Gmail MCP server requires it.
+1. Enroll your **Google Cloud project** in the [Google Workspace Developer Preview Program](https://developers.google.com/workspace/preview). Without it, every Gmail MCP tool call is refused.
 2. In a Google Cloud project, enable the **Gmail API** and the **Gmail MCP API**.
 3. Configure the OAuth consent screen, add yourself as a test user, and add the scope `https://www.googleapis.com/auth/gmail.readonly`.
 4. Create an OAuth client of type **Web application** with the redirect URI `http://localhost:3000/api/plugins/callback`.

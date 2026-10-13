@@ -39,3 +39,7 @@ Confirmed from Google's own docs (fetched 2026-10-13). **ADR 0001 is not blocked
 - **Dynamic client registration is not mentioned or supported.** All guides use a pre-created OAuth client ID and secret. This matches the spec's env-based credentials.
 - Quotas: 6,000 query units per user per minute ([usage limits](https://developers.google.com/workspace/gmail/api/reference/quota)). Not a concern for one Owner.
 - Google warns about indirect prompt injection from email content. Keeping Jarvis read-only limits the damage.
+
+### Observed against the live server (2026-10-14)
+- `tools/list` returned 23 tools, more than the docs list: `create_draft, list_drafts, get_draft, get_thread, get_message, search_threads, label_thread, unlabel_thread, apply_sensitive_thread_label, trash_thread, untrash_thread, mark_thread_spam, unmark_thread_spam, list_labels, label_message, update_message_labels, unlabel_message, apply_sensitive_message_label, trash_message, untrash_message, mark_message_spam, unmark_message_spam, create_label`. The name-based allowlist still exposes only the five read tools. `get_draft` is also read-only and could be added later.
+- Listing tools works without Developer Preview enrollment, but every tool call returns `isError` until the **Cloud project** is enrolled.
