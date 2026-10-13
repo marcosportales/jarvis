@@ -17,7 +17,7 @@ _Avoid_: Bot, agent, AI
 ### Conversation
 
 **Session**:
-One continuous conversation between the Owner and Jarvis. It ends when the page is closed or reloaded; nothing carries over.
+One continuous conversation between the Owner and Jarvis. It ends when the page is closed or reloaded; nothing said in it carries over.
 _Avoid_: Chat, thread, history
 
 **Turn**:
@@ -66,7 +66,7 @@ The fixed catalog of Plugins the Owner can choose from. The Owner cannot add arb
 _Avoid_: Store, app directory, integrations page
 
 **Plugin**:
-A unit the Owner installs from the Marketplace to give Jarvis access to one outside service, e.g. the Gmail Plugin. It bundles one or more Connectors and, eventually, Skills.
+A unit the Owner installs from the Marketplace to give Jarvis access to one outside service, e.g. the Gmail Plugin. It bundles one or more Connectors and, eventually, Skills and Widgets.
 _Avoid_: Integration, app, extension
 
 **Connector**:
@@ -83,3 +83,25 @@ A Plugin the Owner has chosen from the Marketplace. Installed alone does not mea
 **Connected**:
 An Installed Plugin whose Connector the Owner has authorized and that currently works. Jarvis can only use Connected Plugins.
 _Avoid_: Enabled, active, linked
+
+### Widgets
+
+**Widget**:
+A small floating panel on the Jarvis page showing one thing at a glance, e.g. the Weather Widget. Built into Jarvis today; later, a Plugin may also bring Widgets.
+_Avoid_: Panel, card, overlay, gadget
+
+**Shown** / **Hidden**:
+Whether a Widget is currently on screen. Both the Owner and Jarvis can show or hide any Widget, and the choice is remembered across Sessions. Closing a Widget means hiding it.
+_Avoid_: Open, enabled, active
+
+**Spot**:
+One of six named places in the side margins of the Jarvis page — left or right, each top, middle or bottom — where Jarvis can move a Widget. The Owner can instead drag a Widget anywhere on screen.
+_Avoid_: Slot, zone, corner
+
+**Starting Spot**:
+Where a Widget first appears before it has ever been moved, e.g. top-right for the Weather Widget. A Widget without one first appears at a random free place in the side margins.
+_Avoid_: Default position
+
+**Widget Setting**:
+A choice about what a Widget shows that Jarvis can change, e.g. the Weather Widget's place. Remembered like the Widget's position.
+_Avoid_: Option, config, parameter
