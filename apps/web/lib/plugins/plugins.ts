@@ -3,8 +3,12 @@ import { randomBytes } from "node:crypto"
 import type { ToolSet } from "ai"
 
 import { marketplace, type PluginEntry } from "./catalog"
-import type { Connector, ConnectorSession } from "./connector"
-import type { OAuthClient } from "./oauth"
+import {
+  ConnectorAuthError,
+  type Connector,
+  type ConnectorSession,
+} from "./connector"
+import { OAuthAuthError, type OAuthClient, type OAuthTokens } from "./oauth"
 import type { PluginStore } from "./store"
 
 export type Env = Record<string, string | undefined>
@@ -16,10 +20,7 @@ export type Env = Record<string, string | undefined>
  * - `reconnect`: Installed, but its authorization stopped working.
  */
 export type PluginState =
-  | "not-configured"
-  | "installable"
-  | "connected"
-  | "reconnect"
+  "not-configured" | "installable" | "connected" | "reconnect"
 
 export type MarketplaceItem = {
   id: string
@@ -56,7 +57,25 @@ export type CompleteInstallResult =
 /** What Jarvis may use during one Turn. Call `close` when the Turn ends. */
 export type TurnTools = {
   tools: ToolSet
+  /**
+   * Problems with Plugins this Turn, written for the model so Jarvis can
+   * explain them instead of the Turn failing.
+   */
+  notices: string[]
   close(): Promise<void>
+}
+
+/** Refresh tokens this close to expiry so they don't lapse mid-Turn. */
+const EXPIRY_MARGIN_MS = 60_000
+
+const isAuthFailure = (error: unknown) =>
+  error instanceof OAuthAuthError || error instanceof ConnectorAuthError
+
+/** Model-facing explanation of why a Plugin can't be used right now. */
+function failureNotice(name: string, needsReconnect: boolean) {
+  return needsReconnect
+    ? `No tienes acceso a ${name}: su autorización dejó de funcionar. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que el dueño debe reconectarlo en Plugins.`
+    : `${name} no responde ahora mismo. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que lo intente más tarde.`
 }
 
 export type PluginsDeps = {
@@ -146,7 +165,11 @@ export function createPlugins({
       callback: OAuthCallback
     }): Promise<CompleteInstallResult> {
       if (!pending || !callback.state || callback.state !== pending.state) {
-        return { ok: false, pluginId: pending?.pluginId, reason: "invalid-state" }
+        return {
+          ok: false,
+          pluginId: pending?.pluginId,
+          reason: "invalid-state",
+        }
       }
       const { pluginId } = pending
       if (callback.error || !callback.code) {
@@ -154,7 +177,8 @@ export function createPlugins({
       }
       const entry = findEntry(pluginId)
       const credentials = entry && credentialsFor(entry, env)
-      if (!entry || !credentials) return { ok: false, pluginId, reason: "failed" }
+      if (!entry || !credentials)
+        return { ok: false, pluginId, reason: "failed" }
 
       try {
         const tokens = await oauth.exchangeCode({
@@ -171,33 +195,101 @@ export function createPlugins({
       return { ok: true, pluginId }
     },
 
-    /** The allowlisted tools of every Connected Plugin, named `<plugin>_<tool>`. */
+    /**
+     * The allowlisted tools of every Connected Plugin, named `<plugin>_<tool>`.
+     * Never throws because of a Plugin: problems become `notices`, and failing
+     * tool calls return an explanation for the model.
+     */
     async toolsForTurn(): Promise<TurnTools> {
       const sessions: ConnectorSession[] = []
       const tools: ToolSet = {}
-      for (const { pluginId, connected } of await store.listInstalled()) {
-        const entry = findEntry(pluginId)
-        const tokens = await store.getTokens(pluginId)
-        if (!entry || !connected || !tokens) continue
+      const notices: string[] = []
 
-        const session = await connector.connect({
-          url: entry.connector.mcpUrl,
-          accessToken: tokens.accessToken,
-        })
-        sessions.push(session)
-        const serverTools = await session.tools()
-        for (const name of entry.connector.toolAllowlist) {
-          const serverTool = serverTools[name]
-          if (serverTool) tools[`${pluginId}_${name}`] = serverTool
+      for (const installed of await store.listInstalled()) {
+        const entry = findEntry(installed.pluginId)
+        if (!entry) continue
+        if (!installed.connected) {
+          notices.push(failureNotice(entry.name, true))
+          continue
+        }
+
+        try {
+          const accessToken = await freshAccessToken(entry)
+          const session = await connector.connect({
+            url: entry.connector.mcpUrl,
+            accessToken,
+          })
+          sessions.push(session)
+          const serverTools = await session.tools()
+          for (const name of entry.connector.toolAllowlist) {
+            const serverTool = serverTools[name]
+            if (serverTool) {
+              tools[`${entry.id}_${name}`] = guardToolCalls(entry, serverTool)
+            }
+          }
+        } catch (error) {
+          notices.push(await handleFailure(entry, error))
         }
       }
+
       return {
         tools,
+        notices,
         async close() {
           await Promise.allSettled(sessions.map((session) => session.close()))
         },
       }
     },
+  }
+
+  /** The stored access token, refreshed first if it has (nearly) expired. */
+  async function freshAccessToken(entry: PluginEntry) {
+    const tokens = await store.getTokens(entry.id)
+    if (!tokens) throw new OAuthAuthError("No tokens stored")
+    const expiresSoon =
+      tokens.expiresAt !== null &&
+      tokens.expiresAt.getTime() - EXPIRY_MARGIN_MS <= now().getTime()
+    if (!expiresSoon) return tokens.accessToken
+
+    const credentials = credentialsFor(entry, env)
+    if (!tokens.refreshToken || !credentials) {
+      throw new OAuthAuthError("Access token expired and cannot be refreshed")
+    }
+    const refreshed = await oauth.refresh({
+      provider: entry.connector.oauth.provider,
+      credentials,
+      refreshToken: tokens.refreshToken,
+    })
+    const next: OAuthTokens = {
+      ...refreshed,
+      refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
+    }
+    await store.saveTokens(entry.id, next)
+    return next.accessToken
+  }
+
+  /** Records an auth failure as not Connected; returns the model-facing notice. */
+  async function handleFailure(entry: PluginEntry, error: unknown) {
+    console.error(`Plugin ${entry.id} failed during a Turn`, error)
+    const needsReconnect = isAuthFailure(error)
+    if (needsReconnect) await store.markDisconnected(entry.id)
+    return failureNotice(entry.name, needsReconnect)
+  }
+
+  /** A failing tool call yields `{ error }` for the model, never an exception. */
+  function guardToolCalls(entry: PluginEntry, serverTool: ToolSet[string]) {
+    const { execute } = serverTool
+    if (!execute) return serverTool
+    return {
+      ...serverTool,
+      execute: async (...args: Parameters<typeof execute>) => {
+        try {
+          return await execute(...args)
+        } catch (error) {
+          return { error: await handleFailure(entry, error) }
+        }
+      },
+    }
   }
 }
 

@@ -33,7 +33,9 @@ export async function POST(request: Request) {
   try {
     const { text } = await generateText({
       model: nan.chat(nanConfig.chatModel),
-      system: `${JARVIS_SYSTEM_PROMPT}\n\n${currentDateLine()}`,
+      system: [JARVIS_SYSTEM_PROMPT, currentDateLine(), ...turn.notices].join(
+        "\n\n"
+      ),
       messages: lines.map(({ role, text }) => ({
         role: role === "owner" ? ("user" as const) : ("assistant" as const),
         content: text,

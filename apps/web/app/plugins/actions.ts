@@ -24,7 +24,9 @@ export async function installPlugin(formData: FormData) {
     redirectUri: callbackUrl(await requestOrigin()),
   })
   if (!begun.ok) {
-    redirect(`/plugins?plugin=${encodeURIComponent(pluginId)}&error=${begun.reason}`)
+    redirect(
+      `/plugins?plugin=${encodeURIComponent(pluginId)}&error=${begun.reason}`
+    )
   }
 
   const cookieStore = await cookies()

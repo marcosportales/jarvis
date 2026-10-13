@@ -4,11 +4,11 @@
 
 **Blocked by:** 05 (Jarvis answers questions about Gmail)
 
-**Status:** ready-for-agent
+**Status:** done (manual check pending ticket 02)
 
-- [ ] Expired access token is refreshed and the new token stored, without the Owner noticing
-- [ ] Connector failure at tool-load or tool-call time yields a model-visible explanation, not a thrown error
-- [ ] Auth failure marks the Plugin not Connected; `/plugins` shows Reconnect
-- [ ] Reconnect runs OAuth again and restores Connected
-- [ ] Plugins module tests with fake Connector/OAuth cover refresh, Connector failure, auth failure, and reconnect
+- [x] Expired access token is refreshed and the new token stored, without the Owner noticing
+- [x] Connector failure at tool-load or tool-call time yields a model-visible explanation, not a thrown error
+- [x] Auth failure marks the Plugin not Connected; `/plugins` shows Reconnect
+- [x] Reconnect runs OAuth again and restores Connected
+- [x] Plugins module tests with fake Connector/OAuth cover refresh, Connector failure, auth failure, and reconnect
 - [ ] Manual (needs ticket 02): after revoking access in the Google account, an email question gets a one-sentence explanation and Gmail shows Reconnect

@@ -2,9 +2,9 @@ import { tool, type ToolSet } from "ai"
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 
-import type { Connector } from "./connector"
+import { ConnectorAuthError, type Connector } from "./connector"
 import { openDatabase } from "./db"
-import type { OAuthClient, OAuthTokens } from "./oauth"
+import { OAuthAuthError, type OAuthClient, type OAuthTokens } from "./oauth"
 import { createPlugins } from "./plugins"
 import { createSqliteStore } from "./store"
 
@@ -17,28 +17,42 @@ const redirectUri = "http://localhost:3000/api/plugins/callback"
 
 const NOW = new Date("2026-10-13T10:00:00Z")
 
+const HOUR = 3600_000
+
 function fakeOAuth(
-  options: { exchange?: OAuthTokens | Error } = {}
+  options: {
+    exchange?: OAuthTokens | Error
+    refresh?: OAuthTokens | Error
+  } = {}
 ) {
   const exchanged: { code: string; redirectUri: string; clientId: string }[] =
     []
+  const refreshed: string[] = []
   const oauth: OAuthClient = {
     async exchangeCode({ code, redirectUri, credentials }) {
       exchanged.push({ code, redirectUri, clientId: credentials.clientId })
       const result = options.exchange ?? {
         accessToken: "access-1",
         refreshToken: "refresh-1",
-        expiresAt: new Date(NOW.getTime() + 3600_000),
+        expiresAt: new Date(NOW.getTime() + HOUR),
       }
       if (result instanceof Error) throw result
       return result
     },
-    async refresh() {
-      throw new Error("not expected")
+    async refresh({ refreshToken }) {
+      refreshed.push(refreshToken)
+      // Valid until NOW+3h, so it outlives the tests' "expired at +2h" clock.
+      const result = options.refresh ?? {
+        accessToken: "access-2",
+        refreshToken: null,
+        expiresAt: new Date(NOW.getTime() + 3 * HOUR),
+      }
+      if (result instanceof Error) throw result
+      return result
     },
     async revoke() {},
   }
-  return { oauth, exchanged }
+  return { oauth, exchanged, refreshed }
 }
 
 /** A Gmail MCP server's tools, read and write, as the Connector returns them. */
@@ -52,13 +66,21 @@ const GMAIL_SERVER_TOOLS = [
   "label_thread",
 ]
 
-function fakeConnector(serverTools: string[] = GMAIL_SERVER_TOOLS) {
+function fakeConnector(
+  options: {
+    serverTools?: string[]
+    connectError?: Error
+    toolError?: Error
+  } = {}
+) {
+  const serverTools = options.serverTools ?? GMAIL_SERVER_TOOLS
   const connections: { url: string; accessToken: string }[] = []
   const toolCalls: { name: string; input: unknown }[] = []
   let closed = 0
   const connector: Connector = {
     async connect({ url, accessToken }) {
       connections.push({ url, accessToken })
+      if (options.connectError) throw options.connectError
       const tools: ToolSet = Object.fromEntries(
         serverTools.map((name) => [
           name,
@@ -67,6 +89,7 @@ function fakeConnector(serverTools: string[] = GMAIL_SERVER_TOOLS) {
             inputSchema: z.object({ query: z.string().optional() }),
             execute: async (input) => {
               toolCalls.push({ name, input })
+              if (options.toolError) throw options.toolError
               return { threads: [{ sender: "Ana", subject: "Hola" }] }
             },
           }),
@@ -93,14 +116,15 @@ function setup(
   const store = createSqliteStore(openDatabase(":memory:"))
   const oauth = options.oauth ?? fakeOAuth()
   const connector = options.connector ?? fakeConnector()
+  const clock = { now: NOW }
   const plugins = createPlugins({
     env: options.env ?? googleCredentials,
     store,
     oauth: oauth.oauth,
     connector: connector.connector,
-    now: () => NOW,
+    now: () => clock.now,
   })
-  return { plugins, store, oauth, connector }
+  return { plugins, store, oauth, connector, clock }
 }
 
 /** Calls a tool the way the AI SDK does during a Turn. */
@@ -211,7 +235,10 @@ describe("Plugins", () => {
     it("approving consent makes Gmail Installed and Connected", async () => {
       const { plugins, oauth } = setup()
 
-      expect(await installGmail(plugins)).toEqual({ ok: true, pluginId: "gmail" })
+      expect(await installGmail(plugins)).toEqual({
+        ok: true,
+        pluginId: "gmail",
+      })
 
       expect(oauth.exchanged).toEqual([
         { code: "auth-code", redirectUri, clientId: "client-id" },
@@ -244,7 +271,11 @@ describe("Plugins", () => {
         callback: { error: "access_denied", state: begun.pending.state },
       })
 
-      expect(result).toEqual({ ok: false, pluginId: "gmail", reason: "cancelled" })
+      expect(result).toEqual({
+        ok: false,
+        pluginId: "gmail",
+        reason: "cancelled",
+      })
       expect(oauth.exchanged).toEqual([])
       expect(await gmailState(plugins)).toBe("installable")
     })
@@ -320,13 +351,18 @@ describe("Plugins", () => {
         "gmail_search_threads",
       ])
       expect(connector.connections).toEqual([
-        { url: "https://gmailmcp.googleapis.com/mcp/v1", accessToken: "access-1" },
+        {
+          url: "https://gmailmcp.googleapis.com/mcp/v1",
+          accessToken: "access-1",
+        },
       ])
     })
 
     it("skips allowlisted tools the server doesn't expose", async () => {
       const { plugins } = setup({
-        connector: fakeConnector(["search_threads", "create_draft"]),
+        connector: fakeConnector({
+          serverTools: ["search_threads", "create_draft"],
+        }),
       })
       await installGmail(plugins)
 
@@ -358,6 +394,179 @@ describe("Plugins", () => {
       await turn.close()
 
       expect(connector.closed()).toBe(1)
+    })
+  })
+
+  describe("Failures and Reconnect", () => {
+    it("refreshes an expired access token and stores the new one", async () => {
+      const { plugins, oauth, connector, clock } = setup()
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + 2 * HOUR)
+
+      await plugins.toolsForTurn()
+      await plugins.toolsForTurn()
+
+      expect(oauth.refreshed).toEqual(["refresh-1"])
+      expect(connector.connections.map((c) => c.accessToken)).toEqual([
+        "access-2",
+        "access-2",
+      ])
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("keeps the refresh token when the provider doesn't rotate it", async () => {
+      const { plugins, oauth, clock } = setup()
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + 2 * HOUR)
+      await plugins.toolsForTurn()
+
+      clock.now = new Date(NOW.getTime() + 4 * HOUR)
+      await plugins.toolsForTurn()
+
+      expect(oauth.refreshed).toEqual(["refresh-1", "refresh-1"])
+    })
+
+    it("refreshes a token about to expire rather than using it mid-Turn", async () => {
+      const { plugins, oauth, clock } = setup()
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + HOUR - 30_000)
+
+      await plugins.toolsForTurn()
+
+      expect(oauth.refreshed).toEqual(["refresh-1"])
+    })
+
+    it("a rejected refresh marks Gmail not Connected and tells the model", async () => {
+      const { plugins, clock, connector } = setup({
+        oauth: fakeOAuth({ refresh: new OAuthAuthError("invalid_grant") }),
+      })
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + 2 * HOUR)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(connector.connections).toEqual([])
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(turn.notices[0]).toMatch(/reconect/i)
+      expect(await gmailState(plugins)).toBe("reconnect")
+    })
+
+    it("a refresh that fails for another reason keeps Gmail Connected and tells the model", async () => {
+      const { plugins, clock } = setup({
+        oauth: fakeOAuth({ refresh: new Error("network down") }),
+      })
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + 2 * HOUR)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("a Connector failing at tool-load tells the model instead of throwing", async () => {
+      const { plugins } = setup({
+        connector: fakeConnector({ connectError: new Error("HTTP 503") }),
+      })
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("a Connector rejecting the token at tool-load marks Gmail not Connected", async () => {
+      const { plugins } = setup({
+        connector: fakeConnector({
+          connectError: new ConnectorAuthError("HTTP 401"),
+        }),
+      })
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices[0]).toMatch(/reconect/i)
+      expect(await gmailState(plugins)).toBe("reconnect")
+    })
+
+    it("a tool call failing returns an explanation for the model instead of throwing", async () => {
+      const { plugins } = setup({
+        connector: fakeConnector({ toolError: new Error("HTTP 500") }),
+      })
+      await installGmail(plugins)
+      const turn = await plugins.toolsForTurn()
+
+      const result = await callTool(turn.tools, "gmail_search_threads", {})
+
+      expect(result).toEqual({ error: expect.stringMatching(/Gmail/) })
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it("a tool call rejected for auth marks Gmail not Connected", async () => {
+      const { plugins } = setup({
+        connector: fakeConnector({
+          toolError: new ConnectorAuthError("HTTP 401"),
+        }),
+      })
+      await installGmail(plugins)
+      const turn = await plugins.toolsForTurn()
+
+      const result = await callTool(turn.tools, "gmail_search_threads", {})
+
+      expect(result).toEqual({ error: expect.stringMatching(/reconect/i) })
+      expect(await gmailState(plugins)).toBe("reconnect")
+    })
+
+    it("a Plugin needing Reconnect offers no tools and tells the model", async () => {
+      const { plugins, connector, clock } = setup({
+        oauth: fakeOAuth({ refresh: new OAuthAuthError("invalid_grant") }),
+      })
+      await installGmail(plugins)
+      clock.now = new Date(NOW.getTime() + 2 * HOUR)
+      await plugins.toolsForTurn()
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(connector.connections).toEqual([])
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/reconect/i)
+    })
+
+    it("Reconnect runs OAuth again and restores Connected", async () => {
+      const { plugins, connector } = setup({
+        connector: fakeConnector({
+          connectError: new ConnectorAuthError("HTTP 401"),
+        }),
+      })
+      await installGmail(plugins)
+      await plugins.toolsForTurn()
+      expect(await gmailState(plugins)).toBe("reconnect")
+
+      expect(await installGmail(plugins)).toEqual({
+        ok: true,
+        pluginId: "gmail",
+      })
+
+      expect(await gmailState(plugins)).toBe("connected")
+      expect(connector.connections).toHaveLength(1)
+    })
+
+    it("a healthy Turn has no notices", async () => {
+      const { plugins } = setup()
+      await installGmail(plugins)
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.notices).toEqual([])
     })
   })
 })
