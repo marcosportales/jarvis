@@ -12,4 +12,4 @@
 - [x] OAuth callback stores the Installed Plugin and its tokens; Gmail then shows Connected
 - [x] Cancelled/failed OAuth or invalid state leaves Gmail not Installed and shows a message
 - [x] Plugins module tests with a fake OAuth provider cover success, cancel, and failure
-- [x] Manual (needs ticket 02): installing against real Google ends with Gmail Connected and surviving a server restart
+- [ ] Manual (needs ticket 02): installing against real Google ends with Gmail Connected and surviving a server restart

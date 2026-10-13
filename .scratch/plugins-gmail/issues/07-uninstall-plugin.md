@@ -12,4 +12,4 @@
 - [x] Revocation is attempted with the provider; failure to revoke still completes the uninstall
 - [x] Tools for a Turn no longer include the Plugin's tools (if ticket 05 has landed)
 - [x] Plugins module tests with a fake OAuth provider cover uninstall with successful and failing revocation
-- [x] Manual (needs ticket 02): after Uninstall, asking about email gets "no tengo acceso a tu Gmail" or equivalent
+- [ ] Manual (needs ticket 02): after Uninstall, asking about email gets "no tengo acceso a tu Gmail" or equivalent

@@ -13,4 +13,4 @@
 - [x] Auth failure marks the Plugin not Connected; `/plugins` shows Reconnect
 - [x] Reconnect runs OAuth again and restores Connected
 - [x] Plugins module tests with fake Connector/OAuth cover refresh, Connector failure, auth failure, and reconnect
-- [x] Manual (needs ticket 02): after revoking access in the Google account, an email question gets a one-sentence explanation and Gmail shows Reconnect
+- [ ] Manual (needs ticket 02): after revoking access in the Google account, an email question gets a one-sentence explanation and Gmail shows Reconnect
