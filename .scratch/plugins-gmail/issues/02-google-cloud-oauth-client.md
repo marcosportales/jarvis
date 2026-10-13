@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 (Confirm Google's Gmail MCP server against official docs)
 
-**Status:** ready-for-human
+**Status:** done
 
-- [ ] Owner enrolled in the Google Workspace Developer Preview Program (required by the Gmail MCP server, see ticket 01)
-- [ ] Google Cloud project exists with the required APIs enabled
-- [ ] Consent screen configured with the Owner as test user and the scope from ticket 01
-- [ ] OAuth client created (type: Web application) with the local callback redirect URI `http://localhost:3000/api/plugins/callback`
-- [ ] Credentials present in the web app's local env file (not committed)
+- [x] Owner enrolled in the Google Workspace Developer Preview Program (required by the Gmail MCP server, see ticket 01)
+- [x] Google Cloud project exists with the required APIs enabled
+- [x] Consent screen configured with the Owner as test user and the scope from ticket 01
+- [x] OAuth client created (type: Web application) with the local callback redirect URI `http://localhost:3000/api/plugins/callback`
+- [x] Credentials present in the web app's local env file (not committed)
