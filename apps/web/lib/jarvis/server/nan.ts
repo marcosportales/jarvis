@@ -9,7 +9,7 @@ import { createOpenAI } from "@ai-sdk/openai"
  */
 export const nanConfig = {
   chatModel: process.env.NAN_CHAT_MODEL ?? "deepseek-v4-flash",
-  transcriptionModel: process.env.NAN_TRANSCRIPTION_MODEL ?? "whisper-1",
+  transcriptionModel: process.env.NAN_TRANSCRIPTION_MODEL ?? "whisper",
   speechModel: process.env.NAN_SPEECH_MODEL ?? "kokoro",
   voice: process.env.NAN_VOICE ?? "em_alex",
 }
