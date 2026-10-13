@@ -1,6 +1,6 @@
 # Jarvis
 
-A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. The MVP is conversation only — no actions in the world.
+A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. Jarvis reaches outside services (Gmail, Calendar, Linear…) only through Plugins the Owner has installed.
 
 ## Language
 
@@ -58,3 +58,28 @@ The Jarvis State while the Reply is being played aloud. Starting push-to-talk cu
 
 **Idle**:
 The Jarvis State when none of the others apply.
+
+### Plugins
+
+**Marketplace**:
+The fixed catalog of Plugins the Owner can choose from. The Owner cannot add arbitrary entries.
+_Avoid_: Store, app directory, integrations page
+
+**Plugin**:
+A unit the Owner installs from the Marketplace to give Jarvis access to one outside service, e.g. the Gmail Plugin. It bundles one or more Connectors and, eventually, Skills.
+_Avoid_: Integration, app, extension
+
+**Connector**:
+The part of a Plugin that links Jarvis to an outside service so Jarvis can read from or act on it. Each Plugin has exactly one for now.
+_Avoid_: Server, MCP, integration
+
+**Skill**:
+Guidance a Plugin gives Jarvis on how to use its Connectors well. Named here so it isn't confused with Connector; no Plugin has Skills yet.
+_Avoid_: Prompt, instruction
+
+**Installed**:
+A Plugin the Owner has chosen from the Marketplace. Installed alone does not mean Jarvis can use it.
+
+**Connected**:
+An Installed Plugin whose Connector the Owner has authorized and that currently works. Jarvis can only use Connected Plugins.
+_Avoid_: Enabled, active, linked
