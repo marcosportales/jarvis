@@ -55,3 +55,6 @@ export const WIDGET_CATALOG = [
 ] as const satisfies readonly WidgetInfo[]
 
 export type WidgetId = (typeof WIDGET_CATALOG)[number]["id"]
+
+/** The Results Widget, which the Turn Shows on its own after a list Search. */
+export const RESULTS_WIDGET_ID = "results" satisfies WidgetId

@@ -4,7 +4,11 @@ import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
 import type { Plugins, TurnTools } from "../plugins/plugins"
-import type { ResultsOnScreen, SearchOutcome } from "../search/outcome"
+import {
+  isList,
+  type ResultsOnScreen,
+  type SearchOutcome,
+} from "../search/outcome"
 import type { SearchPort } from "../search/port"
 import { createSearchTools, resultsOnScreenNotice } from "../search/tools"
 import {
@@ -14,7 +18,7 @@ import {
 } from "../sessions/store"
 import { createWeatherTools } from "../weather/tool"
 import type { Coordinates, WeatherService } from "../weather/weather"
-import { WIDGET_CATALOG } from "../widgets/catalog"
+import { RESULTS_WIDGET_ID, WIDGET_CATALOG } from "../widgets/catalog"
 import type { WidgetChange, WidgetLayout } from "../widgets/changes"
 import { createWidgetTools, widgetLayoutNotice } from "../widgets/tools"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
@@ -58,24 +62,32 @@ export type TurnsDeps = {
   now: () => Date
 }
 
-/** The Results Widget's id in the Widget catalog. */
-const RESULTS_WIDGET = "results"
-
 /**
- * The Turn's Widget changes, plus Showing the Results Widget when its Search
- * found a list. A web Search's results are the sources of one answer, not a
- * list, so they never Show it. A Turn rule, so it doesn't depend on the model
- * remembering; the model hiding, showing or moving that Widget itself wins.
+ * What the Reply does to the Results Widget. A list Search replaces what it
+ * shows, and Shows it when there is more than one Result; a Turn rule, so it
+ * doesn't depend on the model remembering. The sources behind one answer (a
+ * web Search, a page) leave it as it is, unless the model Shows or moves it.
+ * The model hiding, showing or moving that Widget itself always wins.
  */
-function withResultsShown(
+function resultsForReply(
   changes: WidgetChange[],
   outcome: SearchOutcome | undefined
-): WidgetChange[] {
-  if (!outcome || outcome.kind === "web" || outcome.results.length <= 1) {
-    return changes
+): { widgetChanges: WidgetChange[]; search?: SearchOutcome } {
+  const touched = changes.filter(({ id }) => id === RESULTS_WIDGET_ID)
+  if (!outcome) return { widgetChanges: changes }
+  if (!isList(outcome)) {
+    const shownByModel = touched.some(({ type }) => type !== "hide")
+    return shownByModel
+      ? { widgetChanges: changes, search: outcome }
+      : { widgetChanges: changes }
   }
-  if (changes.some(({ id }) => id === RESULTS_WIDGET)) return changes
-  return [...changes, { type: "show", id: RESULTS_WIDGET }]
+  if (outcome.results.length <= 1 || touched.length > 0) {
+    return { widgetChanges: changes, search: outcome }
+  }
+  return {
+    widgetChanges: [...changes, { type: "show", id: RESULTS_WIDGET_ID }],
+    search: outcome,
+  }
 }
 
 /** The earlier Turns as the chat model sees them. */
@@ -214,13 +226,11 @@ export function createTurns({
           await memoryTools.adoptSession(savedIn)
         }
 
-        const outcome = searchTools.outcome()
         return {
           sessionId: savedIn,
           text: reply,
-          widgetChanges: withResultsShown(widgetTools.changes(), outcome),
           memoryEvents,
-          ...(outcome ? { search: outcome } : {}),
+          ...resultsForReply(widgetTools.changes(), searchTools.outcome()),
         }
       } finally {
         await pluginTools.close()

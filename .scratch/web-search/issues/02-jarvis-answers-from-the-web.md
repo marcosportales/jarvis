@@ -8,12 +8,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Mapper tests over the ticket 01 fixtures for web and page
-- [ ] A Turn test where the model calls `search_web`: the fake port gets the right slug and inputs, and the Reply carries the `search` outcome
-- [ ] A Turn test where the search port throws: the Turn still replies and the model saw the failure line
-- [ ] A Turn with no Search returns no `search`
-- [ ] A Plugin tool with a Search tool's name is left out (existing merge rule)
-- [ ] Asking Jarvis a current question in the running app gets a correct spoken answer
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Mapper tests over the ticket 01 fixtures for web and page
+- [x] A Turn test where the model calls `search_web`: the fake port gets the right slug and inputs, and the Reply carries the `search` outcome
+- [x] A Turn test where the search port throws: the Turn still replies and the model saw the failure line
+- [x] A Turn with no Search returns no `search`
+- [x] A Plugin tool with a Search tool's name is left out (existing merge rule)
+- [x] Asking Jarvis a current question in the running app gets a correct spoken answer
+- [x] Typecheck, lint and the full test suite pass

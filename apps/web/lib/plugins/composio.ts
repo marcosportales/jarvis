@@ -76,10 +76,7 @@ export function createComposioPort(apiKey: string): ComposioPort {
       if (!request.redirectUrl) {
         throw new Error(`Composio returned no consent URL for ${toolkit}`)
       }
-      return {
-        connectedAccountId: request.id,
-        redirectUrl: request.redirectUrl,
-      }
+      return { connectedAccountId: request.id, redirectUrl: request.redirectUrl }
     },
 
     async getAccount(id) {

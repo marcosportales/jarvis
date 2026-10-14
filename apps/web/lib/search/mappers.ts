@@ -127,6 +127,17 @@ export function mapPage(data: unknown, { url }: { url: string }) {
   } satisfies SearchOutcome
 }
 
+/** Only the items that parse; one odd item doesn't lose the others. */
+function readableItems<T>(
+  items: unknown[] | null | undefined,
+  schema: z.ZodType<T>
+) {
+  return (items ?? []).flatMap((item) => {
+    const parsed = schema.safeParse(item)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
 /** "60 €", "60 US$"; whole units, as prices are quoted. */
 function money(amount: number, currency: string) {
   try {
@@ -209,8 +220,9 @@ export type FlightsSearch = {
 
 /**
  * Best flights first, then the others. A round trip lists its outbound
- * flights, priced for the whole trip. Prices are for all the passengers. No flight has a link of its own, so
- * each links to the whole search on Google Flights.
+ * flights, priced for the whole trip; every price is for all the passengers.
+ * No flight has a link of its own, so each links to the whole search on
+ * Google Flights.
  */
 export function mapFlights(
   data: unknown,
@@ -219,11 +231,9 @@ export function mapFlights(
   const { best_flights, other_flights, search_metadata } =
     flightsSchema.parse(data).results
   const url = search_metadata?.google_flights_url
-  const flights = [...(best_flights ?? []), ...(other_flights ?? [])].flatMap(
-    (raw) => {
-      const parsed = flightSchema.safeParse(raw)
-      return parsed.success ? [parsed.data] : []
-    }
+  const flights = readableItems(
+    [...(best_flights ?? []), ...(other_flights ?? [])],
+    flightSchema
   )
 
   const priceLabel =
@@ -283,14 +293,6 @@ function rating(stars: number | null | undefined, reviews?: number | null) {
   return { label: "Valoración", value: `${value} de 5${count}` }
 }
 
-/** Only the items that parse; one odd item doesn't lose the others. */
-function each<T>(items: unknown[] | null | undefined, schema: z.ZodType<T>) {
-  return (items ?? []).flatMap((item) => {
-    const parsed = schema.safeParse(item)
-    return parsed.success ? [parsed.data] : []
-  })
-}
-
 const newsSchema = z.object({ news_results: z.array(z.unknown()).nullish() })
 
 const newsItemSchema = z.object({
@@ -303,7 +305,10 @@ const newsItemSchema = z.object({
 })
 
 export function mapNews(data: unknown, { query }: { query: string }) {
-  const items = each(newsSchema.parse(data).news_results, newsItemSchema)
+  const items = readableItems(
+    newsSchema.parse(data).news_results,
+    newsItemSchema
+  )
   return {
     kind: "news",
     heading: `Noticias: ${query}`,
@@ -320,7 +325,7 @@ export function mapNews(data: unknown, { query }: { query: string }) {
 }
 
 /** "3–7 nov", or "30 oct – 2 nov" across months. */
-function stay(checkIn: string, checkOut: string) {
+function stayDates(checkIn: string, checkOut: string) {
   const [inDay, inMonth] = shortDay(checkIn).split(" ").slice(1)
   const [outDay, outMonth] = shortDay(checkOut).split(" ").slice(1)
   if (!inDay || !outDay) return `${checkIn} – ${checkOut}`
@@ -357,10 +362,13 @@ export function mapHotels(
   data: unknown,
   { place, checkIn, checkOut, currency }: HotelsSearch
 ) {
-  const hotels = each(hotelsSchema.parse(data).results.properties, hotelSchema)
+  const hotels = readableItems(
+    hotelsSchema.parse(data).results.properties,
+    hotelSchema
+  )
   return {
     kind: "hotels",
-    heading: `Hoteles en ${place} · ${stay(checkIn, checkOut)}`,
+    heading: `Hoteles en ${place} · ${stayDates(checkIn, checkOut)}`,
     results: hotels.slice(0, MAX_RESULTS).map((hotel) => {
       const perNight = hotel.rate_per_night?.extracted_lowest
       return result({
@@ -414,7 +422,7 @@ export function mapPlaces(
   { query, near }: { query: string; near?: string }
 ) {
   const { local_results, place_results } = placesSchema.parse(data).results
-  const places = each(
+  const places = readableItems(
     local_results ?? (place_results ? [place_results] : []),
     placeSchema
   )
@@ -456,7 +464,7 @@ export function mapEvents(
   data: unknown,
   { query, place }: { query: string; place?: string }
 ) {
-  const events = each(
+  const events = readableItems(
     eventsSchema.parse(data).results.events_results,
     eventSchema
   )

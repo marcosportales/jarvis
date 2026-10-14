@@ -9,9 +9,9 @@ All default to Spanish and Spain. Each has a heading in the Widget header ("Hote
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Mapper tests over the ticket 01 fixtures for news, hotels, places and events
-- [ ] A Turn test per tool: the fake port gets the right slug and inputs, and the Reply carries the matching outcome
-- [ ] In the running app, one real question of each kind gets a spoken summary and cards
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Mapper tests over the ticket 01 fixtures for news, hotels, places and events
+- [x] A Turn test per tool: the fake port gets the right slug and inputs, and the Reply carries the matching outcome
+- [x] In the running app, one real question of each kind gets a spoken summary and cards
+- [x] Typecheck, lint and the full test suite pass

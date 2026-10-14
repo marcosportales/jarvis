@@ -42,19 +42,27 @@ export type SearchOutcome = {
   answer?: string
 }
 
+/**
+ * A list the Owner asked for (flights, hotels…), as opposed to the sources
+ * behind one answer: a web Search's citations or a page that was read.
+ */
+export function isList({ kind }: SearchOutcome) {
+  return kind !== "web" && kind !== "page"
+}
+
 /** A Search Outcome as the Reply carries it to the client. */
+const resultSchema = z.object({
+  title: z.string(),
+  subtitle: z.string().optional(),
+  facts: z.array(z.object({ label: z.string(), value: z.string() })),
+  url: z.string().optional(),
+  source: z.string().optional(),
+}) satisfies z.ZodType<SearchResult>
+
 export const searchOutcomeSchema = z.object({
   kind: z.enum(SEARCH_KINDS),
   heading: z.string(),
-  results: z.array(
-    z.object({
-      title: z.string(),
-      subtitle: z.string().optional(),
-      facts: z.array(z.object({ label: z.string(), value: z.string() })),
-      url: z.string().optional(),
-      source: z.string().optional(),
-    })
-  ),
+  results: z.array(resultSchema),
   answer: z.string().optional(),
 }) satisfies z.ZodType<SearchOutcome>
 
@@ -69,14 +77,7 @@ export type ResultsOnScreen = {
 
 export const resultsOnScreenSchema = z.object({
   heading: z.string(),
-  results: z.array(
-    z.object({
-      title: z.string(),
-      subtitle: z.string().optional(),
-      facts: z.array(z.object({ label: z.string(), value: z.string() })),
-      source: z.string().optional(),
-    })
-  ),
+  results: z.array(resultSchema.omit({ url: true })),
 }) satisfies z.ZodType<ResultsOnScreen>
 
 export function toResultsOnScreen({

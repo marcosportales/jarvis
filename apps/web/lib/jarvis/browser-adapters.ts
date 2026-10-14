@@ -4,6 +4,7 @@ import { searchOutcomeSchema, toResultsOnScreen } from "../search/outcome"
 import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
+import { RESULTS_WIDGET_ID } from "../widgets/catalog"
 import {
   SessionGoneError,
   type Brain,
@@ -97,7 +98,7 @@ const httpBrain: Brain = {
   async reply({ sessionId, text, search: latest }) {
     const widgets = getWidgetBoard().describeLayout()
     const resultsShown = widgets.some(
-      ({ id, shown }) => id === "results" && shown
+      ({ id, shown }) => id === RESULTS_WIDGET_ID && shown
     )
     const response = await post("/api/reply", {
       sessionId,

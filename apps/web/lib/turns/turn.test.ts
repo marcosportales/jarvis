@@ -346,7 +346,7 @@ describe("Taking a Turn", () => {
   })
 
   describe("with Search", () => {
-    it("searches the web, shows the model plain lines and returns the Search Outcome", async () => {
+    it("searches the web and shows the model plain lines", async () => {
       const search = fakeSearch()
       const { turns, model } = setup(
         [
@@ -368,16 +368,6 @@ describe("Taking a Turn", () => {
         },
       ])
       expect(reply.text).toBe("Abre de diez a ocho.")
-      expect(reply.search).toMatchObject({
-        kind: "web",
-        heading: "Búsqueda: horario del Prado",
-        results: expect.arrayContaining([
-          expect.objectContaining({
-            title: "Horarios y precios - Museo Nacional del Prado",
-            url: "https://museodelprado.es/visita/horarios-y-tarifas",
-          }),
-        ]),
-      })
       const seen = sentInStep(model, 1)
       expect(seen).toContain("1. Horarios y precios - Museo Nacional del Prado")
       // Lines for the model, never the provider's raw JSON.
@@ -410,8 +400,9 @@ describe("Taking a Turn", () => {
           },
         },
       ])
-      expect(reply.search).toMatchObject({ kind: "page" })
       expect(sentInStep(model, 1)).toContain("de 10:00 a 20:00 h")
+      // A single page is an answer's source, not something to put on screen.
+      expect(reply).not.toHaveProperty("search")
     })
 
     it("still replies when Search fails, telling the model it couldn't search", async () => {
@@ -439,40 +430,62 @@ describe("Taking a Turn", () => {
 
     it("tells the model when a Search found nothing, and returns the empty outcome", async () => {
       const { turns, model } = setup(
-        [call("search_web", { query: "xyzzy" }), answer("No encontré nada.")],
-        { search: fakeSearch({ COMPOSIO_SEARCH_WEB: { data: {} } }) }
+        [call("search_news", { query: "xyzzy" }), answer("No encontré nada.")],
+        {
+          search: fakeSearch({
+            COMPOSIO_SEARCH_NEWS: { data: { news_results: [] } },
+          }),
+        }
       )
 
-      const reply = await turns.take({ text: "Busca xyzzy", widgets: LAYOUT })
+      const reply = await turns.take({
+        text: "Noticias de xyzzy",
+        widgets: LAYOUT,
+      })
 
       expect(reply.search).toEqual({
-        kind: "web",
-        heading: "Búsqueda: xyzzy",
+        kind: "news",
+        heading: "Noticias: xyzzy",
         results: [],
       })
       expect(sentInStep(model, 1)).toContain("La búsqueda no encontró nada")
     })
 
     it("returns the last Search that found something", async () => {
-      const search = fakeSearch({
-        COMPOSIO_SEARCH_FETCH_URL_CONTENT: { data: {} },
-      })
       const { turns } = setup(
         [
-          call("search_web", { query: "horario del Prado" }),
-          call("read_page", { url: "https://www.museodelprado.es/visita" }),
-          answer("Abre a las diez."),
+          call("search_news", { query: "Real Madrid" }),
+          call("search_events", { query: "partidos del Real Madrid" }),
+          answer("Hablan del Villarreal."),
         ],
-        { search }
+        {
+          search: fakeSearch({
+            COMPOSIO_SEARCH_EVENT: {
+              data: { results: { events_results: [] } },
+            },
+          }),
+        }
       )
 
+      const reply = await turns.take({ text: "¿Y el Madrid?", widgets: LAYOUT })
+
+      expect(reply.search).toMatchObject({ kind: "news" })
+    })
+
+    it("keeps a list on screen when the model then reads one of its pages", async () => {
+      const { turns } = setup([
+        call("search_news", { query: "Real Madrid" }),
+        call("read_page", { url: "https://www.marca.com/futbol/real-madrid" }),
+        answer("Según Marca, Mourinho no quiso hablar."),
+      ])
+
       const reply = await turns.take({
-        text: "¿Abre el Prado?",
+        text: "¿Qué pasa con el Madrid?",
         widgets: LAYOUT,
       })
 
-      expect(search.calls).toHaveLength(2)
-      expect(reply.search).toMatchObject({ kind: "web" })
+      expect(reply.search).toMatchObject({ kind: "news" })
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
     })
 
     it("shows the Results Widget when a Search found several results", async () => {
@@ -500,8 +513,33 @@ describe("Taking a Turn", () => {
         widgets: LAYOUT,
       })
 
-      expect(reply.search?.results.length).toBeGreaterThan(1)
+      // Nor replaces what it shows, e.g. flights the Owner is still looking at.
+      expect(reply).not.toHaveProperty("search")
       expect(reply.widgetChanges).toEqual([])
+    })
+
+    it("puts a web Search on screen when the model Shows the Results Widget", async () => {
+      const { turns } = setup([
+        call("search_web", { query: "horario del Prado" }),
+        call("show_widget", { id: "results" }),
+        answer("Te dejo las fuentes en pantalla."),
+      ])
+
+      const reply = await turns.take({
+        text: "Busca el horario del Prado y enséñame los resultados",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.search).toMatchObject({
+        kind: "web",
+        heading: "Búsqueda: horario del Prado",
+        results: expect.arrayContaining([
+          expect.objectContaining({
+            url: "https://museodelprado.es/visita/horarios-y-tarifas",
+          }),
+        ]),
+      })
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
     })
 
     it.each([

@@ -10,7 +10,12 @@ import {
   mapPlaces,
   mapWeb,
 } from "./mappers"
-import type { ResultsOnScreen, SearchOutcome, SearchResult } from "./outcome"
+import {
+  isList,
+  type ResultsOnScreen,
+  type SearchOutcome,
+  type SearchResult,
+} from "./outcome"
 import type { SearchPort, SearchSlug } from "./port"
 
 /** How much of a page `read_page` asks Composio for. */
@@ -71,18 +76,14 @@ export type SearchTurnTools = {
   tools: ToolSet
   /**
    * The Turn's latest Search Outcome: the last one with Results, or else the
-   * last one. None if the Turn didn't search or every Search failed.
+   * last one. A list wins over the sources read for it, so reading one of a
+   * list's pages doesn't replace the list. None if the Turn didn't search or
+   * every Search failed.
    */
   outcome(): SearchOutcome | undefined
 }
 
-function resultLine({
-  title,
-  subtitle,
-  facts,
-  source,
-  url,
-}: Omit<SearchResult, "url"> & { url?: string }) {
+function resultLine({ title, subtitle, facts, source, url }: SearchResult) {
   return [
     subtitle ? `${title} — ${subtitle}.` : `${title}.`,
     ...facts.map(({ label, value }) => `${label}: ${value}.`),
@@ -146,13 +147,19 @@ export function createSearchTools({
 }: {
   search: SearchPort
 }): SearchTurnTools {
-  let latest: SearchOutcome | undefined
+  let latestList: SearchOutcome | undefined
+  let latestSources: SearchOutcome | undefined
+
+  /** A later Search that found nothing doesn't hide an earlier one's Results. */
+  function newer(latest: SearchOutcome | undefined, outcome: SearchOutcome) {
+    return !latest || outcome.results.length > 0 || latest.results.length === 0
+      ? outcome
+      : latest
+  }
 
   function record(outcome: SearchOutcome) {
-    // A later Search that found nothing doesn't hide an earlier one's Results.
-    if (!latest || outcome.results.length > 0 || latest.results.length === 0) {
-      latest = outcome
-    }
+    if (isList(outcome)) latestList = newer(latestList, outcome)
+    else latestSources = newer(latestSources, outcome)
   }
 
   async function run(
@@ -371,6 +378,6 @@ export function createSearchTools({
           ),
       }),
     },
-    outcome: () => latest,
+    outcome: () => latestList ?? latestSources,
   }
 }

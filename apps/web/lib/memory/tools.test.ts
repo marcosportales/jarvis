@@ -51,7 +51,9 @@ describe("Jarvis's Memory tools for a Turn", () => {
     const result = await call(turn, "remember", sister)
 
     expect(await memories.all()).toMatchObject([sister])
-    expect(turn.events()).toEqual([{ kind: "remembered", title: "Su hermana" }])
+    expect(turn.events()).toEqual([
+      { kind: "remembered", title: "Su hermana" },
+    ])
     expect(result).toMatch(/Su hermana/)
   })
 

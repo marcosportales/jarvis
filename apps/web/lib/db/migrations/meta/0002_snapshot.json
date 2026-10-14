@@ -91,7 +91,9 @@
       "indexes": {
         "memories_topic_key_unique": {
           "name": "memories_topic_key_unique",
-          "columns": ["topic_key"],
+          "columns": [
+            "topic_key"
+          ],
           "isUnique": true
         }
       },
@@ -100,8 +102,12 @@
           "name": "memories_source_session_id_sessions_id_fk",
           "tableFrom": "memories",
           "tableTo": "sessions",
-          "columnsFrom": ["source_session_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "source_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -148,8 +154,12 @@
           "name": "plugin_tokens_plugin_id_installed_plugins_plugin_id_fk",
           "tableFrom": "plugin_tokens",
           "tableTo": "installed_plugins",
-          "columnsFrom": ["plugin_id"],
-          "columnsTo": ["plugin_id"],
+          "columnsFrom": [
+            "plugin_id"
+          ],
+          "columnsTo": [
+            "plugin_id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -193,7 +203,10 @@
       "indexes": {
         "sessions_last_activity": {
           "name": "sessions_last_activity",
-          "columns": ["last_activity_at", "id"],
+          "columns": [
+            "last_activity_at",
+            "id"
+          ],
           "isUnique": false
         }
       },
@@ -255,15 +268,22 @@
           "name": "turns_session_id_sessions_id_fk",
           "tableFrom": "turns",
           "tableTo": "sessions",
-          "columnsFrom": ["session_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "turns_session_id_position_pk": {
-          "columns": ["session_id", "position"],
+          "columns": [
+            "session_id",
+            "position"
+          ],
           "name": "turns_session_id_position_pk"
         }
       },

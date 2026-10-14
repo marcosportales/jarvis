@@ -7,10 +7,10 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Mapper tests over the ticket 01 flights fixture
-- [ ] A Turn test: the tool sends the expected inputs and defaults to the fake port, and the Reply carries a flights outcome with a `show results` change
-- [ ] A Turn test: a named currency overrides the EUR default
-- [ ] In the running app, a real flight question gets a spoken summary and flight cards
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Mapper tests over the ticket 01 flights fixture
+- [x] A Turn test: the tool sends the expected inputs and defaults to the fake port, and the Reply carries a flights outcome with a `show results` change
+- [x] A Turn test: a named currency overrides the EUR default
+- [x] In the running app, a real flight question gets a spoken summary and flight cards
+- [x] Typecheck, lint and the full test suite pass

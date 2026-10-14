@@ -7,9 +7,9 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Turn test: the Results sent with the request appear numbered in the system prompt, and none are added when nothing was sent
-- [ ] The reply route validates the new request field and rejects malformed input like it does the Widget layout
-- [ ] In the running app, "¿y el segundo?" after a Search gets the second result
-- [ ] Typecheck, lint and the full test suite pass
+- [x] A Turn test: the Results sent with the request appear numbered in the system prompt, and none are added when nothing was sent
+- [x] The reply route validates the new request field and rejects malformed input like it does the Widget layout
+- [x] In the running app, "¿y el segundo?" after a Search gets the second result
+- [x] Typecheck, lint and the full test suite pass

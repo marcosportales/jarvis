@@ -9,10 +9,10 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (implemented; only the in-browser check of the Widget's cards, links and reload state remains, as no browser was available. Through the reply route, list Searches return `show results` and the cards' URLs, and single-fact web answers leave the Widget alone)
 
-- [ ] A Turn test: a Search with several results → a `show results` change. One result or none → no change
-- [ ] A Turn test: the model hiding the Results Widget in the same Turn wins over the automatic show
-- [ ] Client Session tests: a Reply with `search` replaces the in-memory outcome, and one without keeps it
+- [x] A Turn test: a Search with several results → a `show results` change. One result or none → no change
+- [x] A Turn test: the model hiding the Results Widget in the same Turn wins over the automatic show
+- [x] Client Session tests: a Reply with `search` replaces the in-memory outcome, and one without keeps it
 - [ ] In the running app, a list Search shows the Widget with working links, and a reload shows the empty state with the Widget's position kept
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
