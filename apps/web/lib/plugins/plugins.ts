@@ -206,7 +206,7 @@ export function createPlugins({
      * attempt's account is deleted. A success deletes the toolkit's accounts
      * that don't work, so one working connection remains. The callback's
      * state finds the pending Install and uses it up; one unknown, already
-     * used or older than 10 minutes is an invalid state.
+     * used or older than `PENDING_INSTALL_TTL_MS` is an invalid state.
      */
     async completeInstall(
       callback: InstallCallback
