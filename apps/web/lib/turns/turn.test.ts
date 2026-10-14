@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest"
 
 import { openDatabase } from "../db"
 import { createMemoryStore } from "../memory/store"
-import type { Connector } from "../plugins/connector"
-import { createPlugins } from "../plugins/plugins"
+import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
+import { createPlugins, type Plugins } from "../plugins/plugins"
 import {
   createSessionStore,
   UnknownSessionError,
@@ -70,11 +70,6 @@ function call(toolName: string, input: unknown): GenerateResult {
   }
 }
 
-/** Composio is not configured, so no Connector is ever opened. */
-const unusedConnector: Connector = {
-  connect: () => Promise.reject(new Error("no Connector in these tests")),
-}
-
 type Step =
   | GenerateResult
   /** Run when the model is called, to change the world mid-Turn. */
@@ -82,9 +77,18 @@ type Step =
 
 /**
  * A Turn module over real Sessions, Memories, Plugins and Weather, with the
- * model scripted step by step; the last step repeats.
+ * model scripted step by step; the last step repeats. Composio is not
+ * configured unless a fake one is given, and `plugins` replaces the Plugins
+ * module outright.
  */
-function setup(steps: Step[]) {
+function setup(
+  steps: Step[],
+  options: {
+    composio?: ReturnType<typeof fakeComposio>
+    connector?: ReturnType<typeof fakeConnector>
+    plugins?: Pick<Plugins, "toolsForTurn">
+  } = {}
+) {
   const db = openDatabase(":memory:")
   const now = () => NOW
   const sessions = createSessionStore(db, { now })
@@ -101,7 +105,12 @@ function setup(steps: Step[]) {
     model,
     sessions,
     memories,
-    plugins: createPlugins({ composio: null, connector: unusedConnector }),
+    plugins:
+      options.plugins ??
+      createPlugins({
+        composio: options.composio?.composio ?? null,
+        connector: (options.connector ?? fakeConnector()).connector,
+      }),
     weather: createWeather({ fetch: fakeFetch().fetch, env: {} }),
     now,
   })
@@ -129,6 +138,11 @@ function prompt({ prompt }: CallOptions) {
         : message.content,
     })),
   }
+}
+
+/** The names of the tools the model was offered. */
+function offeredTools({ tools }: CallOptions) {
+  return (tools ?? []).map((tool) => tool.name)
 }
 
 const sister = {
@@ -302,5 +316,112 @@ describe("Taking a Turn", () => {
 
     const toolResult = JSON.stringify(model.doGenerateCalls[1]?.prompt)
     expect(toolResult).toMatch(/ubicación del dueño/)
+  })
+
+  describe("with Plugins", () => {
+    const connectedGmail = () =>
+      fakeComposio({ accounts: [{ toolkit: "gmail", status: "ACTIVE" }] })
+
+    it("hands a Connected Plugin's tools to the model and closes its Connector after the Reply", async () => {
+      const connector = fakeConnector()
+      const { turns, firstCall } = setup(
+        [
+          call("GMAIL_FETCH_EMAILS", { query: "Ana" }),
+          answer("Ana te saluda."),
+        ],
+        { composio: connectedGmail(), connector }
+      )
+
+      const reply = await turns.take({
+        text: "¿Correo nuevo?",
+        widgets: LAYOUT,
+      })
+
+      expect(offeredTools(firstCall())).toEqual(
+        expect.arrayContaining(GMAIL_TOOLS)
+      )
+      expect(connector.toolCalls).toEqual([
+        { name: "GMAIL_FETCH_EMAILS", input: { query: "Ana" } },
+      ])
+      expect(reply.text).toBe("Ana te saluda.")
+      expect(connector.closed()).toBe(1)
+    })
+
+    it("saves nothing when the model fails, and still closes the Plugin Connector", async () => {
+      const connector = fakeConnector()
+      const { turns, sessions, memories } = setup(
+        [
+          call("remember", sister),
+          () => Promise.reject(new Error("model unavailable")),
+        ],
+        { composio: connectedGmail(), connector }
+      )
+
+      await expect(
+        turns.take({ text: "Mi hermana es Lucía", widgets: LAYOUT })
+      ).rejects.toThrow("model unavailable")
+
+      expect((await sessions.list()).sessions).toEqual([])
+      expect(await memories.all()).toMatchObject([{ sourceSessionId: null }])
+      expect(connector.closed()).toBe(1)
+    })
+
+    it("puts Plugin notices last in the system prompt, after the core Memories", async () => {
+      const { turns, memories, firstCall } = setup([answer("Hola.")], {
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "EXPIRED" }],
+        }),
+      })
+      await memories.remember(sister)
+
+      await turns.take({ text: "Hola", widgets: LAYOUT })
+
+      const { system } = prompt(firstCall())
+      const lastPart = system.split("\n\n").at(-1)
+      expect(lastPart).toMatch(/^No tienes acceso a Gmail/)
+      expect(lastPart).toMatch(/reconectarlo en Plugins/)
+      expect(system.indexOf("[hermana] Su hermana")).toBeLessThan(
+        system.indexOf("No tienes acceso a Gmail")
+      )
+    })
+
+    it("still answers, with no Plugin tools or notices, when loading Plugin tools fails", async () => {
+      // The real Plugins module turns its own failures into notices, so a
+      // stub stands in for a bug it didn't catch.
+      const { turns, sessions, firstCall } = setup([answer("Hola.")], {
+        plugins: {
+          toolsForTurn: () => Promise.reject(new Error("Plugins exploded")),
+        },
+      })
+      const withoutComposio = setup([answer("Hola.")])
+
+      const reply = await turns.take({ text: "Hola", widgets: LAYOUT })
+      await withoutComposio.turns.take({ text: "Hola", widgets: LAYOUT })
+
+      expect(reply.text).toBe("Hola.")
+      expect(await sessions.transcript(reply.sessionId)).toHaveLength(1)
+      // Exactly what a Turn without any Plugins sends.
+      const baseline = withoutComposio.firstCall()
+      expect(offeredTools(firstCall())).toEqual(offeredTools(baseline))
+      expect(prompt(firstCall()).system).toBe(prompt(baseline).system)
+    })
+
+    it("still answers when the Connector won't connect, telling the model why", async () => {
+      const { turns, firstCall } = setup([answer("Gmail no responde.")], {
+        composio: connectedGmail(),
+        connector: fakeConnector({ connectError: new Error("HTTP 401") }),
+      })
+
+      const reply = await turns.take({
+        text: "¿Correo nuevo?",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.text).toBe("Gmail no responde.")
+      expect(offeredTools(firstCall())).not.toContain("GMAIL_FETCH_EMAILS")
+      expect(prompt(firstCall()).system).toMatch(
+        /Gmail no responde ahora mismo/
+      )
+    })
   })
 })

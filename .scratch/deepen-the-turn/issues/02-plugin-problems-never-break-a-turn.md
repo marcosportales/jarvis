@@ -9,11 +9,11 @@ No production behaviour changes in this ticket. If a test exposes a gap, fix the
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The fake Composio and fake Connector live in one shared fixtures module, and the Plugins tests use them from there and still pass
-- [ ] A model failure mid-Turn saves nothing and still closes the Plugin MCP session
-- [ ] A successful Turn closes the Plugin MCP session too
-- [ ] When loading Plugin tools fails, the Turn succeeds with no Plugin tools and no Plugin notices
-- [ ] A Connected Plugin's tools reach the model, and Plugin notices (e.g. Reconnect) land last in the system prompt, after the core-Memory notice
-- [ ] Typecheck, lint and the full test suite pass
+- [x] The fake Composio and fake Connector live in one shared fixtures module, and the Plugins tests use them from there and still pass
+- [x] A model failure mid-Turn saves nothing and still closes the Plugin MCP session
+- [x] A successful Turn closes the Plugin MCP session too
+- [x] When loading Plugin tools fails, the Turn succeeds with no Plugin tools and no Plugin notices
+- [x] A Connected Plugin's tools reach the model, and Plugin notices (e.g. Reconnect) land last in the system prompt, after the core-Memory notice
+- [x] Typecheck, lint and the full test suite pass
