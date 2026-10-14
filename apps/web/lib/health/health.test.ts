@@ -5,6 +5,7 @@ import {
   createHealth,
   isServiceFailure,
   ProbeError,
+  type PartId,
   type Probes,
 } from "./health"
 
@@ -319,7 +320,8 @@ describe("Jarvis Health from real use", () => {
   it("ignores a report for a part it doesn't know", async () => {
     const { health } = setup()
 
-    expect(() => health.report("stocks", { ok: false })).not.toThrow()
+    // Only reachable from untyped callers.
+    expect(() => health.report("stocks" as PartId, { ok: false })).not.toThrow()
     expect((await health.current()).level).toBe("working")
   })
 })

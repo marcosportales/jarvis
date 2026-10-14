@@ -2,7 +2,7 @@ import type { HealthReport } from "../health/health"
 import type { MachineReading } from "../machine/machine"
 
 /** What `GET /api/system` answers the System Widget. */
-export type SystemStatus = {
+export type SystemSnapshot = {
   /** Null when the computer couldn't be read. */
   machine: MachineReading | null
   health: HealthReport

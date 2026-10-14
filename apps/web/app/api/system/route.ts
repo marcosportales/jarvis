@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server"
 
 import { getHealth } from "@/lib/health/server"
 import { getMachine } from "@/lib/machine/server"
-import type { SystemStatus } from "@/lib/system/status"
+import type { SystemSnapshot } from "@/lib/system/snapshot"
 
 /** A failing read answers null rather than failing the route. */
 async function readMachine() {
@@ -24,5 +24,5 @@ export async function GET(request: NextRequest) {
     readMachine(),
     getHealth().current({ recheck }),
   ])
-  return Response.json({ machine, health } satisfies SystemStatus)
+  return Response.json({ machine, health } satisfies SystemSnapshot)
 }

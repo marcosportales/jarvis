@@ -54,7 +54,7 @@ function offers(id: keyof NanModels) {
 }
 
 /** Every part of Jarvis; adding one is one entry here. */
-const PARTS: PartDefinition[] = [
+const PARTS = [
   {
     id: "understanding",
     label: "Entender (transcripción)",
@@ -105,7 +105,7 @@ const PARTS: PartDefinition[] = [
     needs: ["COMPOSIO_API_KEY"],
     check: (run) => run.composio(),
   },
-]
+] as const satisfies readonly PartDefinition[]
 
 export type PartId = (typeof PARTS)[number]["id"]
 
@@ -304,8 +304,10 @@ export function createHealth({
      * throws, and ignores parts it doesn't know. A part that isn't set up
      * stays "sin configurar" whatever is reported.
      */
-    report(id: string, outcome: UseOutcome) {
-      const part = PARTS.find((entry) => entry.id === id)
+    report(id: PartId, outcome: UseOutcome) {
+      const part: PartDefinition | undefined = PARTS.find(
+        (entry) => entry.id === id
+      )
       if (!part || !isSetUp(part)) return
       record(id, outcome.ok ? null : "falló", now().getTime(), true)
     },

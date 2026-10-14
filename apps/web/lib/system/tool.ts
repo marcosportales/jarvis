@@ -3,7 +3,7 @@ import { z } from "zod"
 
 import type { Health, HealthReport } from "../health/health"
 import type { Machine, MachineReading } from "../machine/machine"
-import { formatMemory, formatPercent } from "./status"
+import { formatMemory, formatPercent } from "./snapshot"
 
 const LEVEL_WORDS: Record<HealthReport["level"], string> = {
   working: "Funcionando",

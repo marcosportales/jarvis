@@ -19,22 +19,22 @@ import type { HealthReport } from "@/lib/health/health"
 import {
   formatMemory,
   formatPercent,
-  type SystemStatus,
-} from "@/lib/system/status"
+  type SystemSnapshot,
+} from "@/lib/system/snapshot"
 
 /** About how often the numbers refresh. */
 const REFRESH_MS = 2_000
 
 /** Null when Jarvis's server couldn't be reached. */
-async function loadStatus({
+async function loadSnapshot({
   recheck = false,
-} = {}): Promise<SystemStatus | null> {
+} = {}): Promise<SystemSnapshot | null> {
   try {
     const response = await fetch(`/api/system${recheck ? "?recheck=1" : ""}`, {
       cache: "no-store",
     })
     if (!response.ok) return null
-    return (await response.json()) as SystemStatus
+    return (await response.json()) as SystemSnapshot
   } catch {
     return null
   }
@@ -47,15 +47,15 @@ async function loadStatus({
  */
 export function SystemWidget() {
   /** Undefined until the first answer; null when the server can't be reached. */
-  const [status, setStatus] = useState<SystemStatus | null>()
+  const [snapshot, setSnapshot] = useState<SystemSnapshot | null>()
 
   useEffect(() => {
     let active = true
     let timer: ReturnType<typeof setTimeout>
     async function refresh() {
-      const next = await loadStatus()
+      const next = await loadSnapshot()
       if (!active) return
-      setStatus(next)
+      setSnapshot(next)
       timer = setTimeout(refresh, REFRESH_MS)
     }
     void refresh()
@@ -65,7 +65,7 @@ export function SystemWidget() {
     }
   }, [])
 
-  if (status === undefined) {
+  if (snapshot === undefined) {
     return (
       <div className="flex flex-col gap-3" aria-busy="true">
         <Skeleton className="h-8 w-full" />
@@ -76,11 +76,11 @@ export function SystemWidget() {
 
   return (
     <div className="flex flex-col gap-3">
-      {status === null ? (
+      {snapshot === null ? (
         <p className="text-sm text-muted-foreground">
           No se puede contactar con Jarvis
         </p>
-      ) : status.machine === null ? (
+      ) : snapshot.machine === null ? (
         <p className="text-sm text-muted-foreground">
           No pude leer el ordenador
         </p>
@@ -88,32 +88,32 @@ export function SystemWidget() {
         <>
           <Meter
             label="CPU"
-            value={formatPercent(status.machine.cpu.percent)}
-            percent={status.machine.cpu.percent}
+            value={formatPercent(snapshot.machine.cpu.percent)}
+            percent={snapshot.machine.cpu.percent}
           />
           <Meter
             label="RAM"
-            value={formatMemory(status.machine.memory)}
+            value={formatMemory(snapshot.machine.memory)}
             percent={
-              (status.machine.memory.usedBytes /
-                status.machine.memory.totalBytes) *
+              (snapshot.machine.memory.usedBytes /
+                snapshot.machine.memory.totalBytes) *
               100
             }
           />
-          {status.machine.battery && (
+          {snapshot.machine.battery && (
             <Meter
               label="Batería"
-              value={formatPercent(status.machine.battery.percent)}
-              percent={status.machine.battery.percent}
+              value={formatPercent(snapshot.machine.battery.percent)}
+              percent={snapshot.machine.battery.percent}
               barClassName={
-                status.machine.battery.charging
+                snapshot.machine.battery.charging
                   ? "bg-emerald-500"
-                  : status.machine.battery.percent <= 20
+                  : snapshot.machine.battery.percent <= 20
                     ? "bg-red-500"
                     : undefined
               }
               badge={
-                status.machine.battery.charging && (
+                snapshot.machine.battery.charging && (
                   <BatteryChargingIcon
                     className="size-4 text-emerald-600 dark:text-emerald-400"
                     aria-label="Cargando"
@@ -125,10 +125,10 @@ export function SystemWidget() {
         </>
       )}
       <HealthButton
-        health={status?.health ?? null}
+        health={snapshot?.health ?? null}
         recheck={async () => {
-          const next = await loadStatus({ recheck: true })
-          setStatus(next)
+          const next = await loadSnapshot({ recheck: true })
+          setSnapshot(next)
         }}
       />
     </div>
