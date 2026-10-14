@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@workspace/ui/components/sidebar"
 
+import { WidgetToggles } from "@/components/widget-toggles"
 import { isCurrentPage, PAGES } from "@/lib/navigation"
 
 export function AppSidebar() {
@@ -54,6 +55,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <WidgetToggles />
       </SidebarContent>
     </Sidebar>
   )

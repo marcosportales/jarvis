@@ -4,10 +4,10 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The sidebar shows a "Widgets" group with a "Tiempo" switch on both the Jarvis and Plugins pages
-- [ ] Turning it off Hides the Weather Widget; turning it on Shows it again
-- [ ] Closing the Widget with its ✕ flips the switch off
-- [ ] A switch flipped on the Plugins page is in effect when returning to Jarvis, and after a reload
-- [ ] Lint, typecheck and tests pass
+- [x] The sidebar shows a "Widgets" group with a "Tiempo" switch on both the Jarvis and Plugins pages
+- [x] Turning it off Hides the Weather Widget; turning it on Shows it again
+- [x] Closing the Widget with its ✕ flips the switch off
+- [x] A switch flipped on the Plugins page is in effect when returning to Jarvis, and after a reload
+- [x] Lint, typecheck and tests pass
