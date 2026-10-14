@@ -3,9 +3,19 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { BatteryChargingIcon } from "lucide-react"
 
+import { Button } from "@workspace/ui/components/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@workspace/ui/components/popover"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
 
+import type { HealthReport } from "@/lib/health/health"
 import {
   formatMemory,
   formatPercent,
@@ -16,9 +26,13 @@ import {
 const REFRESH_MS = 2_000
 
 /** Null when Jarvis's server couldn't be reached. */
-async function loadStatus(): Promise<SystemStatus | null> {
+async function loadStatus({
+  recheck = false,
+} = {}): Promise<SystemStatus | null> {
   try {
-    const response = await fetch("/api/system", { cache: "no-store" })
+    const response = await fetch(`/api/system${recheck ? "?recheck=1" : ""}`, {
+      cache: "no-store",
+    })
     if (!response.ok) return null
     return (await response.json()) as SystemStatus
   } catch {
@@ -110,7 +124,106 @@ export function SystemWidget() {
           )}
         </>
       )}
+      <HealthButton
+        health={status?.health ?? null}
+        recheck={async () => {
+          const next = await loadStatus({ recheck: true })
+          setStatus(next)
+        }}
+      />
     </div>
+  )
+}
+
+const LEVELS: Record<HealthReport["level"], { word: string; dot: string }> = {
+  working: { word: "Funcionando", dot: "bg-emerald-500" },
+  limited: { word: "Limitado", dot: "bg-amber-500" },
+  down: { word: "Caído", dot: "bg-red-500" },
+}
+
+function Dot({ className }: { className: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("size-2 shrink-0 rounded-full", className)}
+    />
+  )
+}
+
+/**
+ * Jarvis Health as a coloured dot and its word. Opening it lists every part
+ * and probes again; with the server unreachable, it's Down.
+ */
+function HealthButton({
+  health,
+  recheck,
+}: {
+  /** Null when Jarvis's server can't be reached. */
+  health: HealthReport | null
+  recheck: () => Promise<void>
+}) {
+  const [checking, setChecking] = useState(false)
+  const level = LEVELS[health?.level ?? "down"]
+
+  async function onOpenChange(open: boolean) {
+    if (!open) return
+    setChecking(true)
+    try {
+      await recheck()
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  return (
+    <Popover onOpenChange={(open) => void onOpenChange(open)}>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="cursor-pointer justify-start gap-2"
+          />
+        }
+      >
+        <Dot className={level.dot} />
+        <span>Jarvis: {level.word}</span>
+      </PopoverTrigger>
+      <PopoverContent side="left" align="start">
+        <PopoverHeader>
+          <PopoverTitle>Salud de Jarvis: {level.word}</PopoverTitle>
+          <PopoverDescription aria-live="polite">
+            {checking
+              ? "Comprobando…"
+              : health
+                ? "Cada parte de Jarvis, comprobada ahora."
+                : "No se puede contactar con Jarvis."}
+          </PopoverDescription>
+        </PopoverHeader>
+        {health && (
+          <ul className="flex flex-col gap-1.5">
+            {health.parts.map((part) => (
+              <li key={part.id} className="flex items-start gap-2">
+                <Dot
+                  className={cn(
+                    "mt-1.5",
+                    part.level === "working" ? "bg-emerald-500" : "bg-red-500"
+                  )}
+                />
+                <span className="flex min-w-0 flex-col">
+                  <span>{part.label}</span>
+                  {part.reason && (
+                    <span className="text-xs text-muted-foreground">
+                      {part.reason}
+                    </span>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 
