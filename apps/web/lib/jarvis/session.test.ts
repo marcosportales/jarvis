@@ -518,4 +518,64 @@ describe("Jarvis Session", () => {
 
     expect(widgets.applied).toEqual([])
   })
+
+  describe("teardown, when the Owner switches Sessions", () => {
+    it("stops the Voice at once while Speaking", async () => {
+      const { session, brain, voice } = setup()
+      session.sendTypedMessage("Cuéntame algo")
+      await flush()
+      brain.answer("Había una vez un mayordomo muy paciente.")
+      await flush()
+
+      session.teardown()
+      await flush()
+
+      expect(voice.stopped()).toBe(1)
+      expect(session.getSnapshot().state).toBe("idle")
+    })
+
+    it("ignores a Reply that arrives after it", async () => {
+      const { session, brain, voice, widgets, transcript } = setup()
+      session.sendTypedMessage("¿Llueve?")
+      await flush()
+
+      session.teardown()
+      brain.answer("No, señor.", [{ type: "hide", id: "weather" }], "trip")
+      await flush()
+
+      expect(voice.spoken).toEqual([])
+      expect(widgets.applied).toEqual([])
+      expect(session.getSnapshot().state).toBe("idle")
+      expect(session.getSnapshot().sessionId).toBeNull()
+      expect(transcript()).toEqual([{ role: "owner", text: "¿Llueve?" }])
+    })
+
+    it("ignores a failure that arrives after it", async () => {
+      const { session, brain, transcript } = setup()
+      session.sendTypedMessage("¿Llueve?")
+      await flush()
+
+      session.teardown()
+      brain.fail(new Error("Nan 500"))
+      await flush()
+
+      expect(transcript()).toEqual([{ role: "owner", text: "¿Llueve?" }])
+    })
+
+    it("stops capturing an Utterance and never sends it", async () => {
+      const { session, recorder, transcriber, brain } = setup()
+      session.pressPushToTalk()
+      await flush()
+
+      session.teardown()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      expect(recorder.calls).toEqual(["start", "stop"])
+      expect(transcriber.calls).toEqual([])
+      expect(brain.calls).toEqual([])
+      expect(session.getSnapshot().state).toBe("idle")
+    })
+  })
 })

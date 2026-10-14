@@ -6,9 +6,9 @@ See `.scratch/sessions/spec.md` → "Switching mid-Turn".
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Switching while Speaking stops the voice immediately
-- [ ] Switching while Thinking: the late Reply doesn't appear or play in the new Session, and is in the original Session when resumed
-- [ ] Session tests: teardown while Speaking stops the Voice; a late Reply after teardown changes nothing
-- [ ] Lint, typecheck and tests pass
+- [x] Switching while Speaking stops the voice immediately
+- [x] Switching while Thinking: the late Reply doesn't appear or play in the new Session, and is in the original Session when resumed
+- [x] Session tests: teardown while Speaking stops the Voice; a late Reply after teardown changes nothing
+- [x] Lint, typecheck and tests pass

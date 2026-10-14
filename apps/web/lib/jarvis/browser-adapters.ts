@@ -1,3 +1,5 @@
+import { titleSession } from "@/app/sessions/actions"
+
 import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
@@ -106,6 +108,12 @@ const httpBrain: Brain = {
     const reply = (await response.json()) as Reply
     // The Turn is saved: the Session is new or moved to the top of the list.
     notifySessionsChanged()
+    if (!sessionId) {
+      // A separate call after the Reply, so titling never delays it. Done
+      // here so a Session the Owner already left still gets its title.
+      // Without one, the list keeps showing the Session's date.
+      titleSession(reply.sessionId).then(notifySessionsChanged, () => {})
+    }
     return reply
   },
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useSyncExternalStore } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 import { createBrowserAdapters } from "@/lib/jarvis/browser-adapters"
 import { createJarvisSession, type SavedSession } from "@/lib/jarvis/session"
@@ -10,6 +10,8 @@ export function useJarvisSession(saved?: SavedSession) {
   const [session] = useState(() =>
     createJarvisSession(createBrowserAdapters(), saved)
   )
+  // Leaving the Session (opening another, or another page) silences it.
+  useEffect(() => () => session.teardown(), [session])
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,
