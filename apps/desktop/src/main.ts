@@ -1,9 +1,9 @@
 /**
  * The Electron adapter: wires Electron's real APIs to the App controller's
  * ports and feeds it Electron's events. Every decision is the controller's;
- * this file only keeps a single instance, grants the microphone, keeps the
- * Jarvis window working (and where it was) while hidden, and checks what the
- * pages send over IPC.
+ * this file only keeps a single instance, grants Jarvis's pages the
+ * microphone and the Owner's location, keeps the Jarvis window working (and
+ * where it was) while hidden, and checks what the pages send over IPC.
  */
 
 import { readFileSync, writeFileSync } from "node:fs"
@@ -110,12 +110,12 @@ function start() {
   app.on("window-all-closed", () => {})
 
   void app.whenReady().then(() => {
-    grantMicrophoneToJarvis(origin)
+    grantPermissionsToJarvis(origin)
     return controller.launch(process.argv)
   })
 }
 
-function grantMicrophoneToJarvis(origin: string) {
+function grantPermissionsToJarvis(origin: string) {
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, permission, callback, details) => {
       callback(

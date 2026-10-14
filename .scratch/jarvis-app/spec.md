@@ -135,7 +135,7 @@ The controller decides:
 A thin Electron adapter wires the real Electron APIs to these ports. It also:
 
 - keeps a single instance with Electron's lock
-- grants the microphone permission only to Jarvis's own origin
+- grants the microphone and location (for the Weather Widget) permissions only to Jarvis's own origin, and refuses every other permission
 - turns off background throttling on the Jarvis window, so recording and Speaking work while it's hidden
 - remembers the Jarvis window's bounds
 

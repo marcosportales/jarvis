@@ -8,16 +8,28 @@ export type PermissionAsk = {
 }
 
 /**
- * Whether the Jarvis App grants a permission without asking the Owner: only
- * the microphone, and only to Jarvis's own pages, so Push-to-talk works from
- * the first hold. Everything else is refused, as an unanswered browser
- * prompt would be (e.g. the Owner's location falls back to a default city).
+ * Whether the Jarvis App grants a permission without asking the Owner. Only
+ * Jarvis's own pages get any, and only what the web app uses: the
+ * microphone, so Push-to-talk works from the first hold, and the Owner's
+ * location, for the Weather Widget. Everything else is refused, as an
+ * unanswered browser prompt would be.
  */
 export function grantsPermission(jarvisOrigin: string, ask: PermissionAsk) {
-  if (ask.permission !== "media") return false
-  if (ask.mediaTypes?.some((type) => type !== "audio")) return false
+  if (!isJarvisPage(jarvisOrigin, ask.url)) return false
+  switch (ask.permission) {
+    case "media":
+      // The microphone, never the camera.
+      return !ask.mediaTypes?.some((type) => type !== "audio")
+    case "geolocation":
+      return true
+    default:
+      return false
+  }
+}
+
+function isJarvisPage(jarvisOrigin: string, url: string) {
   try {
-    return new URL(ask.url).origin === new URL(jarvisOrigin).origin
+    return new URL(url).origin === new URL(jarvisOrigin).origin
   } catch {
     return false
   }

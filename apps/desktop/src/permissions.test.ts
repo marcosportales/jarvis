@@ -38,7 +38,7 @@ describe("Which pages get the microphone", () => {
     ).toBe(false)
   })
 
-  it("refuses the camera, and every other permission", () => {
+  it("refuses the camera", () => {
     expect(
       grantsPermission(ORIGIN, {
         permission: "media",
@@ -46,14 +46,43 @@ describe("Which pages get the microphone", () => {
         mediaTypes: ["audio", "video"],
       })
     ).toBe(false)
-    expect(
-      grantsPermission(ORIGIN, { permission: "notifications", url: ORIGIN })
-    ).toBe(false)
   })
 
   it("refuses a request with no usable URL", () => {
     expect(grantsPermission(ORIGIN, { permission: "media", url: "" })).toBe(
       false
     )
+  })
+})
+
+describe("Which pages get the Owner's location", () => {
+  // The Weather Widget asks for it, falling back to a default city.
+  it("grants it to Jarvis's own pages", () => {
+    expect(
+      grantsPermission(ORIGIN, { permission: "geolocation", url: `${ORIGIN}/` })
+    ).toBe(true)
+  })
+
+  it("refuses it to any other origin", () => {
+    expect(
+      grantsPermission(ORIGIN, {
+        permission: "geolocation",
+        url: "https://example.com/",
+      })
+    ).toBe(false)
+  })
+})
+
+describe("Every other permission", () => {
+  it("is refused, even to Jarvis's own pages, since Jarvis uses none", () => {
+    for (const permission of [
+      "notifications",
+      "display-capture",
+      "clipboard-read",
+      "midi",
+      "openExternal",
+    ]) {
+      expect(grantsPermission(ORIGIN, { permission, url: ORIGIN })).toBe(false)
+    }
   })
 })
