@@ -1,0 +1,27 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["dist/**"]
+    },
+    "dev:app": {
+      "with": ["web#dev"],
+      "cache": false,
+      "persistent": true,
+      "passThroughEnv": [
+        "HOME",
+        "USER",
+        "LANG",
+        "DISPLAY",
+        "XAUTHORITY",
+        "WAYLAND_DISPLAY",
+        "XDG_*",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "HYPRLAND_INSTANCE_SIGNATURE",
+        "ELECTRON_*",
+        "BROWSER"
+      ]
+    }
+  }
+}

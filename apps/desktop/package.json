@@ -1,0 +1,26 @@
+{
+  "name": "desktop",
+  "productName": "Jarvis",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev:app": "tsc -p tsconfig.build.json && electron .",
+    "lint": "eslint",
+    "format": "prettier --write \"**/*.ts\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@workspace/eslint-config": "workspace:^",
+    "@workspace/typescript-config": "workspace:*",
+    "electron": "44.7.0",
+    "eslint": "^10",
+    "globals": "^17.13.0",
+    "typescript": "^5",
+    "vitest": "^5.0.4"
+  }
+}

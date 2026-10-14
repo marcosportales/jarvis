@@ -22,19 +22,19 @@ See `../spec.md` (stories 1, 4–9, 11–18, 49, 50, 52, 53; "Shape", "The App c
 
 **Status:** ready-for-agent
 
-- [ ] Read the installed Turborepo docs before adding the desktop tasks (AGENTS.md)
-- [ ] App controller tests, with fake ports:
+- [x] Read the installed Turborepo docs before adding the desktop tasks (AGENTS.md)
+- [x] App controller tests, with fake ports:
   - the window is shown only after the server is ready
   - a second launch shows and focuses the window
   - closing hides, it doesn't quit
   - quit stops the server, then exits
   - an outside URL goes to the Shell and is cancelled; Jarvis's own URLs aren't
   - no tray → still fully usable
-- [ ] `pnpm dev` alone opens no Electron window
+- [x] `pnpm dev` alone opens no Electron window
 - [ ] In the running app:
   - holding Space in the window makes a Turn, with no microphone prompt after the first run
   - closing the window mid-Reply keeps it Speaking
   - relaunching brings the window back
   - a link in the Results Widget opens in the browser
   - `jarvis --quit` exits
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass

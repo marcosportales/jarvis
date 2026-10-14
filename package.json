@@ -5,9 +5,11 @@
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
+    "dev:app": "turbo run dev:app",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "test": "turbo test"
   },
   "devDependencies": {
     "@workspace/eslint-config": "workspace:*",

@@ -38,7 +38,11 @@ NAN_API_KEY=...
 
 Then run `pnpm dev` and open http://localhost:3000. Hold the orb (or Space) to talk.
 
-Run the Jarvis Session tests with `pnpm --filter web test`.
+Run the Jarvis Session tests with `pnpm --filter web test`, or every test with `pnpm test`.
+
+### The Jarvis App (dev mode)
+
+`pnpm dev:app` runs `next dev` and opens the Jarvis App on it: Jarvis in its own window, shown once the page answers. Closing the window hides it and Jarvis keeps running; launching it again (`pnpm --filter desktop exec electron .`) brings it back, and `pnpm --filter desktop exec electron . --quit` (or the tray's "Salir", if your desktop has a tray) quits it. `pnpm dev` alone still starts only the web app.
 
 ## Plugins
 
