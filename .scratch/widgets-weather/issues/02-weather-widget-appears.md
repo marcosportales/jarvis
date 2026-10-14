@@ -11,11 +11,11 @@ Use the vocabulary from CONTEXT.md (Widget, Shown, Hidden, Starting Spot). Read 
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Fresh browser: the Weather Widget is Shown in the top-right margin of the Jarvis page, not over the orb or the Transcript
-- [ ] It shows real weather for the Owner's location, or for the env city when location is denied
-- [ ] The ✕ Hides it, and it stays Hidden after a reload
-- [ ] Widgets do not appear on the Plugins page
-- [ ] Widget Board tests (in-memory storage, fixed viewport) cover: Starting Spot on first run, Show/Hide, save after each change, load on start, corrupt and old state falling back to defaults, registry additions and removals
-- [ ] Lint, typecheck and tests pass
+- [x] Fresh browser: the Weather Widget is Shown in the top-right margin of the Jarvis page, not over the orb or the Transcript
+- [x] It shows real weather for the Owner's location, or for the env city when location is denied
+- [x] The ✕ Hides it, and it stays Hidden after a reload
+- [x] Widgets do not appear on the Plugins page
+- [x] Widget Board tests (in-memory storage, fixed viewport) cover: Starting Spot on first run, Show/Hide, save after each change, load on start, corrupt and old state falling back to defaults, registry additions and removals
+- [x] Lint, typecheck and tests pass
