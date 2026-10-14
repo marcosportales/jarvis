@@ -4,6 +4,7 @@ import type { WidgetSettings } from "./board"
 
 import { BrowserWidget } from "@/components/widgets/browser-widget"
 import { ResultsWidget } from "@/components/widgets/results-widget"
+import { SystemWidget } from "@/components/widgets/system-widget"
 import { TodayWidget } from "@/components/widgets/today-widget"
 import { WeatherWidget } from "@/components/widgets/weather-widget"
 
@@ -26,6 +27,7 @@ export type WidgetDefinition = WidgetInfo & {
 const COMPONENTS: Record<WidgetId, ComponentType<WidgetProps>> = {
   today: TodayWidget,
   weather: WeatherWidget,
+  system: SystemWidget,
   results: ResultsWidget,
   browser: BrowserWidget,
 }

@@ -326,4 +326,17 @@ describe("Jarvis's tools for its own Widgets", () => {
     }
     expect(tools.expand_widget?.description).not.toContain("today (Hoy)")
   })
+
+  it("offers the System Widget, but never to expand", async () => {
+    const turn = createWidgetTools(WIDGET_CATALOG)
+
+    for (const name of ["show_widget", "hide_widget", "move_widget"]) {
+      expect(turn.tools[name]?.description).toContain("- system (Sistema): ")
+    }
+    expect(turn.tools.expand_widget?.description).not.toContain("system")
+    expect(await call(turn, "expand_widget", { id: "system" })).toMatch(
+      /Sistema no se puede ampliar/
+    )
+    expect(turn.changes()).toEqual([])
+  })
 })

@@ -810,10 +810,11 @@ describe("Widget Board with Jarvis's own Widgets", () => {
     const { storage } = memoryStorage()
     // The catalog before the Today Widget, which saves Weather's place on load.
     board(
-      WIDGET_CATALOG.filter(({ id }) => id !== "today").map((widget) =>
-        widget.id === "weather"
-          ? { ...widget, startingSpot: "right-top" as const }
-          : widget
+      WIDGET_CATALOG.filter(({ id }) => id !== "today" && id !== "system").map(
+        (widget) =>
+          widget.id === "weather"
+            ? { ...widget, startingSpot: "right-top" as const }
+            : widget
       ),
       storage
     )
@@ -834,5 +835,108 @@ describe("Widget Board with Jarvis's own Widgets", () => {
     const reloaded = board([...WIDGET_CATALOG], storage)
 
     expect(spotOf(reloaded, "weather")).toBe("right-top")
+  })
+})
+
+describe("Widget Board with the System Widget", () => {
+  /** Where each Widget is, in pixels. */
+  function positions(widgets: ReturnType<typeof board>) {
+    return Object.fromEntries(
+      widgets
+        .getSnapshot()
+        .widgets.map(({ id, position }) => [id, pixels(position)])
+    )
+  }
+
+  /** A layout saved by the catalog as it was before the System Widget. */
+  function savedBeforeSystem(
+    arrange: (widgets: ReturnType<typeof board>) => void = () => {}
+  ) {
+    const { storage } = memoryStorage()
+    arrange(
+      board(
+        WIDGET_CATALOG.filter(({ id }) => id !== "system"),
+        storage
+      )
+    )
+    return storage
+  }
+
+  it("starts directly below the Weather Widget on a fresh profile", () => {
+    const at = positions(board([...WIDGET_CATALOG]))
+
+    // Weather at right-middle; same left edge, 8px below its 100px.
+    expect(at.weather).toEqual({ left: 1384, top: 450 })
+    expect(at.system).toEqual({ left: 1384, top: 558 })
+  })
+
+  it("starts below the Weather Widget wherever it was saved, e.g. under Today at right-top", () => {
+    const storage = savedBeforeSystem((widgets) =>
+      widgets.moveToSpot("weather", "right-top")
+    )
+
+    const at = positions(board([...WIDGET_CATALOG], storage))
+
+    expect(at.today).toEqual({ left: 1384, top: 16 })
+    expect(at.weather).toEqual({ left: 1384, top: 124 })
+    expect(at.system).toEqual({ left: 1384, top: 232 })
+  })
+
+  it("starts at right-middle when the Weather Widget is Hidden", () => {
+    const storage = savedBeforeSystem((widgets) => widgets.hide("weather"))
+
+    const at = positions(board([...WIDGET_CATALOG], storage))
+
+    // Centred for its own 232px height.
+    expect(at.system).toEqual({ left: 1384, top: 384 })
+  })
+
+  it("starts at right-middle when there's no room below the Weather Widget", () => {
+    const storage = savedBeforeSystem((widgets) =>
+      widgets.drag("weather", { left: 1384, top: 800 })
+    )
+
+    const at = positions(board([...WIDGET_CATALOG], storage))
+
+    expect(at.system).toEqual({ left: 1384, top: 384 })
+  })
+
+  it("starts at right-middle, clear of the others, when another Widget is right below Weather", () => {
+    const storage = savedBeforeSystem((widgets) => {
+      widgets.moveToSpot("weather", "right-middle")
+      widgets.drag("today", { left: 1384, top: 558 })
+    })
+
+    const at = positions(board([...WIDGET_CATALOG], storage))
+
+    // Right-middle is taken by Weather and Today, so it stacks below them.
+    expect(at.system).toEqual({ left: 1384, top: 666 })
+  })
+
+  it("keeps its saved place", () => {
+    const { storage } = memoryStorage()
+    board([...WIDGET_CATALOG], storage).drag("system", { left: 40, top: 600 })
+
+    const at = positions(board([...WIDGET_CATALOG], storage))
+
+    expect(at.system).toEqual({ left: 40, top: 600 })
+  })
+
+  it("moves no other Widget when it arrives in a saved layout", () => {
+    const storage = savedBeforeSystem((widgets) => {
+      widgets.moveToSpot("weather", "right-top")
+      widgets.drag("results", { left: 300, top: 200 })
+    })
+    const before = positions(
+      board(
+        WIDGET_CATALOG.filter(({ id }) => id !== "system"),
+        storage
+      )
+    )
+
+    const { system, ...after } = positions(board([...WIDGET_CATALOG], storage))
+
+    expect(system).toBeDefined()
+    expect(after).toEqual(before)
   })
 })

@@ -52,6 +52,18 @@ export const WIDGET_CATALOG = [
     settingsSchema: weatherSettingsSchema,
   },
   {
+    id: "system",
+    name: "Sistema",
+    description:
+      "Cómo va el ordenador donde corre Jarvis: uso de CPU, RAM usada del total y, si tiene, la batería y si está cargando; y la Salud de Jarvis: si funciona, está limitado o caído, y qué parte falla.",
+    // Directly below the Weather Widget, wherever it is.
+    startsBelow: "weather",
+    startingSpot: "right-middle",
+    source: "built-in",
+    // Three rows with bars plus the Health button, without scrolling.
+    height: 232,
+  },
+  {
     id: "results",
     name: "Resultados",
     description:
@@ -76,6 +88,9 @@ export const WIDGET_CATALOG = [
 ] as const satisfies readonly WidgetInfo[]
 
 export type WidgetId = (typeof WIDGET_CATALOG)[number]["id"]
+
+/** The System Widget, which the Turn Shows on its own after `get_system_status`. */
+export const SYSTEM_WIDGET_ID = "system" satisfies WidgetId
 
 /** The Results Widget, which the Turn Shows on its own after a list Search. */
 export const RESULTS_WIDGET_ID = "results" satisfies WidgetId

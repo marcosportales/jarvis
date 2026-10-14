@@ -29,11 +29,19 @@ export type BoardWidget = {
   id: string
   /** Spanish; tells Jarvis which Widget is which. Defaults to the id. */
   name?: string
+  /**
+   * Where it first appears. With `startsBelow`, the Spot it falls back to
+   * when it can't go directly below that Widget.
+   */
   startingSpot?: Spot
+  /** The id of a Widget to first appear directly below, if it's Shown. */
+  startsBelow?: string
   /** Its Widget Settings; parsing `{}` gives the defaults. None means none. */
   settingsSchema?: z.ZodType<WidgetSettings>
   /** Its size on screen when it differs from the Board's usual one. */
   size?: Size
+  /** Its height when it keeps the usual width; it doesn't scroll. */
+  height?: number
   /** It can be Expanded. */
   expandable?: boolean
 }
@@ -286,7 +294,13 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
   const listeners = new Set<() => void>()
 
   function sizeOf(id: string): Size {
-    return registry.find((widget) => widget.id === id)?.size ?? widgetSize
+    const widget = registry.find((entry) => entry.id === id)
+    return (
+      widget?.size ?? {
+        ...widgetSize,
+        height: widget?.height ?? widgetSize.height,
+      }
+    )
   }
 
   /** Where the Shown Widgets other than `id` are, to keep clear of them. */
@@ -300,35 +314,59 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
   }
 
   /**
-   * Before a Widget is ever placed: Shown, at its Starting Spot, or else at a
-   * random free place in the margins, clear of the `others` already placed
-   * either way, so a new Widget never lands on one the Owner already has.
+   * Directly below the Shown Widget `above`, same left edge, when it fits in
+   * the viewport there clear of the `taken` places; null if it doesn't.
+   */
+  function placeBelow(
+    above: WidgetState | undefined,
+    taken: PixelRect[],
+    size: Size
+  ): PixelPosition | null {
+    if (!above?.shown) return null
+    const { left, top } = toPixels(above.position, viewport)
+    const place = { left, top: top + sizeOf(above.id).height + STACK_GAP }
+    const fits =
+      place.left + size.width <= viewport.width &&
+      place.top + size.height <= viewport.height
+    if (
+      !fits ||
+      taken.some((other) => overlaps({ ...place, ...size }, other))
+    ) {
+      return null
+    }
+    return place
+  }
+
+  /**
+   * Before a Widget is ever placed: Shown, directly below the Widget it
+   * starts below, else at its Starting Spot, else at a random free place in
+   * the margins, clear of the `others` already placed each way, so a new
+   * Widget never lands on one the Owner already has.
    */
   function defaultState(
     widget: BoardWidget,
     others: WidgetState[]
   ): WidgetState {
     const size = sizeOf(widget.id)
+    const taken = takenBy(others, widget.id)
+    const below =
+      widget.startsBelow !== undefined
+        ? placeBelow(
+            others.find((other) => other.id === widget.startsBelow),
+            taken,
+            size
+          )
+        : null
     return {
       id: widget.id,
       shown: true,
       glide: false,
       settings: defaultSettings(widget),
       position: toPosition(
-        widget.startingSpot
-          ? stackedSpotPlace(
-              widget.startingSpot,
-              takenBy(others, widget.id),
-              viewport,
-              size
-            )
-          : randomMarginPlace(
-              takenBy(others, widget.id),
-              viewport,
-              size,
-              columnWidth,
-              random
-            ),
+        below ??
+          (widget.startingSpot
+            ? stackedSpotPlace(widget.startingSpot, taken, viewport, size)
+            : randomMarginPlace(taken, viewport, size, columnWidth, random)),
         viewport,
         size
       ),
@@ -342,10 +380,17 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
 
   // Saved Widgets no longer in the registry are dropped; new ones get defaults.
   // A layout saved in a bigger window is pulled into this one. Saved Widgets
-  // go first, then those with a Starting Spot, so new ones steer clear of them.
+  // go first, then those with a Starting Spot, so new ones steer clear of them,
+  // then those starting below another, which is placed by then.
   const saved = loadLayout(storage)
   const order = (widget: BoardWidget) =>
-    widget.id in saved ? 0 : widget.startingSpot !== undefined ? 1 : 2
+    widget.id in saved
+      ? 0
+      : widget.startsBelow !== undefined
+        ? 2
+        : widget.startingSpot !== undefined
+          ? 1
+          : 3
   const placed: WidgetState[] = []
   for (const widget of [...registry].sort((a, b) => order(a) - order(b))) {
     const defaults = defaultState(widget, placed)
