@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
+import { ignoreHealth, type HealthReporter } from "../health/health"
 import { BrowseStartFailedError, type Browse } from "./browse"
 import { domainOf, endedLabel, type BrowseView } from "./view"
 
@@ -25,8 +26,11 @@ export type BrowseTurnTools = {
 
 export function createBrowseTools({
   browse,
+  report = ignoreHealth,
 }: {
   browse: Pick<Browse, "start" | "stop">
+  /** Hears whether Browse could start or stop a Browse Task. */
+  report?: HealthReporter
 }): BrowseTurnTools {
   let started = false
 
@@ -51,12 +55,14 @@ export function createBrowseTools({
         execute: async ({ task, startUrl }) => {
           try {
             const { stopped } = await browse.start({ task, startUrl })
+            report("browse", { ok: true })
             started = true
             return stopped
               ? `Paré la navegación anterior («${stopped.task}») para empezar esta. Dilo también. ${BROWSE_STARTED}`
               : BROWSE_STARTED
           } catch (error) {
             console.error("Starting a Browse Task failed", error)
+            report("browse", { ok: false })
             return error instanceof BrowseStartFailedError && error.stopped
               ? `Paré la navegación anterior («${error.stopped.task}»), pero no empezó la nueva. Dilo también. ${BROWSE_START_FAILED}`
               : BROWSE_START_FAILED
@@ -70,11 +76,13 @@ export function createBrowseTools({
         execute: async () => {
           try {
             const stopped = await browse.stop()
+            report("browse", { ok: true })
             return stopped
               ? `Navegación parada: «${stopped.task}». Confírmalo en una frase.`
               : NOTHING_TO_STOP
           } catch (error) {
             console.error("Stopping the Browse Task failed", error)
+            report("browse", { ok: false })
             return BROWSE_STOP_FAILED
           }
         },

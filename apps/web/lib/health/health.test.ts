@@ -1,6 +1,12 @@
+import { APICallError } from "ai"
 import { describe, expect, it } from "vitest"
 
-import { createHealth, ProbeError, type Probes } from "./health"
+import {
+  createHealth,
+  isServiceFailure,
+  ProbeError,
+  type Probes,
+} from "./health"
 
 const MODELS = {
   chat: "deepseek-v4-flash",
@@ -245,5 +251,93 @@ describe("How often Jarvis Health probes", () => {
     expect(new Set(reports.map(({ level }) => level))).toEqual(
       new Set(["working"])
     )
+  })
+})
+
+describe("Jarvis Health from real use", () => {
+  it("marks a part failing as soon as a real use fails, over an older passing probe", async () => {
+    const { health, advance } = setup()
+    await health.current()
+    advance(10_000)
+
+    health.report("search", { ok: false })
+    const report = await health.current()
+
+    expect(report.level).toBe("limited")
+    expect(levels(report).search).toBe("failing: falló hace un momento")
+  })
+
+  it("says when the real use failed, until the next probe", async () => {
+    const { health, advance } = setup()
+    await health.current()
+    advance(30_000)
+    health.report("thinking", { ok: false })
+    advance(20_000)
+
+    const report = await health.current()
+
+    expect(report.level).toBe("down")
+    expect(report.parts.find(({ id }) => id === "thinking")).toMatchObject({
+      level: "failing",
+      reason: "falló hace un momento",
+      since: "2026-10-14T12:00:30.000Z",
+    })
+  })
+
+  it("puts the part back to Working after a later successful use", async () => {
+    const { health } = setup()
+    await health.current()
+    health.report("weather", { ok: false })
+
+    health.report("weather", { ok: true })
+
+    expect((await health.current()).level).toBe("working")
+  })
+
+  it("puts the part back to Working after a later passing probe", async () => {
+    const { health, advance } = setup()
+    await health.current()
+    health.report("search", { ok: false })
+    advance(1_000)
+
+    const report = await health.current({ recheck: true })
+
+    expect(levels(report).search).toBe("working")
+  })
+
+  it("never lets a real success hide a part that isn't set up", async () => {
+    const { health } = setup({ env: { NAN_API_KEY: "nan-key" } })
+    await health.current()
+
+    health.report("search", { ok: true })
+
+    expect(levels(await health.current()).search).toBe(
+      "failing: sin configurar"
+    )
+  })
+
+  it("ignores a report for a part it doesn't know", async () => {
+    const { health } = setup()
+
+    expect(() => health.report("stocks", { ok: false })).not.toThrow()
+    expect((await health.current()).level).toBe("working")
+  })
+})
+
+describe("Which errors count against a part", () => {
+  it("doesn't blame the service for input it rejected, like audio it can't decode", () => {
+    const rejected = (statusCode: number) =>
+      new APICallError({
+        message: "Failed to decode audio",
+        url: "https://api.nan.builders/v1/audio/transcriptions",
+        requestBodyValues: {},
+        statusCode,
+      })
+
+    expect(isServiceFailure(rejected(415))).toBe(false)
+    expect(isServiceFailure(rejected(400))).toBe(false)
+    expect(isServiceFailure(rejected(401))).toBe(true)
+    expect(isServiceFailure(rejected(503))).toBe(true)
+    expect(isServiceFailure(new Error("fetch failed"))).toBe(true)
   })
 })

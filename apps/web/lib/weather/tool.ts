@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
+import { ignoreHealth, type HealthReporter } from "../health/health"
 import type { Coordinates, Weather, WeatherService } from "./weather"
 
 const degrees = (value: number) => `${Math.round(value)} °C`
@@ -35,9 +36,12 @@ function describe(weather: Weather, fromCoords: boolean) {
 export function createWeatherTools({
   weather,
   coords,
+  report = ignoreHealth,
 }: {
   weather: WeatherService
   coords?: Coordinates
+  /** Hears whether the weather service answered. */
+  report?: HealthReporter
 }): ToolSet {
   return {
     get_weather: tool({
@@ -53,6 +57,7 @@ export function createWeatherTools({
       }),
       execute: async ({ place }) => {
         const result = await weather.forPlace({ place, coords })
+        report("weather", { ok: result.status !== "failed" })
         switch (result.status) {
           case "ok":
             return describe(result.weather, !place?.trim() && !!coords)

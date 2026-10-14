@@ -1,3 +1,5 @@
+import { APICallError } from "ai"
+
 /**
  * Jarvis Health: whether Jarvis's own parts work, overall and for each part.
  * Free probes check them now and then, only when someone asks; never a paid
@@ -136,8 +138,47 @@ export type HealthDeps = {
 /** Probes re-run when their last run is this old. */
 const PROBE_INTERVAL_MS = 60_000
 
-/** What a part's latest information says. */
-type PartState = { failing: string | null; since: number | null; at: number }
+/** What a part's latest information says, and when it was learnt. */
+type PartState = {
+  /** Why it fails, or null when it works. */
+  failing: string | null
+  /** The failure was a real use, so its reason says how long ago. */
+  inUse: boolean
+  since: number | null
+  at: number
+}
+
+/** A real use's outcome; the reason comes from when it failed. */
+export type UseOutcome = { ok: true } | { ok: false }
+
+/** Tells Jarvis Health how a real use of a part went; never throws. */
+export type HealthReporter = (part: PartId, outcome: UseOutcome) => void
+
+/** What the service refuses as bad input, like audio it can't decode. */
+const REJECTED_INPUT = new Set([400, 413, 415, 422])
+
+/**
+ * Whether a failed call says the part is failing, rather than that it was
+ * given something it can't use, like a push-to-talk too short to decode.
+ */
+export function isServiceFailure(error: unknown) {
+  return !(
+    APICallError.isInstance(error) &&
+    error.statusCode !== undefined &&
+    REJECTED_INPUT.has(error.statusCode)
+  )
+}
+
+/** For callers with nothing to report to, e.g. in tests. */
+export const ignoreHealth: HealthReporter = () => {}
+
+/** "falló hace 2 min", whole minutes, then whole hours. */
+function failedAgo(at: number, now: number) {
+  const minutes = Math.floor((now - at) / 60_000)
+  if (minutes < 1) return "falló hace un momento"
+  if (minutes < 60) return `falló hace ${minutes} min`
+  return `falló hace ${Math.floor(minutes / 60)} h`
+}
 
 export function createHealth({
   probes,
@@ -171,7 +212,7 @@ export function createHealth({
 
   /** Why the part fails, or null when it works. Never throws. */
   async function checkPart(part: PartDefinition, run: ProbeRun) {
-    if (part.needs.some((name) => !env[name]?.trim())) return "sin configurar"
+    if (!isSetUp(part)) return "sin configurar"
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       await Promise.race([
@@ -192,14 +233,24 @@ export function createHealth({
   }
 
   /** A part's newest information wins over what came before it. */
-  function record(id: string, failing: string | null, at: number) {
+  function record(
+    id: string,
+    failing: string | null,
+    at: number,
+    inUse = false
+  ) {
     const previous = states.get(id)
     if (previous && previous.at > at) return
     states.set(id, {
       failing,
+      inUse,
       since: failing ? (previous?.failing ? previous.since : at) : null,
       at,
     })
+  }
+
+  function isSetUp(part: PartDefinition) {
+    return part.needs.every((name) => env[name]?.trim())
   }
 
   async function runProbes() {
@@ -218,7 +269,9 @@ export function createHealth({
         id,
         label,
         level: "failing",
-        reason: state.failing,
+        reason: state.inUse
+          ? failedAgo(state.at, now().getTime())
+          : state.failing,
         ...(state.since !== null
           ? { since: new Date(state.since).toISOString() }
           : {}),
@@ -246,6 +299,16 @@ export function createHealth({
   }
 
   return {
+    /**
+     * A real use of the part succeeded or failed; it shows at once. Never
+     * throws, and ignores parts it doesn't know. A part that isn't set up
+     * stays "sin configurar" whatever is reported.
+     */
+    report(id: string, outcome: UseOutcome) {
+      const part = PARTS.find((entry) => entry.id === id)
+      if (!part || !isSetUp(part)) return
+      record(id, outcome.ok ? null : "falló", now().getTime(), true)
+    },
     /**
      * The latest Health. Probes first when the last run is a minute old, or
      * on `recheck`; calls made meanwhile share that one run. There is no

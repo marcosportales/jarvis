@@ -8,7 +8,13 @@ import { getDatabase } from "../db/server"
 import { nanConfig } from "../jarvis/server/nan"
 import { OWNER_USER_ID } from "../plugins/composio"
 import { createWeather } from "../weather/weather"
-import { createHealth, ProbeError, type Health, type Probes } from "./health"
+import {
+  createHealth,
+  ProbeError,
+  type Health,
+  type HealthReporter,
+  type Probes,
+} from "./health"
 
 const NAN_MODELS_URL = "https://api.nan.builders/v1/models"
 
@@ -101,4 +107,13 @@ export function getHealth(): Health {
     timeoutMs: PROBE_TIMEOUT_MS + 1_000,
   })
   return globalForHealth.jarvisHealth
+}
+
+/** Reports a real use to Jarvis Health; never throws. */
+export const reportToHealth: HealthReporter = (part, outcome) => {
+  try {
+    getHealth().report(part, outcome)
+  } catch (error) {
+    console.error("Reporting to Jarvis Health failed", error)
+  }
 }

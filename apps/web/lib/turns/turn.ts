@@ -2,6 +2,7 @@ import { generateText, stepCountIs, type LanguageModel, type ToolSet } from "ai"
 
 import type { Browse } from "../browse/browse"
 import { browseNotice, createBrowseTools } from "../browse/tools"
+import type { Health, HealthReporter } from "../health/health"
 import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
@@ -70,6 +71,8 @@ export type TurnsDeps = {
   weather: WeatherService
   search: SearchPort
   browse: Browse
+  /** Hears how each real use of Jarvis's parts went. */
+  health: Pick<Health, "current" | "report">
   now: () => Date
 }
 
@@ -177,8 +180,18 @@ export function createTurns({
   weather,
   search,
   browse,
+  health,
   now,
 }: TurnsDeps) {
+  /** Reporting to Health must never fail or slow a Turn. */
+  const report: HealthReporter = (part, outcome) => {
+    try {
+      health.report(part, outcome)
+    } catch (error) {
+      console.error("Reporting to Jarvis Health failed", error)
+    }
+  }
+
   /** A Plugin problem must never fail the Turn, so fall back to no tools. */
   async function loadPluginTools(): Promise<TurnTools> {
     try {
@@ -222,36 +235,44 @@ export function createTurns({
       const memoryTools = createMemoryTools(memories, { sessionId })
       const pluginTools = await loadPluginTools()
       const widgetTools = createWidgetTools(WIDGET_CATALOG)
-      const weatherTools = createWeatherTools({ weather, coords })
-      const searchTools = createSearchTools({ search })
-      const browseTools = createBrowseTools({ browse })
+      const weatherTools = createWeatherTools({ weather, coords, report })
+      const searchTools = createSearchTools({ search, report })
+      const browseTools = createBrowseTools({ browse, report })
       try {
-        const generated = await generateText({
-          model,
-          system: [
-            JARVIS_SYSTEM_PROMPT,
-            currentDateLine(now()),
-            widgetLayoutNotice(widgets),
-            resultsOnScreenNotice(results),
-            await loadBrowseNotice(),
-            await memoryNotice(memories),
-            ...pluginTools.notices,
-          ]
-            .filter((part) => part !== null)
-            .join("\n\n"),
-          messages: [...toMessages(earlier), { role: "user", content: text }],
-          tools: mergeTools({
-            builtIn: [
-              memoryTools.tools,
-              widgetTools.tools,
-              weatherTools,
-              searchTools.tools,
-              browseTools.tools,
-            ],
-            plugin: pluginTools.tools,
-          }),
-          stopWhen: stepCountIs(MAX_REPLY_STEPS),
-        })
+        const system = [
+          JARVIS_SYSTEM_PROMPT,
+          currentDateLine(now()),
+          widgetLayoutNotice(widgets),
+          resultsOnScreenNotice(results),
+          await loadBrowseNotice(),
+          await memoryNotice(memories),
+          ...pluginTools.notices,
+        ]
+          .filter((part) => part !== null)
+          .join("\n\n")
+        let generated: Awaited<ReturnType<typeof generateText>>
+        try {
+          generated = await generateText({
+            model,
+            system,
+            messages: [...toMessages(earlier), { role: "user", content: text }],
+            tools: mergeTools({
+              builtIn: [
+                memoryTools.tools,
+                widgetTools.tools,
+                weatherTools,
+                searchTools.tools,
+                browseTools.tools,
+              ],
+              plugin: pluginTools.tools,
+            }),
+            stopWhen: stepCountIs(MAX_REPLY_STEPS),
+          })
+        } catch (error) {
+          report("thinking", { ok: false })
+          throw error
+        }
+        report("thinking", { ok: true })
 
         const reply = generated.text.trim() || FALLBACK_REPLY
 
@@ -259,13 +280,22 @@ export function createTurns({
         const memoryEvents = memoryTools.events()
         const saved = { owner: text, reply, memoryEvents }
         let savedIn: string
-        if (sessionId) {
-          await sessions.addTurn(sessionId, saved)
-          savedIn = sessionId
-        } else {
-          savedIn = await sessions.start(saved)
-          await memoryTools.adoptSession(savedIn)
+        try {
+          if (sessionId) {
+            await sessions.addTurn(sessionId, saved)
+            savedIn = sessionId
+          } else {
+            savedIn = await sessions.start(saved)
+            await memoryTools.adoptSession(savedIn)
+          }
+        } catch (error) {
+          // A Session deleted meanwhile isn't the database failing.
+          if (!(error instanceof UnknownSessionError)) {
+            report("remembering", { ok: false })
+          }
+          throw error
         }
+        report("remembering", { ok: true })
 
         return {
           sessionId: savedIn,

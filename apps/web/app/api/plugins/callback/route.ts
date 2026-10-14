@@ -11,9 +11,10 @@ import {
 function parsePending(value: string | undefined): PendingInstall | undefined {
   if (!value) return undefined
   try {
-    const { pluginId, state, connectedAccountId } = JSON.parse(
-      value
-    ) as Record<string, unknown>
+    const { pluginId, state, connectedAccountId } = JSON.parse(value) as Record<
+      string,
+      unknown
+    >
     return typeof pluginId === "string" &&
       typeof state === "string" &&
       typeof connectedAccountId === "string"

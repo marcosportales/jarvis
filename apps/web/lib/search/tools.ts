@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
+import { ignoreHealth, type HealthReporter } from "../health/health"
 import {
   mapEvents,
   mapFlights,
@@ -144,8 +145,11 @@ export function resultsOnScreenNotice(results: ResultsOnScreen | undefined) {
  */
 export function createSearchTools({
   search,
+  report = ignoreHealth,
 }: {
   search: SearchPort
+  /** Hears whether each Search reached Composio. */
+  report?: HealthReporter
 }): SearchTurnTools {
   let latestList: SearchOutcome | undefined
   let latestSources: SearchOutcome | undefined
@@ -172,8 +176,10 @@ export function createSearchTools({
       outcome = map(await search.run(slug, args))
     } catch (error) {
       console.error(`Search ${slug} failed`, error)
+      report("search", { ok: false })
       return SEARCH_FAILED
     }
+    report("search", { ok: true })
     record(outcome)
     return describeOutcome(outcome)
   }

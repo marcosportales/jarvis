@@ -6,6 +6,7 @@ import { z } from "zod"
 import { createBrowse, type Browse } from "../browse/browse"
 import { fakeBrowserPort, watch } from "../browse/fixtures"
 import { openDatabase } from "../db"
+import type { Health, HealthReport } from "../health/health"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
 import { createPlugins, type Plugins } from "../plugins/plugins"
@@ -15,7 +16,7 @@ import {
   UnknownSessionError,
   type SessionStore,
 } from "../sessions/store"
-import { fakeFetch } from "../weather/fixtures"
+import { fakeFetch, type Route } from "../weather/fixtures"
 import { createWeather } from "../weather/weather"
 import type { WidgetLayout } from "../widgets/changes"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
@@ -41,6 +42,26 @@ const LAYOUT: WidgetLayout = [
     settings: {},
   },
 ]
+
+const WORKING: HealthReport = {
+  level: "working",
+  parts: [],
+  checkedAt: NOW.toISOString(),
+}
+
+/** Jarvis Health that's always Working, recording each real use reported. */
+function fakeHealth(report: HealthReport = WORKING) {
+  const reports: [string, boolean][] = []
+  let rechecks = 0
+  const health: Pick<Health, "current" | "report"> = {
+    current: async ({ recheck = false } = {}) => {
+      if (recheck) rechecks++
+      return report
+    },
+    report: (id, outcome) => void reports.push([id, outcome.ok]),
+  }
+  return { health, reports, rechecks: () => rechecks }
+}
 
 const usage = {
   inputTokens: {
@@ -101,11 +122,17 @@ function setup(
     search?: ReturnType<typeof fakeSearch>
     browser?: ReturnType<typeof fakeBrowserPort>
     browse?: Browse
+    health?: Pick<Health, "current" | "report">
+    /** How Open-Meteo's forecast answers; the recorded one by default. */
+    forecast?: Route
+    /** Wraps the real Session store, e.g. to make saving fail. */
+    sessions?: (store: SessionStore) => SessionStore
   } = {}
 ) {
   const db = openDatabase(":memory:")
   const now = () => NOW
-  const sessions = createSessionStore(db, { now })
+  const store = createSessionStore(db, { now })
+  const sessions = options.sessions?.(store) ?? store
   const memories = createMemoryStore(db, { now })
   const browser = options.browser ?? fakeBrowserPort()
   const browse = options.browse ?? createBrowse({ db, port: browser.port, now })
@@ -127,9 +154,13 @@ function setup(
         composio: options.composio?.composio ?? null,
         connector: (options.connector ?? fakeConnector()).connector,
       }),
-    weather: createWeather({ fetch: fakeFetch().fetch, env: {} }),
+    weather: createWeather({
+      fetch: fakeFetch({ forecast: options.forecast }).fetch,
+      env: {},
+    }),
     search: (options.search ?? fakeSearch()).search,
     browse,
+    health: options.health ?? fakeHealth().health,
     now,
   })
   /** What the model was sent in its first step. */
@@ -1270,6 +1301,145 @@ describe("Taking a Turn", () => {
 
 // Today's built-in tool factories can't be made to clash from a Turn, so
 // this one rule is checked on the merge itself.
+describe("A Turn and Jarvis Health", () => {
+  it("reports Thinking working once the model replied", async () => {
+    const { health, reports } = fakeHealth()
+    const { turns } = setup([answer("Hola.")], { health })
+
+    await turns.take({ text: "Hola", widgets: LAYOUT })
+
+    expect(reports).toContainEqual(["thinking", true])
+    expect(reports).toContainEqual(["remembering", true])
+  })
+
+  it("reports Thinking failing when the model throws, and still fails the Turn", async () => {
+    const { health, reports } = fakeHealth()
+    const { turns } = setup(
+      [() => Promise.reject(new Error("model unavailable"))],
+      { health }
+    )
+
+    await expect(turns.take({ text: "Hola", widgets: LAYOUT })).rejects.toThrow(
+      "model unavailable"
+    )
+
+    expect(reports).toEqual([["thinking", false]])
+  })
+
+  it("reports Remembering failing when the Turn can't be saved", async () => {
+    const { health, reports } = fakeHealth()
+    const { turns } = setup([answer("Hola.")], {
+      health,
+      sessions: (store) => ({
+        ...store,
+        start: () => Promise.reject(new Error("SQLITE_FULL")),
+      }),
+    })
+
+    await expect(turns.take({ text: "Hola", widgets: LAYOUT })).rejects.toThrow(
+      "SQLITE_FULL"
+    )
+
+    expect(reports).toContainEqual(["remembering", false])
+  })
+
+  it("doesn't count a Session deleted mid-Turn as Remembering failing", async () => {
+    const { health, reports } = fakeHealth()
+    const { turns, sessions } = setup(
+      [
+        async ({ sessions }) => {
+          await sessions.delete(sessionId)
+          return answer("Hola.")
+        },
+      ],
+      { health }
+    )
+    const sessionId = await sessions.start({
+      owner: "Hola",
+      reply: "Hola.",
+      memoryEvents: [],
+    })
+
+    await expect(
+      turns.take({ sessionId, text: "Otra vez", widgets: LAYOUT })
+    ).rejects.toBeInstanceOf(UnknownSessionError)
+
+    expect(reports).not.toContainEqual(["remembering", false])
+  })
+
+  it("reports the weather failing when the weather service fails, and working when it answers", async () => {
+    const failing = fakeHealth()
+    await setup([call("get_weather", {}), answer("No responde.")], {
+      health: failing.health,
+      forecast: { status: 503 },
+    }).turns.take({ text: "¿Qué tiempo hace?", widgets: LAYOUT })
+
+    const working = fakeHealth()
+    await setup([call("get_weather", {}), answer("Soleado.")], {
+      health: working.health,
+    }).turns.take({ text: "¿Qué tiempo hace?", widgets: LAYOUT })
+
+    expect(failing.reports).toContainEqual(["weather", false])
+    expect(working.reports).toContainEqual(["weather", true])
+  })
+
+  it("reports Search failing when a Search fails, and working when it answers", async () => {
+    const failing = fakeHealth()
+    await setup([call("search_web", { query: "Prado" }), answer("No pude.")], {
+      health: failing.health,
+      search: fakeSearch({
+        COMPOSIO_SEARCH_WEB: { error: new Error("Composio is down") },
+      }),
+    }).turns.take({ text: "Busca el Prado", widgets: LAYOUT })
+
+    const working = fakeHealth()
+    await setup(
+      [call("search_web", { query: "Prado" }), answer("Abre a las 10.")],
+      {
+        health: working.health,
+      }
+    ).turns.take({ text: "Busca el Prado", widgets: LAYOUT })
+
+    expect(failing.reports).toContainEqual(["search", false])
+    expect(working.reports).toContainEqual(["search", true])
+  })
+
+  it("reports Browse failing when a Browse Task can't start", async () => {
+    const { health, reports } = fakeHealth()
+    const browser = fakeBrowserPort()
+    browser.failures.start = true
+    const { turns } = setup(
+      [
+        call("start_browse", { task: "Mira el horario del Prado hoy" }),
+        answer("No pude empezar."),
+      ],
+      { health, browser }
+    )
+
+    await turns.take({ text: "Míralo en su web", widgets: LAYOUT })
+
+    expect(reports).toContainEqual(["browse", false])
+  })
+
+  it("still replies when reporting to Jarvis Health throws", async () => {
+    const { turns } = setup([call("get_weather", {}), answer("Soleado.")], {
+      health: {
+        current: async () => WORKING,
+        report: () => {
+          throw new Error("Health is broken")
+        },
+      },
+    })
+
+    const reply = await turns.take({
+      text: "¿Qué tiempo hace?",
+      widgets: LAYOUT,
+    })
+
+    expect(reply.text).toBe("Soleado.")
+  })
+})
+
 describe("Merging a Turn's tools", () => {
   it("throws when two of Jarvis's own tools share a name", () => {
     expect(() =>
