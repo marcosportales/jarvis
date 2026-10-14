@@ -53,8 +53,12 @@ _Avoid_: Store, save, learn
 ### Voice
 
 **Push-to-talk**:
-The way the Owner speaks to Jarvis: hold to capture an Utterance, release to send it.
+The way the Owner speaks to Jarvis: hold to capture an Utterance, release to send it. Held on the Orb or with Space on the Jarvis page and, in the Jarvis App, also with a key from any other app.
 _Avoid_: Recording mode, listen mode
+
+**Orb**:
+The round button the Owner holds for Push-to-talk, which also shows the Jarvis State.
+_Avoid_: Button, mic, sphere
 
 **Jarvis State**:
 What Jarvis is doing right now — exactly one of Idle, Listening, Thinking, or Speaking.
@@ -72,6 +76,16 @@ The Jarvis State while the Reply is being played aloud. Starting push-to-talk cu
 
 **Idle**:
 The Jarvis State when none of the others apply.
+
+### The Jarvis App
+
+**Jarvis App**:
+Jarvis running as its own app on the Owner's computer instead of a browser tab: it starts with the computer, keeps running with its window closed, and lets the Owner hold Push-to-talk from any other app. It is the same Jarvis, with the same Sessions, Memories and Widgets, that a browser tab on the same computer reaches.
+_Avoid_: Desktop app, Electron app, desktop client, wrapper
+
+**Floating Orb**:
+The Orb in a small window of its own that the Jarvis App keeps above every other app, so the Owner sees the Jarvis State and can hold Push-to-talk without the Jarvis page in view. It holds nothing else; it is not a Widget.
+_Avoid_: Mini window, overlay, bubble, widget
 
 ### Plugins
 
