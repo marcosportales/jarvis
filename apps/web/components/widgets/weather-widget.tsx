@@ -16,7 +16,8 @@ import {
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import type { WeatherIcon } from "@/lib/weather/conditions"
-import type { Coordinates, WeatherResult } from "@/lib/weather/weather"
+import { locateOwner } from "@/lib/weather/owner-location"
+import type { WeatherResult } from "@/lib/weather/weather"
 
 const REFRESH_MS = 15 * 60 * 1000
 
@@ -29,25 +30,6 @@ const ICONS: Record<WeatherIcon, LucideIcon> = {
   "cloud-rain": CloudRainIcon,
   "cloud-snow": CloudSnowIcon,
   "cloud-lightning": CloudLightningIcon,
-}
-
-let ownerCoords: Promise<Coordinates | undefined> | undefined
-
-/**
- * Asks for the Owner's location once per Session, the first time the Widget is
- * Shown. Denied or unavailable means the server's fallback city.
- */
-function locateOwner() {
-  ownerCoords ??= new Promise((resolve) => {
-    if (!("geolocation" in navigator)) return resolve(undefined)
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) =>
-        resolve({ latitude: coords.latitude, longitude: coords.longitude }),
-      () => resolve(undefined),
-      { maximumAge: REFRESH_MS }
-    )
-  })
-  return ownerCoords
 }
 
 async function loadWeather(): Promise<WeatherResult> {
