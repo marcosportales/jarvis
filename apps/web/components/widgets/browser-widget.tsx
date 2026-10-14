@@ -9,6 +9,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { shownBrowse } from "@/lib/browse/browser-view"
 import { domainOf, endedLabel, type BrowseView } from "@/lib/browse/view"
+import type { WidgetProps } from "@/lib/widgets/registry"
 
 /** How long the Widget stays highlighted once the Browse Task ends. */
 const HIGHLIGHT_MS = 3_000
@@ -19,8 +20,10 @@ const getServerSnapshot = () => null
 /**
  * The current Browse Task: the remote browser's screen live while it runs,
  * with what it is doing and a stop button; its outcome once it ends.
+ * Expanded, the screen is as large as fits, with the rest beside it, or
+ * below it on a narrow window.
  */
-export function BrowserWidget() {
+export function BrowserWidget({ expanded }: Pick<WidgetProps, "expanded">) {
   const shown = useSyncExternalStore(
     shownBrowse.subscribe,
     shownBrowse.get,
@@ -36,18 +39,43 @@ export function BrowserWidget() {
   }
 
   const running = view.status === "running"
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-md p-1 text-sm transition-shadow duration-500",
-        // Inset, as the Widget's scrolling body would clip one outside.
-        highlighted && "ring-2 ring-primary ring-inset"
-      )}
-    >
-      <p className="line-clamp-2 font-medium">{view.task}</p>
-      <Screen view={view} />
+  const highlight = cn(
+    "rounded-md p-1 text-sm transition-shadow duration-500",
+    // Inset, as the Widget's scrolling body would clip one outside.
+    highlighted && "ring-2 ring-primary ring-inset"
+  )
+  const details = (
+    <>
       {running ? <Progress view={view} /> : <Outcome view={view} />}
       {running && <Controls view={view} stop={shown?.stop} />}
+    </>
+  )
+
+  if (expanded) {
+    return (
+      <div
+        className={cn("flex flex-col gap-4 lg:h-full lg:flex-row", highlight)}
+      >
+        {/* Sized by its box, so the whole screen fits its width and height. */}
+        <div className="flex items-start justify-center lg:[container-type:size] lg:min-h-0 lg:flex-1">
+          <Screen
+            view={view}
+            className="lg:w-[min(100cqw,calc(100cqh*16/10))]"
+          />
+        </div>
+        <div className="flex flex-col gap-3 lg:w-80 lg:shrink-0 lg:overflow-y-auto">
+          <p className="text-base font-medium">{view.task}</p>
+          {details}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className={cn("flex flex-col gap-2", highlight)}>
+      <p className="line-clamp-2 font-medium">{view.task}</p>
+      <Screen view={view} />
+      {details}
     </div>
   )
 }
@@ -72,10 +100,15 @@ function useHighlight(justEnded: boolean, endedAt: Date | null | undefined) {
  * The live view while running; once ended the remote browser is gone, so
  * the last screenshot. The Owner watches but can't click into it.
  */
-function Screen({ view }: { view: BrowseView }) {
+function Screen({ view, className }: { view: BrowseView; className?: string }) {
   const live = view.status === "running" ? view.liveViewUrl : null
   return (
-    <div className="relative aspect-[16/10] w-full overflow-hidden rounded-md border bg-muted">
+    <div
+      className={cn(
+        "relative aspect-[16/10] w-full shrink-0 overflow-hidden rounded-md border bg-muted",
+        className
+      )}
+    >
       {live ? (
         <iframe
           src={live}
