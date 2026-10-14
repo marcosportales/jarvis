@@ -71,6 +71,7 @@ export function Jarvis({ saved }: { saved?: SavedSession }) {
 function JarvisSession({ saved }: { saved?: SavedSession }) {
   const {
     session,
+    pushToTalk,
     state,
     transcript,
     hint,
@@ -114,14 +115,14 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       return true
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (claimsSpace(event) && !event.repeat) session.pressPushToTalk()
+      if (claimsSpace(event) && !event.repeat) pushToTalk.press("space")
     }
     function onKeyUp(event: KeyboardEvent) {
-      if (claimsSpace(event)) void session.releasePushToTalk()
+      if (claimsSpace(event)) pushToTalk.release("space")
     }
     // A keyup never arrives if the window loses focus mid-hold.
     function onBlur() {
-      void session.releasePushToTalk()
+      pushToTalk.windowBlurred()
     }
     window.addEventListener("keydown", onKeyDown)
     window.addEventListener("keyup", onKeyUp)
@@ -131,7 +132,7 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       window.removeEventListener("keyup", onKeyUp)
       window.removeEventListener("blur", onBlur)
     }
-  }, [session])
+  }, [pushToTalk])
 
   const busy = state === "listening" || state === "thinking"
 
@@ -148,10 +149,10 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
           onPointerDown={(event) => {
             if (event.button !== 0) return
             event.currentTarget.setPointerCapture(event.pointerId)
-            session.pressPushToTalk()
+            pushToTalk.press("orb")
           }}
-          onPointerUp={() => void session.releasePushToTalk()}
-          onPointerCancel={() => void session.releasePushToTalk()}
+          onPointerUp={() => pushToTalk.release("orb")}
+          onPointerCancel={() => pushToTalk.release("orb")}
           onContextMenu={(event) => event.preventDefault()}
         >
           <Persona className="size-48" state={state} variant="obsidian" />

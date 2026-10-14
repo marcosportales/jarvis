@@ -137,6 +137,9 @@ export type JarvisAdapters = {
   browse: BrowseSource
 }
 
+/** One live Session on the page: its Jarvis State, Transcript and Turns. */
+export type JarvisSession = ReturnType<typeof createJarvisSession>
+
 /** A Session saved earlier, to resume where it was left. */
 export type SavedSession = { sessionId: string; turns: SavedTurn[] }
 
