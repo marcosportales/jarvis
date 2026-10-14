@@ -2,6 +2,8 @@ import "server-only"
 
 import { createOpenAI } from "@ai-sdk/openai"
 
+import { withoutReasoning } from "./reasoning"
+
 /**
  * Every Nan model choice in one place so they can be swapped. The Whisper and
  * Kokoro IDs are best guesses until confirmed against Nan's model list
@@ -18,4 +20,8 @@ export const nan = createOpenAI({
   name: "nan",
   baseURL: "https://api.nan.builders/v1",
   apiKey: process.env.NAN_API_KEY,
+  // `NAN_CHAT_REASONING=on` lets the chat model reason again.
+  ...(process.env.NAN_CHAT_REASONING === "on"
+    ? {}
+    : { fetch: withoutReasoning(fetch) }),
 })
