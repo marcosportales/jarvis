@@ -20,7 +20,7 @@ export const SPOTS = [
 /** One of six named places in the side margins; there is no centre Spot. */
 export type Spot = (typeof SPOTS)[number]
 
-/** A Widget's own options, like the Weather Widget's place. */
+/** A Widget's own Widget Settings, like the Weather Widget's place. */
 export type WidgetSettings = Record<string, unknown>
 
 /** What the Board needs to know about a registry entry. */

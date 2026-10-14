@@ -147,13 +147,20 @@ export function createWeather({ fetch, env }: WeatherDeps): WeatherService {
     if (!parsed.success) throw new WeatherServiceError("Unexpected forecast")
     const { current, daily } = parsed.data
 
-    const days = daily.time.map((date, i) => ({
-      date,
-      high: daily.temperature_2m_max[i] ?? NaN,
-      low: daily.temperature_2m_min[i] ?? NaN,
-      condition: weatherCondition(daily.weather_code[i] ?? -1),
-      rainChance: daily.precipitation_probability_max[i] ?? 0,
-    }))
+    const days = daily.time.map((date, i) => {
+      const high = daily.temperature_2m_max[i]
+      const low = daily.temperature_2m_min[i]
+      if (high == null || low == null) {
+        throw new WeatherServiceError("Forecast day has no range")
+      }
+      return {
+        date,
+        high,
+        low,
+        condition: weatherCondition(daily.weather_code[i] ?? -1),
+        rainChance: daily.precipitation_probability_max[i] ?? 0,
+      }
+    })
     const today = days[0]
     if (!today) throw new WeatherServiceError("Forecast has no days")
 

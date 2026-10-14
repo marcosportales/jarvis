@@ -3,6 +3,9 @@ import type { Coordinates } from "./weather"
 /** A fix this old is still good enough for the weather. */
 const MAX_AGE_MS = 15 * 60 * 1000
 
+/** An unanswered prompt counts as denied, so the Widget isn't stuck loading. */
+const ANSWER_TIMEOUT_MS = 15 * 1000
+
 let ownerCoords: Promise<Coordinates | undefined> | undefined
 
 /**
@@ -12,6 +15,7 @@ let ownerCoords: Promise<Coordinates | undefined> | undefined
 export function locateOwner() {
   ownerCoords ??= new Promise((resolve) => {
     if (!("geolocation" in navigator)) return resolve(undefined)
+    setTimeout(() => resolve(undefined), ANSWER_TIMEOUT_MS)
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         resolve({ latitude: coords.latitude, longitude: coords.longitude }),

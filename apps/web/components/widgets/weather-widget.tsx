@@ -117,12 +117,14 @@ export function WeatherWidget({ settings, updateSettings }: WidgetProps) {
     )
   }
 
-  const { place: shown, current, today } = result.weather
+  const { place: resolved, current, today } = result.weather
   const Icon = ICONS[current.condition.icon]
   return (
     <div className="flex flex-col gap-1">
       <p className="truncate font-medium">
-        {shown.country ? `${shown.name}, ${shown.country}` : shown.name}
+        {resolved.country
+          ? `${resolved.name}, ${resolved.country}`
+          : resolved.name}
       </p>
       <div className="flex items-center gap-3">
         <Icon className="size-8 shrink-0" aria-hidden />

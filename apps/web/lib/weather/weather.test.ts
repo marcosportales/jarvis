@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { weatherCondition } from "./conditions"
-import { NO_GEOCODING_RESULTS, fakeFetch } from "./fixtures"
+import { FORECAST, NO_GEOCODING_RESULTS, fakeFetch } from "./fixtures"
 import { createWeather } from "./weather"
 
 const forecastRequests = (requests: URL[]) =>
@@ -170,6 +170,17 @@ describe("weather", () => {
     ["the forecast errors", { forecast: { status: 500, body: {} } }],
     ["the forecast is unreachable", { forecast: { error: new TypeError() } }],
     ["the forecast is malformed", { forecast: { body: { current: {} } } }],
+    [
+      "a day has no high",
+      {
+        forecast: {
+          body: {
+            ...FORECAST,
+            daily: { ...FORECAST.daily, temperature_2m_max: [26.8] },
+          },
+        },
+      },
+    ],
     ["geocoding errors", { geocoding: { status: 502, body: {} } }],
     ["geocoding is unreachable", { geocoding: { error: new TypeError() } }],
   ])("says the service failed when %s", async (_, routes) => {

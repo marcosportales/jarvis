@@ -45,7 +45,7 @@ export default function RootLayout({
             <AppSidebar />
             <SidebarInset>
               {/* Zero-height sticky strip: the trigger stays in view on scroll without pushing the page down. */}
-              <div className="sticky top-0 z-10 h-0">
+              <div className="sticky top-0 z-30 h-0">
                 <SidebarTrigger
                   aria-label="Abrir o cerrar el menú"
                   title="Menú (Ctrl+B o ⌘+B)"
