@@ -6,11 +6,15 @@ See `.scratch/memory/spec.md` → user stories 3–7.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "Prefiero que me hables de tú" in passing gets a brief acknowledgement and a marker
-- [ ] "Mañana tengo dentista a las 10" is not Remembered
-- [ ] "Mi PIN es 1234" is not Remembered, and Jarvis says so
-- [ ] Asking about emails or weather never produces a Memory
-- [ ] Checked by hand against the real model (judgment isn't unit-tested)
-- [ ] Lint, typecheck and tests pass
+- [x] "Prefiero que me hables de tú" in passing gets a brief acknowledgement and a marker
+- [x] "Mañana tengo dentista a las 10" is not Remembered
+- [x] "Mi PIN es 1234" is not Remembered, and Jarvis says so
+- [x] Asking about emails or weather never produces a Memory
+- [x] Checked by hand against the real model (judgment isn't unit-tested)
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+Checked by hand against the real model: "prefiero que me hables de tú" in passing → "Lo tendré en cuenta" + marker; dentist and bank meeting not Remembered; "Mi PIN es 1234" → "Por seguridad, los PIN no los guardo"; weather and email questions produced no Memory. Added a rule against promising to keep ephemeral facts in mind or offering reminders, after the model offered "¿Quieres que te lo recuerde?".

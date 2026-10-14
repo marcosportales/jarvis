@@ -1,6 +1,6 @@
 # Spec: Memory — Jarvis remembers what matters about the Owner
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

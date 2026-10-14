@@ -11,13 +11,17 @@ See `.scratch/memory/spec.md`.
 
 **Blocked by:** Sessions 02 (`.scratch/sessions/issues/02-sessions-are-saved.md`)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "Recuerda que…" shows "Recordado: …" and the fact is used in a new Session
-- [ ] A changed fact replaces the old Memory
-- [ ] The marker still shows after resuming the Session
-- [ ] Deleting the source Session keeps the Memory
-- [ ] Tool tests: insert, replace by topic key, event recorded; core notice order and budget cut
-- [ ] Sessions store test: Memory events come back with the Transcript
-- [ ] Session test: Memory events land on the Reply's entry and aren't sent back as lines
-- [ ] Lint, typecheck and tests pass
+- [x] "Recuerda que…" shows "Recordado: …" and the fact is used in a new Session
+- [x] A changed fact replaces the old Memory
+- [x] The marker still shows after resuming the Session
+- [x] Deleting the source Session keeps the Memory
+- [x] Tool tests: insert, replace by topic key, event recorded; core notice order and budget cut
+- [x] Sessions store test: Memory events come back with the Transcript
+- [x] Session test: Memory events land on the Reply's entry and aren't sent back as lines
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+Checked by hand against the real model (throwaway database): "Recuerda que mi hermana se llama Lucía" → "Recordado: Su hermana"; a new Session answered "Lucía, señor."; Acme → Globex replaced the single `trabajo` Memory; the marker renders on the resumed Session page.

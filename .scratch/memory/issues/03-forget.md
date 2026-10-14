@@ -6,10 +6,14 @@ See `.scratch/memory/spec.md` → "Forgetting".
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "Olvida…" deletes the Memory and shows "Olvidado: …"
-- [ ] Forgetting something never said gets a "no lo tenía guardado" style Reply and no marker
-- [ ] A misheard Memory can be corrected by voice
-- [ ] Tool tests: forget removes and records an event; an unknown key gives no-match and no event
-- [ ] Lint, typecheck and tests pass
+- [x] "Olvida…" deletes the Memory and shows "Olvidado: …"
+- [x] Forgetting something never said gets a "no lo tenía guardado" style Reply and no marker
+- [x] A misheard Memory can be corrected by voice
+- [x] Tool tests: forget removes and records an event; an unknown key gives no-match and no event
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+Checked by hand: "Olvida lo de mi trabajo" → "Hecho, ya lo he olvidado." + "Olvidado: Su trabajo"; "Olvida lo de mi coche" → "No tenía nada guardado sobre tu coche…", no marker; "No, se llama Lucas no, se llama Toby" replaced the `perro` Memory in place.
