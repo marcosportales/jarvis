@@ -63,3 +63,30 @@ export const memories = sqliteTable("memories", {
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 })
+
+/**
+ * The current Browse Task, if any: at most one row, replaced on each start
+ * and kept after it ends until the next. It belongs to no Session.
+ */
+export const browseTask = sqliteTable("browse_task", {
+  /** Composio's task id. */
+  id: text("id").primaryKey(),
+  /** Composio's remote browser session id, for the live view. */
+  browserSessionId: text("browser_session_id").notNull(),
+  /** What was asked, as the model wrote it, without the read-only wrapper. */
+  task: text("task").notNull(),
+  startUrl: text("start_url"),
+  status: text("status", {
+    enum: ["running", "finished", "failed", "stopped", "timed-out"],
+  }).notNull(),
+  currentGoal: text("current_goal"),
+  currentUrl: text("current_url"),
+  liveViewUrl: text("live_view_url"),
+  screenshotUrl: text("screenshot_url"),
+  lastStepSeen: integer("last_step_seen").notNull().default(0),
+  outcome: text("outcome"),
+  success: integer("success", { mode: "boolean" }),
+  startedAt: integer("started_at", { mode: "timestamp_ms" }).notNull(),
+  endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+  checkedAt: integer("checked_at", { mode: "timestamp_ms" }).notNull(),
+})

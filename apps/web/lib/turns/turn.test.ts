@@ -3,6 +3,8 @@ import { MockLanguageModelV4 } from "ai/test"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { z } from "zod"
 
+import { createBrowse, type Browse } from "../browse/browse"
+import { fakeBrowserPort, watch } from "../browse/fixtures"
 import { openDatabase } from "../db"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
@@ -96,12 +98,16 @@ function setup(
     connector?: ReturnType<typeof fakeConnector>
     plugins?: Pick<Plugins, "toolsForTurn">
     search?: ReturnType<typeof fakeSearch>
+    browser?: ReturnType<typeof fakeBrowserPort>
+    browse?: Browse
   } = {}
 ) {
   const db = openDatabase(":memory:")
   const now = () => NOW
   const sessions = createSessionStore(db, { now })
   const memories = createMemoryStore(db, { now })
+  const browser = options.browser ?? fakeBrowserPort()
+  const browse = options.browse ?? createBrowse({ db, port: browser.port, now })
   let step = 0
   const model = new MockLanguageModelV4({
     doGenerate: async () => {
@@ -122,6 +128,7 @@ function setup(
       }),
     weather: createWeather({ fetch: fakeFetch().fetch, env: {} }),
     search: (options.search ?? fakeSearch()).search,
+    browse,
     now,
   })
   /** What the model was sent in its first step. */
@@ -130,7 +137,7 @@ function setup(
     if (!sent) throw new Error("the model was never called")
     return sent
   }
-  return { turns, sessions, memories, model, firstCall }
+  return { turns, sessions, memories, model, firstCall, browse, browser }
 }
 
 /** The system prompt and the conversation, as plain text per message. */
@@ -865,6 +872,184 @@ describe("Taking a Turn", () => {
         expect(pluginCalls).toEqual([])
         expect(search.calls).toHaveLength(1)
       })
+    })
+  })
+
+  describe("with Browse", () => {
+    afterEach(() => {
+      vi.restoreAllMocks()
+    })
+
+    const PRADO = {
+      task: "Mira en museodelprado.es el horario de hoy",
+      startUrl: "https://www.museodelprado.es",
+    }
+
+    it("starts a Browse Task once the model calls start_browse, and replies at once", async () => {
+      const { turns, browse, browser, model } = setup([
+        call("start_browse", PRADO),
+        answer("Me pongo con ello; puedes verlo a la izquierda."),
+      ])
+
+      const reply = await turns.take({ text: "Sí, míralo", widgets: LAYOUT })
+
+      expect(reply.text).toBe("Me pongo con ello; puedes verlo a la izquierda.")
+      expect(browser.calls.start).toHaveLength(1)
+      expect(await browse.current()).toMatchObject({
+        task: PRADO.task,
+        status: "running",
+      })
+      expect(sentInStep(model, 1)).toMatch(/Navegación iniciada/)
+    })
+
+    it("tells the model when starting stopped the Browse Task before it", async () => {
+      const { turns, browse, model } = setup([
+        call("start_browse", {
+          task: "Mira el precio de una maleta en Ryanair",
+        }),
+        answer("Paro la anterior y me pongo con esta."),
+      ])
+      await browse.start(PRADO)
+
+      await turns.take({ text: "Mejor mira lo de la maleta", widgets: LAYOUT })
+
+      expect(sentInStep(model, 1)).toContain(PRADO.task)
+      expect(sentInStep(model, 1)).toMatch(/paré/i)
+    })
+
+    it("still replies when the Browse Task can't start, telling the model", async () => {
+      const browser = fakeBrowserPort()
+      browser.failures.start = true
+      const { turns, model } = setup(
+        [call("start_browse", PRADO), answer("No he podido mirarlo.")],
+        { browser }
+      )
+
+      const reply = await turns.take({ text: "Sí", widgets: LAYOUT })
+
+      expect(reply.text).toBe("No he podido mirarlo.")
+      expect(sentInStep(model, 1)).toMatch(/No he podido empezar/)
+    })
+
+    it("stops the Browse Task when the model calls stop_browse", async () => {
+      const { turns, browse, browser, model } = setup([
+        call("stop_browse", {}),
+        answer("Hecho, la he parado."),
+      ])
+      await browse.start(PRADO)
+
+      await turns.take({ text: "Para", widgets: LAYOUT })
+
+      expect(browser.calls.stop).toEqual(["task-1"])
+      expect(await browse.current()).toMatchObject({ status: "stopped" })
+      expect(sentInStep(model, 1)).toContain(PRADO.task)
+    })
+
+    it("tells the model when there is nothing to stop", async () => {
+      const { turns, model } = setup([
+        call("stop_browse", {}),
+        answer("No hay nada que parar."),
+      ])
+
+      await turns.take({ text: "Para", widgets: LAYOUT })
+
+      expect(sentInStep(model, 1)).toMatch(/no había ninguna navegación/i)
+    })
+
+    it("tells the model what a running Browse Task is doing", async () => {
+      const browser = fakeBrowserPort([
+        watch({
+          currentGoal: "I will open the visit page.",
+          currentUrl: "https://www.museodelprado.es/visita",
+        }),
+      ])
+      const db = openDatabase(":memory:")
+      const clock = { now: new Date(NOW.getTime() - 2 * 60_000) }
+      const browse = createBrowse({
+        db,
+        port: browser.port,
+        now: () => clock.now,
+      })
+      await browse.start(PRADO)
+      clock.now = NOW
+      const { turns, firstCall } = setup(
+        [answer("Va por la página de visita.")],
+        {
+          browse,
+        }
+      )
+
+      await turns.take({ text: "¿Cómo va?", widgets: LAYOUT })
+
+      const { system } = prompt(firstCall())
+      expect(system).toContain(PRADO.task)
+      expect(system).toContain("I will open the visit page.")
+      expect(system).toContain("museodelprado.es")
+      expect(system).toMatch(/hace 2 minutos/)
+    })
+
+    it("tells the model the outcome of a Browse Task that ended", async () => {
+      const browser = fakeBrowserPort([
+        watch({
+          status: "finished",
+          output: "Abre hoy de 10:00 a 20:00.",
+          success: true,
+        }),
+      ])
+      const db = openDatabase(":memory:")
+      const clock = { now: new Date(NOW.getTime() - 60_000) }
+      const browse = createBrowse({
+        db,
+        port: browser.port,
+        now: () => clock.now,
+      })
+      await browse.start(PRADO)
+      clock.now = NOW
+      await browse.current()
+      const { turns, firstCall } = setup([answer("Abre de diez a ocho.")], {
+        browse,
+      })
+
+      await turns.take({ text: "¿Qué has encontrado?", widgets: LAYOUT })
+
+      const { system } = prompt(firstCall())
+      expect(system).toContain(PRADO.task)
+      expect(system).toContain("Abre hoy de 10:00 a 20:00.")
+      expect(system).toMatch(/terminó/i)
+    })
+
+    it("tells the model nothing about Browse when there is no Browse Task", async () => {
+      const { turns, firstCall } = setup([answer("Hola.")])
+
+      await turns.take({ text: "Hola", widgets: LAYOUT })
+
+      const { system } = prompt(firstCall())
+      expect(system).not.toMatch(/Navegación en curso/)
+      expect(system).not.toMatch(/Última navegación/)
+    })
+
+    it("still answers, with no Browse notice, when the Browse module fails", async () => {
+      const broken: Browse = {
+        start: () => Promise.reject(new Error("Browse exploded")),
+        stop: () => Promise.reject(new Error("Browse exploded")),
+        current: () => Promise.reject(new Error("Browse exploded")),
+      }
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+      const { turns, firstCall } = setup(
+        [call("stop_browse", {}), call("start_browse", PRADO), answer("Hola.")],
+        { browse: broken }
+      )
+      const baseline = setup([answer("Hola.")])
+
+      const reply = await turns.take({ text: "Hola", widgets: LAYOUT })
+      await baseline.turns.take({ text: "Hola", widgets: LAYOUT })
+
+      expect(reply.text).toBe("Hola.")
+      expect(reply.widgetChanges).toEqual([])
+      expect(prompt(firstCall()).system).toBe(
+        prompt(baseline.firstCall()).system
+      )
+      expect(errors).toHaveBeenCalled()
     })
   })
 

@@ -29,6 +29,13 @@
       "when": 1791948357845,
       "tag": "0003_drop_plugin_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791970348175,
+      "tag": "0004_browse_task",
+      "breakpoints": true
     }
   ]
 }

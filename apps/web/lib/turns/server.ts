@@ -1,5 +1,6 @@
 import "server-only"
 
+import { getBrowse } from "../browse/server"
 import { nan, nanConfig } from "../jarvis/server/nan"
 import { getMemories } from "../memory/server"
 import { getPlugins } from "../plugins/server"
@@ -17,6 +18,7 @@ export function getTurns(): Turns {
     plugins: getPlugins(),
     weather: getWeather(),
     search: getSearch(),
+    browse: getBrowse(),
     now: () => new Date(),
   })
 }

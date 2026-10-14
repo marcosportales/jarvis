@@ -1,5 +1,7 @@
 import { generateText, stepCountIs, type LanguageModel, type ToolSet } from "ai"
 
+import type { Browse } from "../browse/browse"
+import { browseNotice, createBrowseTools } from "../browse/tools"
 import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
@@ -59,6 +61,7 @@ export type TurnsDeps = {
   plugins: Pick<Plugins, "toolsForTurn">
   weather: WeatherService
   search: SearchPort
+  browse: Browse
   now: () => Date
 }
 
@@ -149,6 +152,7 @@ export function createTurns({
   plugins,
   weather,
   search,
+  browse,
   now,
 }: TurnsDeps) {
   /** A Plugin problem must never fail the Turn, so fall back to no tools. */
@@ -158,6 +162,16 @@ export function createTurns({
     } catch (error) {
       console.error("Loading Plugin tools failed", error)
       return { tools: {}, notices: [], close: async () => {} }
+    }
+  }
+
+  /** A Browse problem must never fail the Turn, so leave the notice out. */
+  async function loadBrowseNotice() {
+    try {
+      return browseNotice(await browse.current(), now())
+    } catch (error) {
+      console.error("Loading the Browse Task failed", error)
+      return null
     }
   }
 
@@ -186,6 +200,7 @@ export function createTurns({
       const widgetTools = createWidgetTools(WIDGET_CATALOG)
       const weatherTools = createWeatherTools({ weather, coords })
       const searchTools = createSearchTools({ search })
+      const browseTools = createBrowseTools({ browse })
       try {
         const generated = await generateText({
           model,
@@ -194,6 +209,7 @@ export function createTurns({
             currentDateLine(now()),
             widgetLayoutNotice(widgets),
             resultsOnScreenNotice(results),
+            await loadBrowseNotice(),
             await memoryNotice(memories),
             ...pluginTools.notices,
           ]
@@ -206,6 +222,7 @@ export function createTurns({
               widgetTools.tools,
               weatherTools,
               searchTools.tools,
+              browseTools.tools,
             ],
             plugin: pluginTools.tools,
           }),
