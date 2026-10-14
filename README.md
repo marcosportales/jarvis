@@ -28,6 +28,9 @@ Create `apps/web/.env.local` with your Nan Builders key (it is only read on the 
 NAN_API_KEY=...
 # Optional overrides; confirm the IDs with GET https://api.nan.builders/v1/models
 # NAN_CHAT_MODEL=deepseek-v4-flash
+# The chat model answers without reasoning first, which is faster and cheaper;
+# set to "on" to let it reason again.
+# NAN_CHAT_REASONING=on
 # NAN_TRANSCRIPTION_MODEL=whisper-1
 # NAN_SPEECH_MODEL=kokoro
 # NAN_VOICE=em_alex
