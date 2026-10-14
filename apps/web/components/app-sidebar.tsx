@@ -15,6 +15,7 @@ import {
   useSidebar,
 } from "@workspace/ui/components/sidebar"
 
+import { SessionsList } from "@/components/sessions-list"
 import { WidgetToggles } from "@/components/widget-toggles"
 import { isCurrentPage, PAGES } from "@/lib/navigation"
 
@@ -56,6 +57,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <WidgetToggles />
+        <SessionsList />
       </SidebarContent>
     </Sidebar>
   )

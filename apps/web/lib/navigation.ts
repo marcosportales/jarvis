@@ -12,6 +12,9 @@ export const PAGES: readonly Page[] = [
   { href: "/plugins", label: "Plugins", icon: BlocksIcon },
 ]
 
+/** Where a saved Session lives; Jarvis shows it. */
+export const sessionPath = (sessionId: string) => `/sessions/${sessionId}`
+
 // Jarvis owns home and every Session; any other page owns the paths below it.
 export function isCurrentPage(pathname: string, href: string) {
   if (href === "/") return pathname === "/" || pathname.startsWith("/sessions/")

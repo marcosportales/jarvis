@@ -25,6 +25,7 @@ import {
 import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
+import { sessionPath } from "@/lib/navigation"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 
 const STATE_LABELS: Record<JarvisState, string> = {
@@ -33,8 +34,6 @@ const STATE_LABELS: Record<JarvisState, string> = {
   thinking: "Pensando…",
   speaking: "Hablando…",
 }
-
-export const sessionPath = (sessionId: string) => `/sessions/${sessionId}`
 
 /** The Jarvis page for a saved Session, or for a new one when none is given. */
 export function Jarvis({ saved }: { saved?: SavedSession }) {

@@ -1,3 +1,4 @@
+import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
 import {
@@ -102,7 +103,10 @@ const httpBrain: Brain = {
       }
       throw error
     })
-    return (await response.json()) as Reply
+    const reply = (await response.json()) as Reply
+    // The Turn is saved: the Session is new or moved to the top of the list.
+    notifySessionsChanged()
+    return reply
   },
 }
 

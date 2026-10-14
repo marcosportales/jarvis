@@ -73,12 +73,8 @@
           "name": "plugin_tokens_plugin_id_installed_plugins_plugin_id_fk",
           "tableFrom": "plugin_tokens",
           "tableTo": "installed_plugins",
-          "columnsFrom": [
-            "plugin_id"
-          ],
-          "columnsTo": [
-            "plugin_id"
-          ],
+          "columnsFrom": ["plugin_id"],
+          "columnsTo": ["plugin_id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

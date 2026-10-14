@@ -1,4 +1,4 @@
-import { desc, eq, max } from "drizzle-orm"
+import { and, desc, eq, lt, max, or } from "drizzle-orm"
 
 import type { JarvisDatabase } from "../db"
 import { sessions, turns } from "../db/schema"
@@ -6,8 +6,26 @@ import { sessions, turns } from "../db/schema"
 /** How many of the most recent Turns Jarvis is given. */
 export const RECENT_TURNS = 20
 
+/** How many Sessions one page of the list holds. */
+export const SESSIONS_PAGE_SIZE = 20
+
 /** A saved Turn: what the Owner said and Jarvis's Reply. */
 export type SavedTurn = { owner: string; reply: string }
+
+/** A Session as the list shows it. */
+export type SessionSummary = {
+  id: string
+  /** Null until Jarvis gives it a Session Title. */
+  title: string | null
+  createdAt: Date
+  lastActivityAt: Date
+}
+
+/** One page of the list; `nextCursor` is null on the last page. */
+export type SessionPage = {
+  sessions: SessionSummary[]
+  nextCursor: string | null
+}
 
 export class UnknownSessionError extends Error {
   constructor(sessionId: string) {
@@ -25,6 +43,21 @@ export type SessionStore = {
   recentTurns(sessionId: string): Promise<SavedTurn[] | null>
   /** Every Turn of a Session, oldest first; null if it doesn't exist. */
   transcript(sessionId: string): Promise<SavedTurn[] | null>
+  /** A page of Sessions by last activity, newest first. */
+  list(cursor?: string): Promise<SessionPage>
+}
+
+// The cursor is the last listed Session's position in the order: its last
+// activity, then its id to break ties.
+function encodeCursor({ lastActivityAt, id }: SessionSummary) {
+  return `${lastActivityAt.getTime()}.${id}`
+}
+
+function decodeCursor(cursor: string) {
+  const dot = cursor.indexOf(".")
+  const ms = Number(cursor.slice(0, dot))
+  if (dot < 0 || !Number.isInteger(ms)) return null
+  return { lastActivityAt: new Date(ms), id: cursor.slice(dot + 1) }
 }
 
 export function createSessionStore(
@@ -109,6 +142,39 @@ export function createSessionStore(
     async transcript(sessionId) {
       if (!exists(sessionId)) return null
       return turnsOf(sessionId)
+    },
+
+    async list(cursor) {
+      const after = cursor ? decodeCursor(cursor) : undefined
+      if (after === null) return { sessions: [], nextCursor: null }
+      const rows = db
+        .select({
+          id: sessions.id,
+          title: sessions.title,
+          createdAt: sessions.createdAt,
+          lastActivityAt: sessions.lastActivityAt,
+        })
+        .from(sessions)
+        .where(
+          after &&
+            or(
+              lt(sessions.lastActivityAt, after.lastActivityAt),
+              and(
+                eq(sessions.lastActivityAt, after.lastActivityAt),
+                lt(sessions.id, after.id)
+              )
+            )
+        )
+        .orderBy(desc(sessions.lastActivityAt), desc(sessions.id))
+        // One extra row tells whether there is a next page.
+        .limit(SESSIONS_PAGE_SIZE + 1)
+        .all()
+      const page = rows.slice(0, SESSIONS_PAGE_SIZE)
+      return {
+        sessions: page,
+        nextCursor:
+          rows.length > SESSIONS_PAGE_SIZE ? encodeCursor(page.at(-1)!) : null,
+      }
     },
   }
 }

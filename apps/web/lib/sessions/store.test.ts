@@ -98,4 +98,77 @@ describe("Sessions store", () => {
       UnknownSessionError
     )
   })
+
+  it("lists Sessions by last activity, newest first", async () => {
+    const { store, later } = setup()
+    const trip = await store.start(turn(1))
+    later()
+    const work = await store.start(turn(1))
+    later()
+    const recipes = await store.start(turn(1))
+    later()
+    await store.addTurn(trip, turn(2))
+
+    const page = await store.list()
+
+    expect(page.sessions.map(({ id }) => id)).toEqual([trip, recipes, work])
+    expect(page.sessions[0]).toEqual({
+      id: trip,
+      title: null,
+      createdAt: NOW,
+      lastActivityAt: new Date(NOW.getTime() + 3 * MINUTE),
+    })
+    expect(page.nextCursor).toBeNull()
+  })
+
+  it("pages the list 20 at a time with a cursor", async () => {
+    const { store, later } = setup()
+    const ids: string[] = []
+    for (let n = 0; n < 45; n++) {
+      ids.unshift(await store.start(turn(n)))
+      later()
+    }
+
+    const first = await store.list()
+    const second = await store.list(first.nextCursor!)
+    const third = await store.list(second.nextCursor!)
+
+    expect(first.sessions.map(({ id }) => id)).toEqual(ids.slice(0, 20))
+    expect(second.sessions.map(({ id }) => id)).toEqual(ids.slice(20, 40))
+    expect(third.sessions.map(({ id }) => id)).toEqual(ids.slice(40))
+    expect(third.nextCursor).toBeNull()
+  })
+
+  it("pages Sessions with the same last activity without skipping or repeating any", async () => {
+    const { store } = setup()
+    const ids = new Set<string>()
+    for (let n = 0; n < 25; n++) ids.add(await store.start(turn(n)))
+
+    const first = await store.list()
+    const second = await store.list(first.nextCursor!)
+    const listed = [...first.sessions, ...second.sessions].map(({ id }) => id)
+
+    expect(listed).toHaveLength(25)
+    expect(new Set(listed)).toEqual(ids)
+    expect(second.nextCursor).toBeNull()
+  })
+
+  it("ends cleanly when the last page is exactly full", async () => {
+    const { store, later } = setup()
+    for (let n = 0; n < 20; n++) {
+      await store.start(turn(n))
+      later()
+    }
+
+    const page = await store.list()
+
+    expect(page.sessions).toHaveLength(20)
+    expect(page.nextCursor).toBeNull()
+  })
+
+  it("lists nothing when there are no Sessions", async () => {
+    const { store } = setup()
+
+    expect(await store.list()).toEqual({ sessions: [], nextCursor: null })
+  })
 })

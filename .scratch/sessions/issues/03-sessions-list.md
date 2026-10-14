@@ -8,12 +8,12 @@ See `.scratch/sessions/spec.md` → "Sidebar".
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The list shows Sessions newest-activity first, with a date fallback for untitled ones
-- [ ] Scrolling to the end loads the next page; the last page stops cleanly
-- [ ] The current Session is highlighted; clicking another opens it
-- [ ] "Nueva sesión" starts an empty Session
-- [ ] A Session appears and moves to the top without a reload
-- [ ] Store tests: paging order, cursor, ties, last page
-- [ ] Lint, typecheck and tests pass
+- [x] The list shows Sessions newest-activity first, with a date fallback for untitled ones
+- [x] Scrolling to the end loads the next page; the last page stops cleanly
+- [x] The current Session is highlighted; clicking another opens it
+- [x] "Nueva sesión" starts an empty Session
+- [x] A Session appears and moves to the top without a reload
+- [x] Store tests: paging order, cursor, ties, last page
+- [x] Lint, typecheck and tests pass
