@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm"
+import { desc, eq, inArray, sql } from "drizzle-orm"
 
 import type { JarvisDatabase } from "../db"
 import { memories } from "../db/schema"
@@ -29,8 +29,26 @@ export type MemoryStore = {
   forget(topicKey: string): Promise<Memory | null>
   /** Points Memories at the Session they were learned in. */
   setSource(topicKeys: string[], sessionId: string): Promise<void>
+  /** The Memories best matching the words of `query`, best first. */
+  search(query: string, limit: number): Promise<Memory[]>
   /** Every Memory, newest-updated first. */
   all(): Promise<Memory[]>
+}
+
+/**
+ * An FTS5 query matching any of the words, each by its start with a common
+ * Spanish ending trimmed, so "hermanas" finds "hermana". Accents are ignored
+ * by the index. Null when there are no words worth searching.
+ */
+function matchQuery(query: string) {
+  const words = (query.match(/[\p{L}\p{N}]+/gu) ?? [])
+    .filter((word) => word.length >= 3)
+    .map((word) =>
+      word.length > 4 ? word.replace(/(as|os|es|a|o|e|s)$/iu, "") : word
+    )
+  if (words.length === 0) return null
+  // Quoted, so FTS5 operators in what the Owner said are just words.
+  return words.map((word) => `"${word}"*`).join(" OR ")
 }
 
 export function createMemoryStore(
@@ -81,6 +99,28 @@ export function createMemoryStore(
         .set({ sourceSessionId: sessionId })
         .where(inArray(memories.topicKey, topicKeys))
         .run()
+    },
+
+    async search(query, limit) {
+      const match = matchQuery(query)
+      if (!match) return []
+      const ranked = db
+        .all<{ id: number }>(
+          sql`SELECT rowid AS id FROM memories_fts WHERE memories_fts MATCH ${match} ORDER BY rank LIMIT ${limit}`
+        )
+        .map(({ id }) => id)
+      if (ranked.length === 0) return []
+      const found = db
+        .select({ id: memories.id, ...columns })
+        .from(memories)
+        .where(inArray(memories.id, ranked))
+        .all()
+      return ranked.flatMap((rank) => {
+        const memory = found.find(({ id }) => id === rank)
+        if (!memory) return []
+        const { id: _id, ...rest } = memory
+        return [rest]
+      })
     },
 
     async all() {

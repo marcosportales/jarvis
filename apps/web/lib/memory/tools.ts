@@ -7,6 +7,9 @@ import type { Memory, MemoryStore } from "./store"
 /** How much of the system prompt the core Memories may take. */
 export const CORE_BUDGET_TOKENS = 1500
 
+/** How many Memories one recall gives back. */
+export const RECALL_LIMIT = 5
+
 /** A rough token estimate, good enough to keep the prompt bounded. */
 const CHARS_PER_TOKEN = 4
 
@@ -91,6 +94,30 @@ export function createMemoryTools(
           return `Memoria «${forgotten.title}» borrada.`
         },
       }),
+      recall: tool({
+        description:
+          "Busca entre todas tus memorias sobre el dueño, también las que no aparecen en tus instrucciones. Devuelve las que coinciden, con su clave.",
+        inputSchema: z.object({
+          query: z
+            .string()
+            .describe(
+              "Palabras de lo que buscas, p. ej. «hermana» o «trabajo empresa»."
+            ),
+        }),
+        execute: async ({ query }) => {
+          let found
+          try {
+            found = await memories.search(query, RECALL_LIMIT)
+          } catch (error) {
+            console.error("Recalling failed", error)
+            return "No pude buscar en las memorias."
+          }
+          if (found.length === 0) {
+            return `No hay ninguna memoria que coincida con «${query}».`
+          }
+          return `Memorias encontradas:\n${found.map(memoryLine).join("\n")}`
+        },
+      }),
     },
     events: () => [...events],
     async adoptSession(id) {
@@ -119,13 +146,17 @@ export async function memoryNotice(memories: MemoryStore) {
   const heading =
     "Memorias del dueño (entre corchetes, la clave de cada una; úsala para sustituirla):"
   const budget = CORE_BUDGET_TOKENS * CHARS_PER_TOKEN
+  const more =
+    "Tienes más memorias guardadas que no caben aquí; búscalas con recall cuando te pregunten por algo que no está en esta lista."
   const lines: string[] = []
-  let used = heading.length
+  // The note about more Memories is budgeted up front, in case it's needed.
+  let used = heading.length + more.length + 2
   for (const memory of all) {
     const line = memoryLine(memory)
     used += line.length + 1
     if (used > budget) break
     lines.push(line)
   }
-  return [heading, ...lines].join("\n")
+  const cut = lines.length < all.length
+  return [heading, ...lines, ...(cut ? [more] : [])].join("\n")
 }

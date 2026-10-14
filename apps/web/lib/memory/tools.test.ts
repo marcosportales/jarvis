@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest"
 import { openDatabase } from "../db"
 import { createSessionStore } from "../sessions/store"
 import { createMemoryStore } from "./store"
-import { CORE_BUDGET_TOKENS, createMemoryTools, memoryNotice } from "./tools"
+import {
+  CORE_BUDGET_TOKENS,
+  createMemoryTools,
+  memoryNotice,
+  RECALL_LIMIT,
+} from "./tools"
 
 const NOW = new Date("2026-10-14T10:00:00Z")
 
@@ -161,6 +166,103 @@ describe("forget", () => {
   })
 })
 
+describe("recall", () => {
+  async function remembered(
+    memories: ReturnType<typeof setup>["memories"],
+    list: { topicKey: string; title: string; content: string }[]
+  ) {
+    const turn = createMemoryTools(memories)
+    for (const memory of list) await call(turn, "remember", memory)
+  }
+
+  it("finds Memories by their words and gives their topic keys", async () => {
+    const { memories } = setup()
+    await remembered(memories, [
+      sister,
+      {
+        topicKey: "trabajo",
+        title: "Su trabajo",
+        content: "El dueño trabaja en Globex como ingeniero.",
+      },
+    ])
+    const turn = createMemoryTools(memories)
+
+    const result = await call(turn, "recall", { query: "¿dónde trabaja?" })
+
+    expect(result).toContain(
+      "[trabajo] Su trabajo: El dueño trabaja en Globex como ingeniero."
+    )
+    expect(result).not.toContain("[hermana]")
+    expect(turn.events()).toEqual([])
+  })
+
+  it("finds accented words whether or not the query has the accents", async () => {
+    const { memories } = setup()
+    await remembered(memories, [
+      sister,
+      {
+        topicKey: "cafe",
+        title: "Su cafe",
+        content: "El dueño toma el cafe solo.",
+      },
+    ])
+    const turn = createMemoryTools(memories)
+
+    expect(await call(turn, "recall", { query: "Lucia" })).toContain(
+      "[hermana]"
+    )
+    expect(await call(turn, "recall", { query: "café" })).toContain("[cafe]")
+  })
+
+  it("finds a word by its start, so plurals and genders still match", async () => {
+    const { memories } = setup()
+    await remembered(memories, [sister])
+
+    const result = await call(createMemoryTools(memories), "recall", {
+      query: "hermanas",
+    })
+
+    expect(result).toContain("[hermana]")
+  })
+
+  it("puts the best match first and gives at most the limit", async () => {
+    const { memories } = setup()
+    await remembered(memories, [
+      ...Array.from({ length: RECALL_LIMIT + 3 }, (_, n) => ({
+        topicKey: `perro-${n}`,
+        title: `Dato ${n}`,
+        content: `El dueño tuvo un perro de niño, el número ${n}.`,
+      })),
+      {
+        topicKey: "mascota",
+        title: "Su perro",
+        content: "El perro del dueño se llama Toby; es un perro muy listo.",
+      },
+    ])
+
+    const result = String(
+      await call(createMemoryTools(memories), "recall", { query: "perro" })
+    )
+
+    const lines = result.split("\n").filter((line) => line.startsWith("- ["))
+    expect(lines).toHaveLength(RECALL_LIMIT)
+    expect(lines[0]).toContain("[mascota]")
+  })
+
+  it("says so when nothing matches, also for a query with only symbols", async () => {
+    const { memories } = setup()
+    await remembered(memories, [sister])
+    const turn = createMemoryTools(memories)
+
+    expect(await call(turn, "recall", { query: "bicicleta" })).toMatch(
+      /ninguna memoria/i
+    )
+    expect(await call(turn, "recall", { query: '"*?' })).toMatch(
+      /ninguna memoria/i
+    )
+  })
+})
+
 describe("Core Memories notice", () => {
   it("says when Jarvis has no Memories yet", async () => {
     const { memories } = setup()
@@ -216,5 +318,13 @@ describe("Core Memories notice", () => {
     // Estimated at four characters a token.
     expect(notice.length / 4).toBeLessThanOrEqual(CORE_BUDGET_TOKENS + 100)
     expect(notice.length / 4).toBeGreaterThan(CORE_BUDGET_TOKENS - 200)
+    expect(notice).toContain("recall")
+  })
+
+  it("mentions recall only when some Memories didn't fit", async () => {
+    const { memories } = setup()
+    await call(createMemoryTools(memories), "remember", sister)
+
+    expect(await memoryNotice(memories)).not.toContain("recall")
   })
 })
