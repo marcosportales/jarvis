@@ -117,10 +117,10 @@ hl.bind("SUPER + J", hl.dsp.global("Jarvis:push-to-talk"))
 
 While the Jarvis App runs, it also shows the Floating Orb: the Orb alone in a small transparent window, showing the Jarvis State. Hold it with the mouse to speak, as with the Orb on the Jarvis page; a short click brings up the Jarvis window. It never takes focus from your app.
 
-Electron gives all of the Jarvis App's windows the same class, `Jarvis`, so the Floating Orb is told apart by its fixed title, `Jarvis Floating Orb`. These window rules float it, pin it above other windows on every workspace, keep focus out of it, and place it at the bottom right. Put them after your other window rules, so they win over any catch-all rule that sizes, centres or dims floating windows. In `hyprland.conf`:
+Electron gives all of the Jarvis App's windows the same class, `Jarvis`, so the Floating Orb is told apart by its fixed title, `Jarvis Floating Orb`. These window rules float it, pin it above other windows on every workspace, keep focus out of it, and place it at the bottom right. They also turn off the border, shadow, rounding, blur and dimming Hyprland gives every window, so only the round Orb shows, with no window around it. Put them after your other window rules, so they win over any catch-all rule that sizes, centres or dims floating windows. In `hyprland.conf`:
 
 ```
-windowrule = match:class ^Jarvis$, match:title ^Jarvis Floating Orb$, float on, pin on, no_focus on, size 96 96, move (monitor_w-120) (monitor_h-120), border_size 0, no_shadow on, no_blur on, opacity 1 override
+windowrule = match:class ^Jarvis$, match:title ^Jarvis Floating Orb$, float on, pin on, no_focus on, size 96 96, move (monitor_w-120) (monitor_h-120), border_size 0, no_shadow on, rounding 0, no_blur on, no_dim on, opacity 1 override
 ```
 
 or, with a Lua config (`hyprland.lua`):
@@ -137,7 +137,9 @@ hl.window_rule({
     center      = false,
     border_size = 0,
     no_shadow   = true,
+    rounding    = 0,
     no_blur     = true,
+    no_dim      = true,
     opacity     = "1 override",
 })
 ```
