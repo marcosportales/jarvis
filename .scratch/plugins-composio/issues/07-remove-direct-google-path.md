@@ -11,10 +11,10 @@ Add a short note to the Gmail Plugins spec saying its Connector design is replac
 
 **Blocked by:** 04, 05, 06
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (implemented; only the manual check against real Gmail remains, after ticket 02)
 
-- [ ] No code reads Google OAuth credentials or stores tokens
-- [ ] Migration drops the Installed Plugins and tokens tables, and runs cleanly on an existing database
-- [ ] Gmail Plugins spec points to the Composio spec
+- [x] No code reads Google OAuth credentials or stores tokens
+- [x] Migration drops the Installed Plugins and tokens tables, and runs cleanly on an existing database
+- [x] Gmail Plugins spec points to the Composio spec
 - [ ] Manual: `/plugins`, Install, a Gmail question and Uninstall still work end to end
-- [ ] Lint, typecheck and tests pass
+- [x] Lint, typecheck and tests pass

@@ -44,5 +44,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local Jarvis data (SQLite: Installed Plugins and OAuth tokens)
+# local Jarvis data (SQLite: Sessions and Memories)
 .data/
