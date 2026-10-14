@@ -22,10 +22,7 @@ export type MarketplaceItem = {
   state: PluginState
 }
 
-/**
- * An Install waiting for the Owner to come back from the consent screen. The
- * caller keeps it somewhere only this browser can present (an httpOnly cookie).
- */
+/** An Install waiting for the Owner to come back from the consent screen. */
 export type PendingInstall = {
   pluginId: string
   state: string
@@ -33,8 +30,41 @@ export type PendingInstall = {
   connectedAccountId: string
 }
 
+/** How long the Owner has to finish the consent screen. */
+const PENDING_INSTALL_TTL_MS = 10 * 60 * 1000
+
+/**
+ * Pending Installs, keyed by their OAuth state. Kept here rather than in the
+ * browser, so the consent screen may finish in another browser than the one
+ * that started it (the Jarvis App sends it to the Owner's own). In memory
+ * only: a restart mid-sign-in means signing in again.
+ */
+export function createPendingInstalls({ now }: { now: () => Date }) {
+  const pending = new Map<string, { install: PendingInstall; at: number }>()
+  const expired = (at: number) => now().getTime() - at >= PENDING_INSTALL_TTL_MS
+
+  return {
+    add(install: PendingInstall) {
+      // Abandoned sign-ins are dropped here, so they don't pile up.
+      for (const [state, entry] of pending) {
+        if (expired(entry.at)) pending.delete(state)
+      }
+      pending.set(install.state, { install, at: now().getTime() })
+    },
+
+    /** The pending Install for `state`, which can be taken only once. */
+    take(state: string): PendingInstall | undefined {
+      const entry = pending.get(state)
+      pending.delete(state)
+      return entry && !expired(entry.at) ? entry.install : undefined
+    },
+  }
+}
+
+export type PendingInstalls = ReturnType<typeof createPendingInstalls>
+
 export type BeginInstallResult =
-  | { ok: true; authorizationUrl: string; pending: PendingInstall }
+  | { ok: true; authorizationUrl: string }
   | { ok: false; reason: "unknown-plugin" | "not-configured" | "failed" }
 
 /** Query params Composio sends back to the callback. */
@@ -94,9 +124,15 @@ export type PluginsDeps = {
   /** `null` when the Composio API key is missing: every Plugin is not configured. */
   composio: ComposioPort | null
   connector: Connector
+  /** Shared by every instance, so the callback finds what Install recorded. */
+  pendingInstalls: PendingInstalls
 }
 
-export function createPlugins({ composio, connector }: PluginsDeps) {
+export function createPlugins({
+  composio,
+  connector,
+  pendingInstalls,
+}: PluginsDeps) {
   const findEntry = (pluginId: string) =>
     marketplace.find((entry) => entry.id === pluginId)
 
@@ -156,11 +192,8 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
           toolkit: entry.toolkit,
           callbackUrl: callbackWithState.toString(),
         })
-        return {
-          ok: true,
-          authorizationUrl: redirectUrl,
-          pending: { pluginId, state, connectedAccountId },
-        }
+        pendingInstalls.add({ pluginId, state, connectedAccountId })
+        return { ok: true, authorizationUrl: redirectUrl }
       } catch (error) {
         console.error(`Starting Install of ${pluginId} failed`, error)
         return { ok: false, reason: "failed" }
@@ -171,22 +204,17 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
      * Finishes Install when Composio redirects back. Install and connect are
      * one action: unless the account is ACTIVE, nothing is Installed, and the
      * attempt's account is deleted. A success deletes the toolkit's accounts
-     * that don't work, so one working connection remains.
+     * that don't work, so one working connection remains. The callback's
+     * state finds the pending Install and uses it up; one unknown, already
+     * used or older than 10 minutes is an invalid state.
      */
-    async completeInstall({
-      pending,
-      callback,
-    }: {
-      pending: PendingInstall | undefined
+    async completeInstall(
       callback: InstallCallback
-    }): Promise<CompleteInstallResult> {
-      if (!pending || !callback.state || callback.state !== pending.state) {
-        return {
-          ok: false,
-          pluginId: pending?.pluginId,
-          reason: "invalid-state",
-        }
-      }
+    ): Promise<CompleteInstallResult> {
+      const pending = callback.state
+        ? pendingInstalls.take(callback.state)
+        : undefined
+      if (!pending) return { ok: false, reason: "invalid-state" }
       const { pluginId, connectedAccountId } = pending
       const entry = findEntry(pluginId)
       if (!entry || !composio) return { ok: false, pluginId, reason: "failed" }

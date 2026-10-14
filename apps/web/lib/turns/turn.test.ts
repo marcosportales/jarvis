@@ -10,7 +10,11 @@ import type { Health, HealthReport } from "../health/health"
 import type { Machine, MachineReading } from "../machine/machine"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
-import { createPlugins, type Plugins } from "../plugins/plugins"
+import {
+  createPendingInstalls,
+  createPlugins,
+  type Plugins,
+} from "../plugins/plugins"
 import { fakeSearch, NEWS } from "../search/fixtures"
 import {
   createSessionStore,
@@ -176,6 +180,7 @@ function setup(
       createPlugins({
         composio: options.composio?.composio ?? null,
         connector: (options.connector ?? fakeConnector()).connector,
+        pendingInstalls: createPendingInstalls({ now }),
       }),
     weather: createWeather({
       fetch: fakeFetch({ forecast: options.forecast }).fetch,

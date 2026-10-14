@@ -35,9 +35,12 @@ export function fakeComposio(
   }
   for (const account of options.accounts ?? []) add(account)
   const callbackUrls: string[] = []
+  /** Each consent screen opened, as the provider would see it. */
+  const consents: { connectedAccountId: string; state: string }[] = []
   const sessions: Record<string, string[]>[] = []
+  let unreachable = options.unreachable ?? false
   const reach = () => {
-    if (options.unreachable) throw new Error("ECONNREFUSED")
+    if (unreachable) throw new Error("ECONNREFUSED")
   }
 
   const composio: ComposioPort = {
@@ -49,6 +52,10 @@ export function fakeComposio(
       reach()
       callbackUrls.push(callbackUrl)
       const connectedAccountId = add({ toolkit, status: "INITIATED" })
+      consents.push({
+        connectedAccountId,
+        state: new URL(callbackUrl).searchParams.get("state") ?? "",
+      })
       return {
         connectedAccountId,
         redirectUrl: `https://connect.composio.dev/link/${connectedAccountId}`,
@@ -79,7 +86,12 @@ export function fakeComposio(
   return {
     composio,
     callbackUrls,
+    consents,
     sessions,
+    /** From now on, every call fails as if Composio couldn't be reached. */
+    goOffline() {
+      unreachable = true
+    },
     finishConsent(id: string, status: string) {
       const account = accounts.get(id)
       if (account) account.status = status

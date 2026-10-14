@@ -1,14 +1,9 @@
 "use server"
 
-import { cookies, headers } from "next/headers"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
-import {
-  CALLBACK_PATH,
-  callbackUrl,
-  getPlugins,
-  PENDING_INSTALL_COOKIE,
-} from "@/lib/plugins/server"
+import { callbackUrl, getPlugins } from "@/lib/plugins/server"
 
 async function requestOrigin() {
   const headerList = await headers()
@@ -28,14 +23,8 @@ export async function installPlugin(formData: FormData) {
       `/plugins?plugin=${encodeURIComponent(pluginId)}&error=${begun.reason}`
     )
   }
-
-  const cookieStore = await cookies()
-  cookieStore.set(PENDING_INSTALL_COOKIE, JSON.stringify(begun.pending), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: CALLBACK_PATH,
-    maxAge: 10 * 60,
-  })
+  // The Plugins module remembers this Install by its state, so the consent
+  // screen may finish in any browser (the Jarvis App opens the Owner's own).
   redirect(begun.authorizationUrl)
 }
 

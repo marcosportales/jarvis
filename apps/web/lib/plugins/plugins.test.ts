@@ -2,9 +2,11 @@ import type { ToolSet } from "ai"
 import { describe, expect, it } from "vitest"
 
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "./fixtures"
-import { createPlugins } from "./plugins"
+import { createPendingInstalls, createPlugins } from "./plugins"
 
 const callbackUrl = "http://localhost:3000/api/plugins/callback"
+
+const MINUTE = 60 * 1000
 
 function setup(
   options: {
@@ -15,11 +17,17 @@ function setup(
   const composio =
     options.composio === null ? null : (options.composio ?? fakeComposio())
   const connector = options.connector ?? fakeConnector()
+  const clock = { now: new Date("2026-10-14T10:00:00Z") }
   const plugins = createPlugins({
     composio: composio?.composio ?? null,
     connector: connector.connector,
+    pendingInstalls: createPendingInstalls({ now: () => clock.now }),
   })
-  return { plugins, composio: composio!, connector }
+  /** Moves the clock on, as if the Owner lingered on the consent screen. */
+  const wait = (ms: number) => {
+    clock.now = new Date(clock.now.getTime() + ms)
+  }
+  return { plugins, composio: composio!, connector, wait }
 }
 
 /** Calls a tool the way the AI SDK does during a Turn. */
@@ -35,11 +43,21 @@ async function gmailState(plugins: ReturnType<typeof setup>["plugins"]) {
 }
 
 /**
+ * Opens Gmail's consent screen and returns what the provider sees: the account
+ * Composio created and the state it will send back to the callback.
+ */
+async function beginGmail({ plugins, composio }: ReturnType<typeof setup>) {
+  const begun = await plugins.beginInstall("gmail", { callbackUrl })
+  if (!begun.ok) throw new Error(begun.reason)
+  return composio.consents.at(-1)!
+}
+
+/**
  * Runs Install through the consent screen: the provider leaves the account in
  * `status`, and Composio sends the Owner back with `callback`.
  */
 async function installGmail(
-  { plugins, composio }: ReturnType<typeof setup>,
+  harness: ReturnType<typeof setup>,
   {
     status = "ACTIVE",
     callback,
@@ -48,17 +66,14 @@ async function installGmail(
     callback?: (state: string) => Record<string, string>
   } = {}
 ) {
-  const begun = await plugins.beginInstall("gmail", { callbackUrl })
-  if (!begun.ok) throw new Error(begun.reason)
-  composio.finishConsent(begun.pending.connectedAccountId, status)
-  const state = begun.pending.state
-  return plugins.completeInstall({
-    pending: begun.pending,
-    callback: callback?.(state) ?? {
+  const { connectedAccountId, state } = await beginGmail(harness)
+  harness.composio.finishConsent(connectedAccountId, status)
+  return harness.plugins.completeInstall(
+    callback?.(state) ?? {
       state,
       status: status === "ACTIVE" ? "success" : "failed",
-    },
-  })
+    }
+  )
 }
 
 describe("Plugins", () => {
@@ -148,24 +163,22 @@ describe("Plugins", () => {
       const begun = await plugins.beginInstall("gmail", { callbackUrl })
 
       if (!begun.ok) throw new Error("expected Install to begin")
+      const consent = composio.consents[0]!
       expect(begun.authorizationUrl).toBe(
-        `https://connect.composio.dev/link/${begun.pending.connectedAccountId}`
+        `https://connect.composio.dev/link/${consent.connectedAccountId}`
       )
-      expect(begun.pending.pluginId).toBe("gmail")
-      expect(begun.pending.state.length).toBeGreaterThanOrEqual(32)
+      expect(consent.state.length).toBeGreaterThanOrEqual(32)
       const callback = new URL(composio.callbackUrls[0]!)
       expect(callback.origin + callback.pathname).toBe(callbackUrl)
-      expect(callback.searchParams.get("state")).toBe(begun.pending.state)
     })
 
     it("uses a fresh state for every Install", async () => {
-      const { plugins } = setup()
+      const harness = setup()
 
-      const first = await plugins.beginInstall("gmail", { callbackUrl })
-      const second = await plugins.beginInstall("gmail", { callbackUrl })
+      const first = await beginGmail(harness)
+      const second = await beginGmail(harness)
 
-      if (!first.ok || !second.ok) throw new Error("expected Install to begin")
-      expect(first.pending.state).not.toBe(second.pending.state)
+      expect(first.state).not.toBe(second.state)
     })
 
     it("an Install opened but never finished doesn't count as Installed", async () => {
@@ -263,35 +276,131 @@ describe("Plugins", () => {
         callback: () => ({ state: "forged", status: "success" }),
       })
 
-      expect(result).toEqual({
-        ok: false,
-        pluginId: "gmail",
-        reason: "invalid-state",
-      })
+      expect(result).toEqual({ ok: false, reason: "invalid-state" })
       expect(harness.composio.statuses()).toEqual(["ACTIVE"])
     })
 
-    it("a missing pending Install is an invalid state", async () => {
-      const { plugins } = setup()
+    it("a callback without a state is an invalid state", async () => {
+      const harness = setup()
+      await beginGmail(harness)
 
-      const result = await plugins.completeInstall({
-        pending: undefined,
-        callback: { state: "anything", status: "success" },
+      const result = await harness.plugins.completeInstall({
+        status: "success",
       })
 
       expect(result).toEqual({ ok: false, reason: "invalid-state" })
-      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("completes by the callback's state alone, whichever browser brings it", async () => {
+      const harness = setup()
+      const gmail = await beginGmail(harness)
+      harness.composio.finishConsent(gmail.connectedAccountId, "ACTIVE")
+
+      // Only what the callback URL carries: nothing from the browser that
+      // started the Install.
+      const result = await harness.plugins.completeInstall({
+        state: gmail.state,
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: true, pluginId: "gmail" })
+      expect(await gmailState(harness.plugins)).toBe("connected")
+    })
+
+    it("an unknown state is rejected and changes nothing", async () => {
+      const harness = setup()
+
+      const result = await harness.plugins.completeInstall({
+        state: "never-issued",
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: false, reason: "invalid-state" })
+      expect(await gmailState(harness.plugins)).toBe("installable")
+    })
+
+    it("a state completes an Install only once", async () => {
+      const harness = setup()
+      const gmail = await beginGmail(harness)
+      harness.composio.finishConsent(gmail.connectedAccountId, "ACTIVE")
+      const callback = { state: gmail.state, status: "success" }
+      await harness.plugins.completeInstall(callback)
+
+      const again = await harness.plugins.completeInstall(callback)
+
+      expect(again).toEqual({ ok: false, reason: "invalid-state" })
+      expect(harness.composio.statuses()).toEqual(["ACTIVE"])
+    })
+
+    it("a state older than 10 minutes is rejected", async () => {
+      const harness = setup()
+      const gmail = await beginGmail(harness)
+      harness.composio.finishConsent(gmail.connectedAccountId, "ACTIVE")
+      harness.wait(10 * MINUTE + 1000)
+
+      const result = await harness.plugins.completeInstall({
+        state: gmail.state,
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: false, reason: "invalid-state" })
+    })
+
+    it("a state just under 10 minutes old still completes", async () => {
+      const harness = setup()
+      const gmail = await beginGmail(harness)
+      harness.composio.finishConsent(gmail.connectedAccountId, "ACTIVE")
+      harness.wait(10 * MINUTE - 1000)
+
+      const result = await harness.plugins.completeInstall({
+        state: gmail.state,
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: true, pluginId: "gmail" })
+    })
+
+    it("a forged state doesn't use up the real one", async () => {
+      const harness = setup()
+      const gmail = await beginGmail(harness)
+      harness.composio.finishConsent(gmail.connectedAccountId, "ACTIVE")
+      await harness.plugins.completeInstall({
+        state: "forged",
+        status: "success",
+      })
+
+      const result = await harness.plugins.completeInstall({
+        state: gmail.state,
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: true, pluginId: "gmail" })
+    })
+
+    it("each of two Installs in progress completes by its own state", async () => {
+      const harness = setup()
+      await beginGmail(harness)
+      const second = await beginGmail(harness)
+      harness.composio.finishConsent(second.connectedAccountId, "ACTIVE")
+
+      const result = await harness.plugins.completeInstall({
+        state: second.state,
+        status: "success",
+      })
+
+      expect(result).toEqual({ ok: true, pluginId: "gmail" })
+      // The abandoned first attempt's account is cleaned up by the success.
+      expect(harness.composio.statuses()).toEqual(["ACTIVE"])
     })
 
     it("fails when Composio can't be reached on the way back", async () => {
       const harness = setup()
-      const begun = await harness.plugins.beginInstall("gmail", { callbackUrl })
-      if (!begun.ok) throw new Error("expected Install to begin")
-      const broken = setup({ composio: fakeComposio({ unreachable: true }) })
+      const gmail = await beginGmail(harness)
+      harness.composio.goOffline()
 
-      const result = await broken.plugins.completeInstall({
-        pending: begun.pending,
-        callback: { state: begun.pending.state, status: "success" },
+      const result = await harness.plugins.completeInstall({
+        state: gmail.state,
+        status: "success",
       })
 
       expect(result).toEqual({ ok: false, pluginId: "gmail", reason: "failed" })
