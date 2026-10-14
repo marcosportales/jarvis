@@ -5,6 +5,11 @@
     "build": {
       "outputs": ["dist/**"]
     },
+    "package": {
+      "dependsOn": ["build", "web#build"],
+      "cache": false,
+      "passThroughEnv": ["ELECTRON_*", "XDG_*", "DEBUG"]
+    },
     "dev:app": {
       "with": ["web#dev"],
       "cache": false,

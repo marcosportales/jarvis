@@ -1,0 +1,28 @@
+# Packages the Jarvis App for Linux: an AppImage carrying the Electron shell
+# and, in resources/server, Jarvis's standalone server (see
+# scripts/stage-server.mjs). Run through `pnpm package:app` at the root.
+appId: dev.jarvis.Jarvis
+productName: Jarvis
+executableName: jarvis
+artifactName: Jarvis-${version}.${ext}
+directories:
+  output: release
+  buildResources: assets
+files:
+  - dist/**/*
+  - "!dist/**/*.test.js"
+  - assets/**/*
+  - package.json
+# Jarvis's server goes into resources/server, copied as it is.
+afterPack: scripts/after-pack.mjs
+# Nothing native in the shell itself, and the server's better-sqlite3 is a
+# Node-API addon that loads in Electron's Node without a rebuild.
+npmRebuild: false
+publish: null
+linux:
+  target: AppImage
+  icon: assets/icon.png
+  category: Utility
+  # The .desktop file is named after package.json's desktopName, which Electron
+  # also uses as the Wayland app_id: "Jarvis", in dev mode as well.
+  syncDesktopName: true

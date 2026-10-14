@@ -19,22 +19,26 @@ import {
   Tray,
 } from "electron"
 
+import { PAGE_CHANNEL } from "./channels.js"
 import { createAppController, type AppController } from "./controller.js"
-import { createDevServer } from "./dev-server.js"
+import { connectSessionBus } from "./dbus.js"
+import { jarvisServer, type JarvisServer } from "./electron-server.js"
 import { grantsPermission } from "./permissions.js"
+import { createPortalShortcuts } from "./portal-shortcuts.js"
 import type { JarvisPageMessage, Tray as TrayPort, Windows } from "./ports.js"
 import { restoreBounds } from "./window-bounds.js"
 
-/** Dev mode: Jarvis is the `next dev` server beside the Jarvis App. */
-const JARVIS_ORIGIN = "http://localhost:3000"
-
-/** `next dev` builds the page on its first request, which can be slow. */
-const READY_TIMEOUT_MS = 120_000
-
-/** The IPC channel the Jarvis page hears the Jarvis App on. */
-const PAGE_CHANNEL = "jarvis-app:page"
-
 const ICON = path.join(import.meta.dirname, "../assets/icon.png")
+
+/** Gives Jarvis's pages `window.jarvisApp`; see `preload.cts`. */
+const PRELOAD = path.join(import.meta.dirname, "preload.cjs")
+
+/**
+ * Jarvis's app id for the desktop portal, which accepts it only with a
+ * `Jarvis.desktop` installed (see the README). Push-to-talk from any app is
+ * bound in Hyprland to `Jarvis:push-to-talk`.
+ */
+const PORTAL_APP_ID = "Jarvis"
 
 // Also names the config directory: ~/.config/Jarvis.
 app.setName("Jarvis")
@@ -47,14 +51,30 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function start() {
+  let jarvis: JarvisServer
+  try {
+    jarvis = jarvisServer()
+  } catch (error) {
+    dialog.showErrorBox(
+      "Jarvis no ha podido arrancar",
+      error instanceof Error ? error.message : String(error)
+    )
+    app.exit(1)
+    return
+  }
+  const { origin } = jarvis
+
   const controller: AppController = createAppController({
-    origin: JARVIS_ORIGIN,
-    server: createDevServer({
-      origin: JARVIS_ORIGIN,
-      timeoutMs: READY_TIMEOUT_MS,
-    }),
+    origin,
+    logFile: jarvis.logFile,
+    server: jarvis.server,
     windows: electronWindows(() => controller),
     tray: electronTray(),
+    shortcuts: createPortalShortcuts({
+      appId: PORTAL_APP_ID,
+      connect: connectSessionBus,
+      log: console,
+    }),
     shell: { openInBrowser: (url) => void shell.openExternal(url) },
     dialogs: {
       showError: (title, detail) => dialog.showErrorBox(title, detail),
@@ -77,16 +97,16 @@ function start() {
   app.on("window-all-closed", () => {})
 
   void app.whenReady().then(() => {
-    grantMicrophoneToJarvis()
+    grantMicrophoneToJarvis(origin)
     return controller.launch(process.argv)
   })
 }
 
-function grantMicrophoneToJarvis() {
+function grantMicrophoneToJarvis(origin: string) {
   session.defaultSession.setPermissionRequestHandler(
     (_webContents, permission, callback, details) => {
       callback(
-        grantsPermission(JARVIS_ORIGIN, {
+        grantsPermission(origin, {
           permission,
           url: details.requestingUrl,
           mediaTypes: "mediaTypes" in details ? details.mediaTypes : undefined,
@@ -96,7 +116,7 @@ function grantMicrophoneToJarvis() {
   )
   session.defaultSession.setPermissionCheckHandler(
     (_webContents, permission, requestingOrigin, details) =>
-      grantsPermission(JARVIS_ORIGIN, {
+      grantsPermission(origin, {
         permission,
         url: requestingOrigin,
         mediaTypes:
@@ -134,6 +154,7 @@ function electronWindows(controller: () => AppController): Windows {
           backgroundThrottling: false,
           contextIsolation: true,
           sandbox: true,
+          preload: PRELOAD,
         },
       })
       jarvis = window

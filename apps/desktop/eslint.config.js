@@ -5,6 +5,10 @@ import globals from "globals"
 export default [
   ...config,
   {
+    // The staged server and the packaged app are build output.
+    ignores: [".stage/**", "release/**"],
+  },
+  {
     languageOptions: {
       globals: globals.node,
     },

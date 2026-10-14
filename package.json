@@ -6,6 +6,7 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "dev:app": "turbo run dev:app",
+    "package:app": "turbo run package --filter=desktop --ui=stream",
     "lint": "turbo lint",
     "format": "turbo format",
     "typecheck": "turbo typecheck",

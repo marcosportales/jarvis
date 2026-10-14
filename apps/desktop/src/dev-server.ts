@@ -1,7 +1,5 @@
+import { realClock, waitForAnswer } from "./answers.js"
 import type { Server } from "./ports.js"
-
-/** How often to ask whether the dev server answers yet. */
-const POLL_MS = 500
 
 /**
  * The Server port in dev mode: Jarvis's server is the `next dev` one, started
@@ -12,8 +10,8 @@ export function createDevServer({
   origin,
   timeoutMs,
   fetch = globalThis.fetch,
-  now = Date.now,
-  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  now = realClock.now,
+  wait = realClock.wait,
 }: {
   origin: string
   timeoutMs: number
@@ -23,21 +21,17 @@ export function createDevServer({
 }): Server {
   return {
     async start() {},
-    async waitUntilReady() {
-      const giveUpAt = now() + timeoutMs
-      while (now() < giveUpAt) {
-        try {
-          const response = await fetch(`${origin}/`)
-          if (response.status < 500) return
-        } catch {
-          // Not listening yet.
-        }
-        await wait(POLL_MS)
-      }
-      throw new Error(
-        `Nada responde en ${origin} tras ${timeoutMs / 1000} s. ¿Está corriendo \`pnpm dev\`?`
-      )
-    },
+    waitUntilReady: () =>
+      waitForAnswer({
+        origin,
+        timeoutMs,
+        fetch,
+        clock: { now, wait },
+        gaveUp: () =>
+          new Error(
+            `Nada responde en ${origin} tras ${timeoutMs / 1000} s. ¿Está corriendo \`pnpm dev\`?`
+          ),
+      }),
     async stop() {},
     onExit() {},
   }

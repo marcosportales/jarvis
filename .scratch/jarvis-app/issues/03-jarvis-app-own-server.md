@@ -26,16 +26,16 @@ See `../spec.md` (stories 2, 3, 10, 37–43, 51; "Shape").
 
 **Status:** ready-for-agent
 
-- [ ] Read Next 16's docs in `node_modules/next/dist/docs/` on standalone output and monorepo tracing before changing the build
-- [ ] Config tests:
+- [x] Read Next 16's docs in `node_modules/next/dist/docs/` on standalone output and monorepo tracing before changing the build
+- [x] Config tests:
   - port default 3737 and the `JARVIS_PORT` override
   - database path under the config directory
   - `jarvis.env` parsing (comments, quotes, blank lines)
   - host always `127.0.0.1`
-- [ ] App controller tests:
+- [x] App controller tests:
   - `--hidden` doesn't show the window
   - the server exiting or never becoming ready → error dialog with the log path, then quit
-- [ ] One command builds the web app and packages the AppImage
+- [x] One command builds the web app and packages the AppImage
 - [ ] In the packaged app:
   - starts from the launcher with no terminal
   - a fresh `jarvis.db` is created and migrated
@@ -45,4 +45,4 @@ See `../spec.md` (stories 2, 3, 10, 37–43, 51; "Shape").
   - the port isn't reachable from another device
   - the System Widget's numbers move
   - connecting a Plugin from the app's Marketplace opens the browser and ends Connected in the app's window
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass

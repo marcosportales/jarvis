@@ -17,6 +17,8 @@ import type {
 export type AppControllerPorts = {
   /** Jarvis's own origin, e.g. `http://localhost:3000` in dev mode. */
   origin: string
+  /** Where the server's output goes, told to the Owner when it fails. */
+  logFile?: string
   server: Server
   windows: Windows
   shell: Shell
@@ -39,6 +41,7 @@ const BROWSER_SCHEMES = new Set(["http:", "https:", "mailto:"])
 
 export function createAppController({
   origin,
+  logFile,
   server,
   windows,
   shell,
@@ -81,7 +84,10 @@ export function createAppController({
   /** Tells the Owner why Jarvis can't go on, then quits. */
   function failed(title: string, detail: string) {
     if (quitting) return quitting
-    dialogs.showError(title, detail)
+    dialogs.showError(
+      title,
+      logFile ? `${detail}\n\nMás detalles en el registro: ${logFile}` : detail
+    )
     return quit()
   }
 

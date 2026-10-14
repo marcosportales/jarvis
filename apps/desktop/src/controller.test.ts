@@ -20,7 +20,10 @@ function deferred() {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 /** The Jarvis App over fake ports, recording what the Owner would see. */
-function fakeApp({ withTray = true } = {}) {
+function fakeApp({
+  withTray = true,
+  logFile,
+}: { withTray?: boolean; logFile?: string } = {}) {
   const ready = deferred()
   const state = {
     serverRunning: false,
@@ -40,6 +43,7 @@ function fakeApp({ withTray = true } = {}) {
 
   const controller = createAppController({
     origin: ORIGIN,
+    logFile,
     server: {
       start: async () => {
         state.serverRunning = true
@@ -168,6 +172,28 @@ describe("Launching the Jarvis App", () => {
     expect(app.state.exited).toBe(true)
   })
 
+  it("says where the log is when the server never answers", async () => {
+    const app = fakeApp({ logFile: "/home/owner/.config/Jarvis/jarvis.log" })
+
+    const launched = app.controller.launch(["--hidden"])
+    await app.serverNeverAnswers("listen EADDRINUSE 127.0.0.1:3737")
+    await launched
+
+    expect(app.state.errors).toEqual([
+      {
+        title: expect.any(String),
+        detail: expect.stringMatching(
+          /EADDRINUSE 127\.0\.0\.1:3737[\s\S]*\/home\/owner\/\.config\/Jarvis\/jarvis\.log/
+        ),
+      },
+    ])
+    expect(app.state.events).toEqual([
+      "error shown",
+      "server stopped",
+      "exited",
+    ])
+  })
+
   it("exits at once when launched only to quit", async () => {
     const app = fakeApp()
 
@@ -285,6 +311,30 @@ describe("Quitting", () => {
       {
         title: expect.any(String),
         detail: expect.stringContaining("exited with code 1"),
+      },
+    ])
+    expect(app.state.events).toEqual([
+      "error shown",
+      "server stopped",
+      "exited",
+    ])
+  })
+
+  it("says where the log is when the server dies", async () => {
+    const app = fakeApp({ logFile: "/home/owner/.config/Jarvis/jarvis.log" })
+    const launched = app.controller.launch(["--hidden"])
+    await app.serverAnswers()
+    await launched
+
+    await app.serverDies("exited with code 1")
+    await settle()
+
+    expect(app.state.errors).toEqual([
+      {
+        title: expect.any(String),
+        detail: expect.stringContaining(
+          "/home/owner/.config/Jarvis/jarvis.log"
+        ),
       },
     ])
     expect(app.state.events).toEqual([
