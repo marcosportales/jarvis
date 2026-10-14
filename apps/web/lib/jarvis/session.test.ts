@@ -7,7 +7,9 @@ import {
   type Recorder,
   type Transcriber,
   type Voice,
+  type WidgetChanges,
 } from "./session"
+import type { WidgetChange } from "../widgets/changes"
 
 type Deferred<T> = {
   promise: Promise<T>
@@ -61,11 +63,11 @@ function fakeTranscriber(text: string | Error = "Hola Jarvis") {
 
 function fakeBrain() {
   const calls: Parameters<Brain["reply"]>[0][] = []
-  const pending: Deferred<string>[] = []
+  const pending: Deferred<Awaited<ReturnType<Brain["reply"]>>>[] = []
   const brain: Brain = {
     reply(turns) {
       calls.push(turns)
-      const d = deferred<string>()
+      const d = deferred<Awaited<ReturnType<Brain["reply"]>>>()
       pending.push(d)
       return d.promise
     },
@@ -73,17 +75,33 @@ function fakeBrain() {
   return {
     brain,
     calls,
-    answer: (text: string) => pending.shift()!.resolve(text),
+    answer: (text: string, widgetChanges: WidgetChange[] = []) =>
+      pending.shift()!.resolve({ text, widgetChanges }),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }
 
-function fakeVoice() {
+/** Shared by the fakes so tests can check what happened in which order. */
+type Events = string[]
+
+function fakeWidgets(events: Events) {
+  const applied: WidgetChange[][] = []
+  const widgets: WidgetChanges = {
+    apply(changes) {
+      events.push("apply widget changes")
+      applied.push([...changes])
+    },
+  }
+  return { widgets, applied }
+}
+
+function fakeVoice(events: Events = []) {
   const spoken: string[] = []
   let stopped = 0
   const pending: Deferred<void>[] = []
   const voice: Voice = {
     speak(text) {
+      events.push("speak")
       spoken.push(text)
       const d = deferred<void>()
       pending.push(d)
@@ -111,13 +129,16 @@ function setup(
 ) {
   const recorder = options.recorder ?? fakeRecorder()
   const transcriber = options.transcriber ?? fakeTranscriber()
+  const events: Events = []
   const brain = fakeBrain()
-  const voice = fakeVoice()
+  const voice = fakeVoice(events)
+  const widgets = fakeWidgets(events)
   const session = createJarvisSession({
     recorder: recorder.recorder,
     transcriber: transcriber.transcriber,
     brain: brain.brain,
     voice: voice.voice,
+    widgets: widgets.widgets,
   })
   const states: JarvisState[] = [session.getSnapshot().state]
   session.subscribe(() => {
@@ -126,7 +147,17 @@ function setup(
   })
   const transcript = () =>
     session.getSnapshot().transcript.map(({ role, text }) => ({ role, text }))
-  return { session, recorder, transcriber, brain, voice, states, transcript }
+  return {
+    session,
+    recorder,
+    transcriber,
+    brain,
+    voice,
+    widgets,
+    events,
+    states,
+    transcript,
+  }
 }
 
 describe("Jarvis Session", () => {
@@ -152,7 +183,13 @@ describe("Jarvis Session", () => {
     voice.finish()
     await flush()
 
-    expect(states).toEqual(["idle", "listening", "thinking", "speaking", "idle"])
+    expect(states).toEqual([
+      "idle",
+      "listening",
+      "thinking",
+      "speaking",
+      "idle",
+    ])
     expect(transcript()).toEqual([
       { role: "owner", text: "Hola Jarvis" },
       { role: "jarvis", text: "Buenas tardes, señor." },
@@ -408,5 +445,28 @@ describe("Jarvis Session", () => {
     session.sendTypedMessage("Hola")
 
     expect(session.getSnapshot().hint).toBeNull()
+  })
+
+  it("applies the Reply's Widget changes before Speaking", async () => {
+    const { session, brain, widgets, events } = setup()
+
+    session.sendTypedMessage("Oculta el tiempo")
+    await flush()
+    brain.answer("Hecho, señor.", [{ type: "hide", id: "weather" }])
+    await flush()
+
+    expect(widgets.applied).toEqual([[{ type: "hide", id: "weather" }]])
+    expect(events).toEqual(["apply widget changes", "speak"])
+  })
+
+  it("applies no Widget changes when the Turn fails", async () => {
+    const { session, brain, widgets } = setup()
+
+    session.sendTypedMessage("Oculta el tiempo")
+    await flush()
+    brain.fail(new Error("Nan 500"))
+    await flush()
+
+    expect(widgets.applied).toEqual([])
   })
 })

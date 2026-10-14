@@ -5,6 +5,9 @@ import { nan, nanConfig } from "@/lib/jarvis/server/nan"
 import { JARVIS_SYSTEM_PROMPT } from "@/lib/jarvis/server/system-prompt"
 import type { TurnTools } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
+import { WIDGET_CATALOG } from "@/lib/widgets/catalog"
+import { widgetLayoutSchema } from "@/lib/widgets/changes"
+import { createWidgetTools, widgetLayoutNotice } from "@/lib/widgets/tools"
 
 /** Bounds how many tool-use rounds a single Reply may take. */
 const MAX_REPLY_STEPS = 5
@@ -39,27 +42,41 @@ function currentDateLine() {
 }
 
 export async function POST(request: Request) {
-  const { lines } = (await request.json()) as { lines?: unknown }
+  const { lines, widgets } = (await request.json()) as {
+    lines?: unknown
+    widgets?: unknown
+  }
   if (!Array.isArray(lines) || !lines.every(isTranscriptLine)) {
     return Response.json({ error: "Invalid lines" }, { status: 400 })
   }
+  const layout = widgetLayoutSchema.safeParse(widgets)
+  if (!layout.success) {
+    return Response.json({ error: "Invalid widgets" }, { status: 400 })
+  }
 
   const turn = await loadTurnTools()
+  const widgetTools = createWidgetTools(WIDGET_CATALOG)
   try {
     const { text } = await generateText({
       model: nan.chat(nanConfig.chatModel),
-      system: [JARVIS_SYSTEM_PROMPT, currentDateLine(), ...turn.notices].join(
-        "\n\n"
-      ),
+      system: [
+        JARVIS_SYSTEM_PROMPT,
+        currentDateLine(),
+        widgetLayoutNotice(layout.data),
+        ...turn.notices,
+      ].join("\n\n"),
       messages: lines.map(({ role, text }) => ({
         role: role === "owner" ? ("user" as const) : ("assistant" as const),
         content: text,
       })),
-      tools: turn.tools,
+      tools: { ...turn.tools, ...widgetTools.tools },
       stopWhen: stepCountIs(MAX_REPLY_STEPS),
     })
 
-    return Response.json({ text: text.trim() || FALLBACK_REPLY })
+    return Response.json({
+      text: text.trim() || FALLBACK_REPLY,
+      widgetChanges: widgetTools.changes(),
+    })
   } finally {
     await turn.close()
   }
