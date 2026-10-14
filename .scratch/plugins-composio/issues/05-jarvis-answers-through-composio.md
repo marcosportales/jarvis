@@ -10,11 +10,11 @@
 
 **Blocked by:** 03 (Marketplace shows Plugin states from Composio)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (implemented; only the manual check against real Gmail remains, after ticket 02)
 
-- [ ] Only allowlisted tools of Connected Plugins are offered, under Composio slugs
-- [ ] Plugins that aren't Installed contribute nothing; Reconnect Plugins contribute a notice
-- [ ] Session and tool-call failures become explanations, never thrown errors, and don't change state
-- [ ] Plugins module tests (fake Composio port + fake Connector) cover the above
+- [x] Only allowlisted tools of Connected Plugins are offered, under Composio slugs
+- [x] Plugins that aren't Installed contribute nothing; Reconnect Plugins contribute a notice
+- [x] Session and tool-call failures become explanations, never thrown errors, and don't change state
+- [x] Plugins module tests (fake Composio port + fake Connector) cover the above
 - [ ] Manual (after 02 and 04): the question above, by voice, gets a 1–3 sentence answer from the real inbox
-- [ ] Lint, typecheck and tests pass
+- [x] Lint, typecheck and tests pass

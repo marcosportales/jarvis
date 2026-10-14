@@ -3,7 +3,6 @@ import type { NextRequest } from "next/server"
 
 import type { PendingInstall } from "@/lib/plugins/plugins"
 import {
-  callbackUrl,
   CALLBACK_PATH,
   getPlugins,
   PENDING_INSTALL_COOKIE,
@@ -12,16 +11,20 @@ import {
 function parsePending(value: string | undefined): PendingInstall | undefined {
   if (!value) return undefined
   try {
-    const { pluginId, state } = JSON.parse(value) as Record<string, unknown>
-    return typeof pluginId === "string" && typeof state === "string"
-      ? { pluginId, state }
+    const { pluginId, state, connectedAccountId } = JSON.parse(
+      value
+    ) as Record<string, unknown>
+    return typeof pluginId === "string" &&
+      typeof state === "string" &&
+      typeof connectedAccountId === "string"
+      ? { pluginId, state, connectedAccountId }
       : undefined
   } catch {
     return undefined
   }
 }
 
-/** Where the OAuth provider sends the Owner back after the consent screen. */
+/** Where Composio sends the Owner back after the consent screen. */
 export async function GET(request: NextRequest) {
   const cookieStore = await cookies()
   const pending = parsePending(cookieStore.get(PENDING_INSTALL_COOKIE)?.value)
@@ -30,11 +33,9 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const result = await getPlugins().completeInstall({
     pending,
-    redirectUri: callbackUrl(request.nextUrl.origin),
     callback: {
-      code: params.get("code") ?? undefined,
       state: params.get("state") ?? undefined,
-      error: params.get("error") ?? undefined,
+      status: params.get("status") ?? undefined,
     },
   })
 

@@ -17,7 +17,7 @@ async function requestOrigin() {
   return `${protocol}://${host}`
 }
 
-/** Install and Reconnect: both send the Owner through OAuth. */
+/** Install and Reconnect: both send the Owner through Composio's consent flow. */
 export async function installPlugin(formData: FormData) {
   const pluginId = String(formData.get("pluginId"))
   const begun = await getPlugins().beginInstall(pluginId, {
@@ -41,6 +41,17 @@ export async function installPlugin(formData: FormData) {
 
 export async function uninstallPlugin(formData: FormData) {
   const pluginId = String(formData.get("pluginId"))
-  await getPlugins().uninstall(pluginId)
+  let failed = false
+  try {
+    await getPlugins().uninstall(pluginId)
+  } catch (error) {
+    console.error(`Uninstall of ${pluginId} failed`, error)
+    failed = true
+  }
+  if (failed) {
+    redirect(
+      `/plugins?plugin=${encodeURIComponent(pluginId)}&error=uninstall-failed`
+    )
+  }
   redirect(`/plugins?plugin=${encodeURIComponent(pluginId)}&uninstalled=1`)
 }

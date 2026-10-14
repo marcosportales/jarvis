@@ -14,10 +14,10 @@ Use the vocabulary from CONTEXT.md. Read the bundled Next docs before touching t
 
 **Blocked by:** 01 (Confirm Composio's API against its own docs)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Marketplace states come from Composio account statuses as listed above
-- [ ] Missing API key → every Plugin shows "No configurado"
-- [ ] Composio unreachable → `/plugins` shows an error message, not a crash
-- [ ] Plugins module tests (fake Composio port) cover every status → state mapping and the missing key
-- [ ] Lint, typecheck and tests pass
+- [x] Marketplace states come from Composio account statuses as listed above
+- [x] Missing API key → every Plugin shows "No configurado"
+- [x] Composio unreachable → `/plugins` shows an error message, not a crash
+- [x] Plugins module tests (fake Composio port) cover every status → state mapping and the missing key
+- [x] Lint, typecheck and tests pass

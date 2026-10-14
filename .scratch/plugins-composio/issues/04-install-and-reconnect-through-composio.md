@@ -8,12 +8,12 @@
 
 **Blocked by:** 03 (Marketplace shows Plugin states from Composio)
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (implemented; only the manual check against real Gmail remains, after ticket 02)
 
-- [ ] Instalar and Reconectar redirect to Composio's consent URL
-- [ ] Successful return → Conectado, with the "conectado" message
-- [ ] Cancelled, failed, non-active and `state`-mismatch returns behave as today, and abandoned attempts are cleaned up
-- [ ] Stale accounts are removed after Reconnect
-- [ ] Plugins module tests cover each case with the fake Composio port
+- [x] Instalar and Reconectar redirect to Composio's consent URL
+- [x] Successful return → Conectado, with the "conectado" message
+- [x] Cancelled, failed, non-active and `state`-mismatch returns behave as today, and abandoned attempts are cleaned up
+- [x] Stale accounts are removed after Reconnect
+- [x] Plugins module tests cover each case with the fake Composio port
 - [ ] Manual (after 02): installing Gmail against the real account shows Conectado
-- [ ] Lint, typecheck and tests pass
+- [x] Lint, typecheck and tests pass

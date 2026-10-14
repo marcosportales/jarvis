@@ -2,95 +2,115 @@ import { tool, type ToolSet } from "ai"
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 
-import { ConnectorAuthError, type Connector } from "./connector"
-import { openDatabase } from "../db"
-import { OAuthAuthError, type OAuthClient, type OAuthTokens } from "./oauth"
+import type { ComposioPort, ConnectedAccount } from "./composio"
+import type { Connector } from "./connector"
 import { createPlugins } from "./plugins"
-import { createSqliteStore } from "./store"
-
-const googleCredentials = {
-  GOOGLE_CLIENT_ID: "client-id",
-  GOOGLE_CLIENT_SECRET: "client-secret",
-}
 
 const redirectUri = "http://localhost:3000/api/plugins/callback"
 
-const NOW = new Date("2026-10-13T10:00:00Z")
+const GMAIL_TOOLS = [
+  "GMAIL_FETCH_EMAILS",
+  "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+  "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+  "GMAIL_LIST_DRAFTS",
+  "GMAIL_LIST_LABELS",
+]
 
-const HOUR = 3600_000
-
-function fakeOAuth(
+/**
+ * Composio as the Owner's record of connected accounts. Consent is simulated
+ * with `finishConsent`, which sets the status the provider left the account in.
+ */
+function fakeComposio(
   options: {
-    exchange?: OAuthTokens | Error
-    refresh?: OAuthTokens | Error
-    revokeError?: Error
+    accounts?: Omit<ConnectedAccount, "id">[]
+    unreachable?: boolean
+    sessionError?: Error
+    deleteError?: Error
   } = {}
 ) {
-  const exchanged: { code: string; redirectUri: string; clientId: string }[] =
-    []
-  const refreshed: string[] = []
-  const revoked: string[] = []
-  const oauth: OAuthClient = {
-    async exchangeCode({ code, redirectUri, credentials }) {
-      exchanged.push({ code, redirectUri, clientId: credentials.clientId })
-      const result = options.exchange ?? {
-        accessToken: "access-1",
-        refreshToken: "refresh-1",
-        expiresAt: new Date(NOW.getTime() + HOUR),
-      }
-      if (result instanceof Error) throw result
-      return result
+  let nextId = 1
+  const accounts = new Map<string, ConnectedAccount>()
+  const add = (account: Omit<ConnectedAccount, "id">) => {
+    const id = `ca_${nextId++}`
+    accounts.set(id, { id, ...account })
+    return id
+  }
+  for (const account of options.accounts ?? []) add(account)
+  const callbackUrls: string[] = []
+  const sessions: Record<string, string[]>[] = []
+  const reach = () => {
+    if (options.unreachable) throw new Error("ECONNREFUSED")
+  }
+
+  const composio: ComposioPort = {
+    async listAccounts(toolkits) {
+      reach()
+      return [...accounts.values()].filter((a) => toolkits.includes(a.toolkit))
     },
-    async refresh({ refreshToken }) {
-      refreshed.push(refreshToken)
-      // Valid until NOW+3h, so it outlives the tests' "expired at +2h" clock.
-      const result = options.refresh ?? {
-        accessToken: "access-2",
-        refreshToken: null,
-        expiresAt: new Date(NOW.getTime() + 3 * HOUR),
+    async authorize({ toolkit, callbackUrl }) {
+      reach()
+      callbackUrls.push(callbackUrl)
+      const connectedAccountId = add({ toolkit, status: "INITIATED" })
+      return {
+        connectedAccountId,
+        redirectUrl: `https://connect.composio.dev/link/${connectedAccountId}`,
       }
-      if (result instanceof Error) throw result
-      return result
     },
-    async revoke({ token }) {
-      revoked.push(token)
-      if (options.revokeError) throw options.revokeError
+    async getAccount(id) {
+      reach()
+      const account = accounts.get(id)
+      if (!account) throw new Error(`no account ${id}`)
+      return account
+    },
+    async deleteAccount(id) {
+      reach()
+      if (options.deleteError) throw options.deleteError
+      accounts.delete(id)
+    },
+    async openSession({ tools }) {
+      reach()
+      if (options.sessionError) throw options.sessionError
+      sessions.push(tools)
+      return {
+        url: "https://backend.composio.dev/tool_router/trs_1/mcp",
+        headers: { "x-api-key": "composio-key" },
+      }
     },
   }
-  return { oauth, exchanged, refreshed, revoked }
+
+  return {
+    composio,
+    callbackUrls,
+    sessions,
+    finishConsent(id: string, status: string) {
+      const account = accounts.get(id)
+      if (account) account.status = status
+    },
+    statuses: (toolkit = "gmail") =>
+      [...accounts.values()]
+        .filter((a) => a.toolkit === toolkit)
+        .map((a) => a.status),
+  }
 }
 
-/** A Gmail MCP server's tools, read and write, as the Connector returns them. */
-const GMAIL_SERVER_TOOLS = [
-  "search_threads",
-  "get_thread",
-  "get_message",
-  "list_labels",
-  "list_drafts",
-  "create_draft",
-  "label_thread",
-]
+/** Gmail tools as Composio's session serves them, read and write. */
+const SESSION_TOOLS = [...GMAIL_TOOLS, "GMAIL_SEND_EMAIL", "GMAIL_DELETE_DRAFT"]
 
 function fakeConnector(
   options: {
     serverTools?: string[]
     connectError?: Error
     toolError?: Error
-    /** Access tokens the server answers with 401. */
-    rejectedTokens?: string[]
   } = {}
 ) {
-  const serverTools = options.serverTools ?? GMAIL_SERVER_TOOLS
-  const connections: { url: string; accessToken: string }[] = []
+  const serverTools = options.serverTools ?? SESSION_TOOLS
+  const connections: { url: string; headers: Record<string, string> }[] = []
   const toolCalls: { name: string; input: unknown }[] = []
   let closed = 0
   const connector: Connector = {
-    async connect({ url, accessToken }) {
-      connections.push({ url, accessToken })
+    async connect({ url, headers }) {
+      connections.push({ url, headers })
       if (options.connectError) throw options.connectError
-      if (options.rejectedTokens?.includes(accessToken)) {
-        throw new ConnectorAuthError("HTTP 401")
-      }
       const tools: ToolSet = Object.fromEntries(
         serverTools.map((name) => [
           name,
@@ -100,7 +120,7 @@ function fakeConnector(
             execute: async (input) => {
               toolCalls.push({ name, input })
               if (options.toolError) throw options.toolError
-              return { threads: [{ sender: "Ana", subject: "Hola" }] }
+              return { messages: [{ sender: "Ana", subject: "Hola" }] }
             },
           }),
         ])
@@ -118,23 +138,18 @@ function fakeConnector(
 
 function setup(
   options: {
-    env?: Record<string, string | undefined>
-    oauth?: ReturnType<typeof fakeOAuth>
+    composio?: ReturnType<typeof fakeComposio> | null
     connector?: ReturnType<typeof fakeConnector>
   } = {}
 ) {
-  const store = createSqliteStore(openDatabase(":memory:"))
-  const oauth = options.oauth ?? fakeOAuth()
+  const composio =
+    options.composio === null ? null : (options.composio ?? fakeComposio())
   const connector = options.connector ?? fakeConnector()
-  const clock = { now: NOW }
   const plugins = createPlugins({
-    env: options.env ?? googleCredentials,
-    store,
-    oauth: oauth.oauth,
+    composio: composio?.composio ?? null,
     connector: connector.connector,
-    now: () => clock.now,
   })
-  return { plugins, store, oauth, connector, clock }
+  return { plugins, composio: composio!, connector }
 }
 
 /** Calls a tool the way the AI SDK does during a Turn. */
@@ -149,21 +164,37 @@ async function gmailState(plugins: ReturnType<typeof setup>["plugins"]) {
   return items.find((item) => item.id === "gmail")?.state
 }
 
-/** Runs Install through the consent screen, approving it. */
-async function installGmail(plugins: ReturnType<typeof setup>["plugins"]) {
+/**
+ * Runs Install through the consent screen: the provider leaves the account in
+ * `status`, and Composio sends the Owner back with `callback`.
+ */
+async function installGmail(
+  { plugins, composio }: ReturnType<typeof setup>,
+  {
+    status = "ACTIVE",
+    callback,
+  }: {
+    status?: string
+    callback?: (state: string) => Record<string, string>
+  } = {}
+) {
   const begun = await plugins.beginInstall("gmail", { redirectUri })
   if (!begun.ok) throw new Error(begun.reason)
+  composio.finishConsent(begun.pending.connectedAccountId, status)
+  const state = begun.pending.state
   return plugins.completeInstall({
     pending: begun.pending,
-    redirectUri,
-    callback: { code: "auth-code", state: begun.pending.state },
+    callback: callback?.(state) ?? {
+      state,
+      status: status === "ACTIVE" ? "success" : "failed",
+    },
   })
 }
 
 describe("Plugins", () => {
   describe("Marketplace", () => {
-    it("lists Gmail as not configured when Google OAuth credentials are missing", async () => {
-      const { plugins } = setup({ env: {} })
+    it("lists Gmail as not configured when the Composio API key is missing", async () => {
+      const { plugins } = setup({ composio: null })
 
       expect(await plugins.listMarketplace()).toEqual([
         {
@@ -175,43 +206,86 @@ describe("Plugins", () => {
       ])
     })
 
-    it("lists Gmail as not configured when only some credentials are present", async () => {
-      const { plugins } = setup({ env: { GOOGLE_CLIENT_ID: "client-id" } })
-
-      const [gmail] = await plugins.listMarketplace()
-      expect(gmail?.state).toBe("not-configured")
-    })
-
-    it("lists Gmail as installable when Google OAuth credentials are present", async () => {
+    it("lists Gmail as installable when it has no connected accounts", async () => {
       const { plugins } = setup()
 
-      const [gmail] = await plugins.listMarketplace()
-      expect(gmail?.state).toBe("installable")
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it.each(["INITIATED", "INITIALIZING"])(
+      "lists Gmail as installable when its only account is %s",
+      async (status) => {
+        const { plugins } = setup({
+          composio: fakeComposio({ accounts: [{ toolkit: "gmail", status }] }),
+        })
+
+        expect(await gmailState(plugins)).toBe("installable")
+      }
+    )
+
+    it("lists Gmail as connected when any account is ACTIVE", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({
+          accounts: [
+            { toolkit: "gmail", status: "EXPIRED" },
+            { toolkit: "gmail", status: "ACTIVE" },
+          ],
+        }),
+      })
+
+      expect(await gmailState(plugins)).toBe("connected")
+    })
+
+    it.each(["EXPIRED", "FAILED", "INACTIVE", "REVOKED"])(
+      "lists Gmail as needing Reconnect when its account is %s",
+      async (status) => {
+        const { plugins } = setup({
+          composio: fakeComposio({
+            accounts: [
+              { toolkit: "gmail", status: "INITIATED" },
+              { toolkit: "gmail", status },
+            ],
+          }),
+        })
+
+        expect(await gmailState(plugins)).toBe("reconnect")
+      }
+    )
+
+    it("ignores accounts of toolkits outside the Marketplace", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "slack", status: "ACTIVE" }],
+        }),
+      })
+
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("fails to list when Composio can't be reached", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({ unreachable: true }),
+      })
+
+      await expect(plugins.listMarketplace()).rejects.toThrow()
     })
   })
 
   describe("Install", () => {
-    it("sends the Owner to Google's consent screen with the read-only scope and a state", async () => {
-      const { plugins } = setup()
+    it("sends the Owner to Composio's consent URL with a state in the callback", async () => {
+      const { plugins, composio } = setup()
 
       const begun = await plugins.beginInstall("gmail", { redirectUri })
 
       if (!begun.ok) throw new Error("expected Install to begin")
-      const url = new URL(begun.authorizationUrl)
-      expect(url.origin + url.pathname).toBe(
-        "https://accounts.google.com/o/oauth2/v2/auth"
+      expect(begun.authorizationUrl).toBe(
+        `https://connect.composio.dev/link/${begun.pending.connectedAccountId}`
       )
-      expect(Object.fromEntries(url.searchParams)).toEqual({
-        client_id: "client-id",
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: "https://www.googleapis.com/auth/gmail.readonly",
-        state: begun.pending.state,
-        access_type: "offline",
-        prompt: "consent",
-      })
       expect(begun.pending.pluginId).toBe("gmail")
       expect(begun.pending.state.length).toBeGreaterThanOrEqual(32)
+      const callback = new URL(composio.callbackUrls[0]!)
+      expect(callback.origin + callback.pathname).toBe(redirectUri)
+      expect(callback.searchParams.get("state")).toBe(begun.pending.state)
     })
 
     it("uses a fresh state for every Install", async () => {
@@ -224,8 +298,16 @@ describe("Plugins", () => {
       expect(first.pending.state).not.toBe(second.pending.state)
     })
 
-    it("refuses to begin Install when the Plugin is not configured", async () => {
-      const { plugins } = setup({ env: {} })
+    it("an Install opened but never finished doesn't count as Installed", async () => {
+      const { plugins } = setup()
+
+      await plugins.beginInstall("gmail", { redirectUri })
+
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("refuses to begin Install when Composio is not configured", async () => {
+      const { plugins } = setup({ composio: null })
 
       expect(await plugins.beginInstall("gmail", { redirectUri })).toEqual({
         ok: false,
@@ -242,83 +324,73 @@ describe("Plugins", () => {
       })
     })
 
-    it("approving consent makes Gmail Installed and Connected", async () => {
-      const { plugins, oauth } = setup()
+    it("fails to begin Install when Composio can't be reached", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({ unreachable: true }),
+      })
 
-      expect(await installGmail(plugins)).toEqual({
+      expect(await plugins.beginInstall("gmail", { redirectUri })).toEqual({
+        ok: false,
+        reason: "failed",
+      })
+    })
+
+    it("approving consent makes Gmail Installed and Connected", async () => {
+      const harness = setup()
+
+      expect(await installGmail(harness)).toEqual({
         ok: true,
         pluginId: "gmail",
       })
 
-      expect(oauth.exchanged).toEqual([
-        { code: "auth-code", redirectUri, clientId: "client-id" },
-      ])
-      expect(await gmailState(plugins)).toBe("connected")
+      expect(await gmailState(harness.plugins)).toBe("connected")
     })
 
-    it("stays Connected after a restart", async () => {
-      const { plugins, store, oauth } = setup()
-      await installGmail(plugins)
+    it("cancelling consent leaves Gmail not Installed and cleans up", async () => {
+      const harness = setup()
 
-      const restarted = createPlugins({
-        env: googleCredentials,
-        store,
-        oauth: oauth.oauth,
-        connector: fakeConnector().connector,
-      })
-
-      expect(await gmailState(restarted)).toBe("connected")
-    })
-
-    it("cancelling consent leaves Gmail not Installed", async () => {
-      const { plugins, oauth } = setup()
-      const begun = await plugins.beginInstall("gmail", { redirectUri })
-      if (!begun.ok) throw new Error("expected Install to begin")
-
-      const result = await plugins.completeInstall({
-        pending: begun.pending,
-        redirectUri,
-        callback: { error: "access_denied", state: begun.pending.state },
-      })
+      const result = await installGmail(harness, { status: "INITIATED" })
 
       expect(result).toEqual({
         ok: false,
         pluginId: "gmail",
         reason: "cancelled",
       })
-      expect(oauth.exchanged).toEqual([])
-      expect(await gmailState(plugins)).toBe("installable")
+      expect(harness.composio.statuses()).toEqual([])
+      expect(await gmailState(harness.plugins)).toBe("installable")
     })
 
-    it("cancelling consent is reported as cancelled even without a state", async () => {
-      const { plugins, oauth } = setup()
-      const begun = await plugins.beginInstall("gmail", { redirectUri })
-      if (!begun.ok) throw new Error("expected Install to begin")
+    it("a failed authorization leaves Gmail not Installed and cleans up", async () => {
+      const harness = setup()
 
-      const result = await plugins.completeInstall({
-        pending: begun.pending,
-        redirectUri,
-        callback: { error: "access_denied" },
-      })
+      const result = await installGmail(harness, { status: "FAILED" })
 
       expect(result).toEqual({
         ok: false,
         pluginId: "gmail",
-        reason: "cancelled",
+        reason: "failed",
       })
-      expect(oauth.exchanged).toEqual([])
-      expect(await gmailState(plugins)).toBe("installable")
+      expect(harness.composio.statuses()).toEqual([])
+      expect(await gmailState(harness.plugins)).toBe("installable")
     })
 
-    it("a mismatched state leaves Gmail not Installed", async () => {
-      const { plugins, oauth } = setup()
-      const begun = await plugins.beginInstall("gmail", { redirectUri })
-      if (!begun.ok) throw new Error("expected Install to begin")
+    it("only an ACTIVE account counts, whatever the callback claims", async () => {
+      const harness = setup()
 
-      const result = await plugins.completeInstall({
-        pending: begun.pending,
-        redirectUri,
-        callback: { code: "auth-code", state: "forged" },
+      const result = await installGmail(harness, {
+        status: "INITIATED",
+        callback: (state) => ({ state, status: "success" }),
+      })
+
+      expect(result).toMatchObject({ ok: false, reason: "cancelled" })
+      expect(await gmailState(harness.plugins)).toBe("installable")
+    })
+
+    it("a mismatched state is rejected and changes nothing", async () => {
+      const harness = setup()
+
+      const result = await installGmail(harness, {
+        callback: () => ({ state: "forged", status: "success" }),
       })
 
       expect(result).toEqual({
@@ -326,8 +398,7 @@ describe("Plugins", () => {
         pluginId: "gmail",
         reason: "invalid-state",
       })
-      expect(oauth.exchanged).toEqual([])
-      expect(await gmailState(plugins)).toBe("installable")
+      expect(harness.composio.statuses()).toEqual(["ACTIVE"])
     })
 
     it("a missing pending Install is an invalid state", async () => {
@@ -335,369 +406,303 @@ describe("Plugins", () => {
 
       const result = await plugins.completeInstall({
         pending: undefined,
-        redirectUri,
-        callback: { code: "auth-code", state: "anything" },
+        callback: { state: "anything", status: "success" },
       })
 
       expect(result).toEqual({ ok: false, reason: "invalid-state" })
       expect(await gmailState(plugins)).toBe("installable")
     })
 
-    it("a failed code exchange leaves Gmail not Installed", async () => {
-      const { plugins } = setup({
-        oauth: fakeOAuth({ exchange: new Error("invalid_client") }),
+    it("fails when Composio can't be reached on the way back", async () => {
+      const harness = setup()
+      const begun = await harness.plugins.beginInstall("gmail", {
+        redirectUri,
+      })
+      if (!begun.ok) throw new Error("expected Install to begin")
+      const broken = setup({ composio: fakeComposio({ unreachable: true }) })
+
+      const result = await broken.plugins.completeInstall({
+        pending: begun.pending,
+        callback: { state: begun.pending.state, status: "success" },
       })
 
-      expect(await installGmail(plugins)).toEqual({
-        ok: false,
-        pluginId: "gmail",
-        reason: "failed",
-      })
-      expect(await gmailState(plugins)).toBe("installable")
+      expect(result).toEqual({ ok: false, pluginId: "gmail", reason: "failed" })
     })
   })
 
-  describe("Tools for a Turn", () => {
-    it("offers no tools when nothing is Installed", async () => {
-      const { plugins, connector } = setup()
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(connector.connections).toEqual([])
-    })
-
-    it("offers only the allowlisted tools of a Connected Plugin", async () => {
-      const { plugins, connector } = setup()
-      await installGmail(plugins)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(Object.keys(turn.tools).sort()).toEqual([
-        "gmail_get_message",
-        "gmail_get_thread",
-        "gmail_list_drafts",
-        "gmail_list_labels",
-        "gmail_search_threads",
-      ])
-      expect(connector.connections).toEqual([
-        {
-          url: "https://gmailmcp.googleapis.com/mcp/v1",
-          accessToken: "access-1",
-        },
-      ])
-    })
-
-    it("skips allowlisted tools the server doesn't expose", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({
-          serverTools: ["search_threads", "create_draft"],
+  describe("Reconnect", () => {
+    it("restores Connected and leaves a single working connection", async () => {
+      const harness = setup({
+        composio: fakeComposio({
+          accounts: [
+            { toolkit: "gmail", status: "EXPIRED" },
+            { toolkit: "gmail", status: "INITIATED" },
+            { toolkit: "slack", status: "ACTIVE" },
+          ],
         }),
       })
-      await installGmail(plugins)
+      expect(await gmailState(harness.plugins)).toBe("reconnect")
 
-      const turn = await plugins.toolsForTurn()
-
-      expect(Object.keys(turn.tools)).toEqual(["gmail_search_threads"])
-    })
-
-    it("calling a tool reaches the Connector's tool", async () => {
-      const { plugins, connector } = setup()
-      await installGmail(plugins)
-      const turn = await plugins.toolsForTurn()
-
-      const result = await callTool(turn.tools, "gmail_search_threads", {
-        query: "is:unread newer_than:1d",
-      })
-
-      expect(result).toEqual({ threads: [{ sender: "Ana", subject: "Hola" }] })
-      expect(connector.toolCalls).toEqual([
-        { name: "search_threads", input: { query: "is:unread newer_than:1d" } },
-      ])
-    })
-
-    it("closes its Connector sessions when the Turn ends", async () => {
-      const { plugins, connector } = setup()
-      await installGmail(plugins)
-      const turn = await plugins.toolsForTurn()
-
-      await turn.close()
-
-      expect(connector.closed()).toBe(1)
-    })
-  })
-
-  describe("Failures and Reconnect", () => {
-    it("refreshes an expired access token and stores the new one", async () => {
-      const { plugins, oauth, connector, clock } = setup()
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + 2 * HOUR)
-
-      await plugins.toolsForTurn()
-      await plugins.toolsForTurn()
-
-      expect(oauth.refreshed).toEqual(["refresh-1"])
-      expect(connector.connections.map((c) => c.accessToken)).toEqual([
-        "access-2",
-        "access-2",
-      ])
-      expect(await gmailState(plugins)).toBe("connected")
-    })
-
-    it("keeps the refresh token when the provider doesn't rotate it", async () => {
-      const { plugins, oauth, clock } = setup()
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + 2 * HOUR)
-      await plugins.toolsForTurn()
-
-      clock.now = new Date(NOW.getTime() + 4 * HOUR)
-      await plugins.toolsForTurn()
-
-      expect(oauth.refreshed).toEqual(["refresh-1", "refresh-1"])
-    })
-
-    it("refreshes a token about to expire rather than using it mid-Turn", async () => {
-      const { plugins, oauth, clock } = setup()
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + HOUR - 30_000)
-
-      await plugins.toolsForTurn()
-
-      expect(oauth.refreshed).toEqual(["refresh-1"])
-    })
-
-    it("a rejected refresh marks Gmail not Connected and tells the model", async () => {
-      const { plugins, clock, connector } = setup({
-        oauth: fakeOAuth({ refresh: new OAuthAuthError("invalid_grant") }),
-      })
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + 2 * HOUR)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(connector.connections).toEqual([])
-      expect(turn.notices).toHaveLength(1)
-      expect(turn.notices[0]).toMatch(/Gmail/)
-      expect(turn.notices[0]).toMatch(/reconect/i)
-      expect(await gmailState(plugins)).toBe("reconnect")
-    })
-
-    it("a refresh that fails for another reason keeps Gmail Connected and tells the model", async () => {
-      const { plugins, clock } = setup({
-        oauth: fakeOAuth({ refresh: new Error("network down") }),
-      })
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + 2 * HOUR)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(turn.notices).toHaveLength(1)
-      expect(turn.notices[0]).toMatch(/Gmail/)
-      expect(await gmailState(plugins)).toBe("connected")
-    })
-
-    it("a Connector failing at tool-load tells the model instead of throwing", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({ connectError: new Error("HTTP 503") }),
-      })
-      await installGmail(plugins)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(turn.notices).toHaveLength(1)
-      expect(turn.notices[0]).toMatch(/Gmail/)
-      expect(await gmailState(plugins)).toBe("connected")
-    })
-
-    it("a Connector rejecting the token at tool-load marks Gmail not Connected", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({
-          connectError: new ConnectorAuthError("HTTP 401"),
-        }),
-      })
-      await installGmail(plugins)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(turn.notices[0]).toMatch(/reconect/i)
-      expect(await gmailState(plugins)).toBe("reconnect")
-    })
-
-    it("a token rejected at tool-load is refreshed once before giving up", async () => {
-      const { plugins, oauth, connector } = setup({
-        connector: fakeConnector({ rejectedTokens: ["access-1"] }),
-      })
-      await installGmail(plugins)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(oauth.refreshed).toEqual(["refresh-1"])
-      expect(connector.connections.map((c) => c.accessToken)).toEqual([
-        "access-1",
-        "access-2",
-      ])
-      expect(Object.keys(turn.tools)).toContain("gmail_search_threads")
-      expect(turn.notices).toEqual([])
-      expect(await gmailState(plugins)).toBe("connected")
-    })
-
-    it("a token still rejected after refreshing marks Gmail not Connected", async () => {
-      const { plugins, oauth } = setup({
-        connector: fakeConnector({ rejectedTokens: ["access-1", "access-2"] }),
-      })
-      await installGmail(plugins)
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(oauth.refreshed).toEqual(["refresh-1"])
-      expect(turn.notices[0]).toMatch(/reconect/i)
-      expect(await gmailState(plugins)).toBe("reconnect")
-    })
-
-    it("a tool call failing returns an explanation for the model instead of throwing", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({ toolError: new Error("HTTP 500") }),
-      })
-      await installGmail(plugins)
-      const turn = await plugins.toolsForTurn()
-
-      const result = await callTool(turn.tools, "gmail_search_threads", {})
-
-      expect(result).toEqual({ error: expect.stringMatching(/Gmail/) })
-      expect(await gmailState(plugins)).toBe("connected")
-    })
-
-    it("a tool call rejected for auth marks Gmail not Connected", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({
-          toolError: new ConnectorAuthError("HTTP 401"),
-        }),
-      })
-      await installGmail(plugins)
-      const turn = await plugins.toolsForTurn()
-
-      const result = await callTool(turn.tools, "gmail_search_threads", {})
-
-      expect(result).toEqual({ error: expect.stringMatching(/reconect/i) })
-      expect(await gmailState(plugins)).toBe("reconnect")
-    })
-
-    it("a Plugin needing Reconnect offers no tools and tells the model", async () => {
-      const { plugins, connector, clock } = setup({
-        oauth: fakeOAuth({ refresh: new OAuthAuthError("invalid_grant") }),
-      })
-      await installGmail(plugins)
-      clock.now = new Date(NOW.getTime() + 2 * HOUR)
-      await plugins.toolsForTurn()
-
-      const turn = await plugins.toolsForTurn()
-
-      expect(turn.tools).toEqual({})
-      expect(connector.connections).toEqual([])
-      expect(turn.notices).toHaveLength(1)
-      expect(turn.notices[0]).toMatch(/reconect/i)
-    })
-
-    it("Reconnect runs OAuth again and restores Connected", async () => {
-      const { plugins } = setup({
-        connector: fakeConnector({
-          connectError: new ConnectorAuthError("HTTP 401"),
-        }),
-      })
-      await installGmail(plugins)
-      await plugins.toolsForTurn()
-      expect(await gmailState(plugins)).toBe("reconnect")
-
-      expect(await installGmail(plugins)).toEqual({
+      expect(await installGmail(harness)).toEqual({
         ok: true,
         pluginId: "gmail",
       })
 
-      expect(await gmailState(plugins)).toBe("connected")
+      expect(await gmailState(harness.plugins)).toBe("connected")
+      expect(harness.composio.statuses()).toEqual(["ACTIVE"])
+      expect(harness.composio.statuses("slack")).toEqual(["ACTIVE"])
     })
 
-    it("a healthy Turn has no notices", async () => {
-      const { plugins } = setup()
-      await installGmail(plugins)
+    it("a cancelled Reconnect keeps the Plugin needing Reconnect", async () => {
+      const harness = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "EXPIRED" }],
+        }),
+      })
+
+      await installGmail(harness, { status: "INITIATED" })
+
+      expect(await gmailState(harness.plugins)).toBe("reconnect")
+    })
+  })
+
+  describe("Tools for a Turn", () => {
+    it("offers nothing when Composio is not configured", async () => {
+      const { plugins, connector } = setup({ composio: null })
 
       const turn = await plugins.toolsForTurn()
 
+      expect(turn.tools).toEqual({})
       expect(turn.notices).toEqual([])
+      expect(connector.connections).toEqual([])
+    })
+
+    it("offers nothing and opens no session when nothing is Installed", async () => {
+      const { plugins, composio, connector } = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "INITIATED" }],
+        }),
+      })
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toEqual([])
+      expect(composio.sessions).toEqual([])
+      expect(connector.connections).toEqual([])
+    })
+
+    it("offers only the allowlisted tools of a Connected Plugin, under Composio slugs", async () => {
+      const harness = setup()
+      await installGmail(harness)
+
+      const turn = await harness.plugins.toolsForTurn()
+
+      expect(Object.keys(turn.tools).sort()).toEqual(GMAIL_TOOLS)
+      expect(turn.notices).toEqual([])
+    })
+
+    it("opens one session limited to the allowlist and connects with its headers", async () => {
+      const harness = setup()
+      await installGmail(harness)
+
+      await harness.plugins.toolsForTurn()
+
+      expect(harness.composio.sessions).toEqual([
+        {
+          gmail: [
+            "GMAIL_FETCH_EMAILS",
+            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+            "GMAIL_LIST_LABELS",
+            "GMAIL_LIST_DRAFTS",
+          ],
+        },
+      ])
+      expect(harness.connector.connections).toEqual([
+        {
+          url: "https://backend.composio.dev/tool_router/trs_1/mcp",
+          headers: { "x-api-key": "composio-key" },
+        },
+      ])
+    })
+
+    it("skips allowlisted tools the session doesn't serve", async () => {
+      const harness = setup({
+        connector: fakeConnector({
+          serverTools: ["GMAIL_FETCH_EMAILS", "GMAIL_SEND_EMAIL"],
+        }),
+      })
+      await installGmail(harness)
+
+      const turn = await harness.plugins.toolsForTurn()
+
+      expect(Object.keys(turn.tools)).toEqual(["GMAIL_FETCH_EMAILS"])
+    })
+
+    it("calling a tool reaches the session's tool", async () => {
+      const harness = setup()
+      await installGmail(harness)
+      const turn = await harness.plugins.toolsForTurn()
+
+      const result = await callTool(turn.tools, "GMAIL_FETCH_EMAILS", {
+        query: "is:unread newer_than:1d",
+      })
+
+      expect(result).toEqual({ messages: [{ sender: "Ana", subject: "Hola" }] })
+      expect(harness.connector.toolCalls).toEqual([
+        {
+          name: "GMAIL_FETCH_EMAILS",
+          input: { query: "is:unread newer_than:1d" },
+        },
+      ])
+    })
+
+    it("closes its Connector session when the Turn ends", async () => {
+      const harness = setup()
+      await installGmail(harness)
+      const turn = await harness.plugins.toolsForTurn()
+
+      await turn.close()
+
+      expect(harness.connector.closed()).toBe(1)
+    })
+  })
+
+  describe("Failures", () => {
+    it("a Plugin needing Reconnect offers no tools and tells the model", async () => {
+      const { plugins, composio } = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "EXPIRED" }],
+        }),
+      })
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(composio.sessions).toEqual([])
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(turn.notices[0]).toMatch(/reconect/i)
+    })
+
+    it("Composio failing to open the session tells the model instead of throwing", async () => {
+      const harness = setup({
+        composio: fakeComposio({ sessionError: new Error("HTTP 503") }),
+      })
+      await installGmail(harness)
+
+      const turn = await harness.plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(turn.notices[0]).not.toMatch(/reconect/i)
+      expect(await gmailState(harness.plugins)).toBe("connected")
+    })
+
+    it("the Connector failing tells the model instead of throwing", async () => {
+      const harness = setup({
+        connector: fakeConnector({ connectError: new Error("HTTP 401") }),
+      })
+      await installGmail(harness)
+
+      const turn = await harness.plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Gmail/)
+      expect(await gmailState(harness.plugins)).toBe("connected")
+    })
+
+    it("Composio unreachable at the start of a Turn tells the model instead of throwing", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({ unreachable: true }),
+      })
+
+      const turn = await plugins.toolsForTurn()
+
+      expect(turn.tools).toEqual({})
+      expect(turn.notices).toHaveLength(1)
+      expect(turn.notices[0]).toMatch(/Plugins/)
+    })
+
+    it("a tool call failing returns an explanation for the model instead of throwing", async () => {
+      const harness = setup({
+        connector: fakeConnector({ toolError: new Error("HTTP 500") }),
+      })
+      await installGmail(harness)
+      const turn = await harness.plugins.toolsForTurn()
+
+      const result = await callTool(turn.tools, "GMAIL_FETCH_EMAILS", {})
+
+      expect(result).toEqual({ error: expect.stringMatching(/Gmail/) })
+      expect(await gmailState(harness.plugins)).toBe("connected")
     })
   })
 
   describe("Uninstall", () => {
-    it("removes Gmail and revokes its authorization with the provider", async () => {
-      const { plugins, oauth } = setup()
-      await installGmail(plugins)
-
-      await plugins.uninstall("gmail")
-
-      expect(oauth.revoked).toEqual(["refresh-1"])
-      expect(await gmailState(plugins)).toBe("installable")
-    })
-
-    it("still uninstalls when revocation fails", async () => {
-      const { plugins, oauth } = setup({
-        oauth: fakeOAuth({ revokeError: new Error("HTTP 500") }),
-      })
-      await installGmail(plugins)
-
-      await plugins.uninstall("gmail")
-
-      expect(oauth.revoked).toEqual(["refresh-1"])
-      expect(await gmailState(plugins)).toBe("installable")
-    })
-
-    it("revokes the access token when there is no refresh token", async () => {
-      const { plugins, oauth } = setup({
-        oauth: fakeOAuth({
-          exchange: {
-            accessToken: "access-1",
-            refreshToken: null,
-            expiresAt: null,
-          },
+    it("deletes every one of Gmail's connected accounts", async () => {
+      const { plugins, composio } = setup({
+        composio: fakeComposio({
+          accounts: [
+            { toolkit: "gmail", status: "ACTIVE" },
+            { toolkit: "gmail", status: "INITIATED" },
+            { toolkit: "slack", status: "ACTIVE" },
+          ],
         }),
       })
-      await installGmail(plugins)
 
       await plugins.uninstall("gmail")
 
-      expect(oauth.revoked).toEqual(["access-1"])
+      expect(composio.statuses()).toEqual([])
+      expect(composio.statuses("slack")).toEqual(["ACTIVE"])
+      expect(await gmailState(plugins)).toBe("installable")
+    })
+
+    it("works when Gmail needs Reconnect", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "EXPIRED" }],
+        }),
+      })
+
+      await plugins.uninstall("gmail")
+
+      expect(await gmailState(plugins)).toBe("installable")
     })
 
     it("leaves Jarvis without Gmail's tools", async () => {
-      const { plugins } = setup()
-      await installGmail(plugins)
+      const harness = setup()
+      await installGmail(harness)
 
-      await plugins.uninstall("gmail")
-      const turn = await plugins.toolsForTurn()
+      await harness.plugins.uninstall("gmail")
+      const turn = await harness.plugins.toolsForTurn()
 
       expect(turn.tools).toEqual({})
       expect(turn.notices).toEqual([])
     })
 
     it("can install Gmail again afterwards", async () => {
-      const { plugins } = setup()
-      await installGmail(plugins)
-      await plugins.uninstall("gmail")
+      const harness = setup()
+      await installGmail(harness)
+      await harness.plugins.uninstall("gmail")
 
-      await installGmail(plugins)
+      await installGmail(harness)
 
-      expect(await gmailState(plugins)).toBe("connected")
+      expect(await gmailState(harness.plugins)).toBe("connected")
     })
 
-    it("does nothing for a Plugin that isn't Installed", async () => {
-      const { plugins, oauth } = setup()
+    it("fails rather than claiming success when Composio can't delete", async () => {
+      const { plugins } = setup({
+        composio: fakeComposio({
+          accounts: [{ toolkit: "gmail", status: "ACTIVE" }],
+          deleteError: new Error("HTTP 500"),
+        }),
+      })
 
-      await plugins.uninstall("gmail")
-
-      expect(oauth.revoked).toEqual([])
-      expect(await gmailState(plugins)).toBe("installable")
+      await expect(plugins.uninstall("gmail")).rejects.toThrow()
+      expect(await gmailState(plugins)).toBe("connected")
     })
   })
 })

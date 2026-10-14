@@ -1,26 +1,19 @@
-import { google } from "./google"
 import type { PluginEntry } from "./types"
 
 /**
- * Google's Gmail MCP server (Developer Preview), read-only. Values confirmed
- * against Google's docs in `.scratch/plugins-gmail/issues/01-confirm-gmail-mcp.md`.
+ * Gmail through Composio's managed Google app, read-only by allowlist. Slugs
+ * confirmed in `.scratch/plugins-composio/issues/01-confirm-composio-api.md`.
  */
 export const gmail: PluginEntry = {
   id: "gmail",
   name: "Gmail",
   icon: "/plugins/gmail.svg",
-  connector: {
-    mcpUrl: "https://gmailmcp.googleapis.com/mcp/v1",
-    oauth: {
-      provider: google,
-      scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
-    },
-    toolAllowlist: [
-      "search_threads",
-      "get_thread",
-      "get_message",
-      "list_labels",
-      "list_drafts",
-    ],
-  },
+  toolkit: "gmail",
+  toolAllowlist: [
+    "GMAIL_FETCH_EMAILS",
+    "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
+    "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
+    "GMAIL_LIST_LABELS",
+    "GMAIL_LIST_DRAFTS",
+  ],
 }
