@@ -147,6 +147,7 @@ describe("Mapping a flights Search", () => {
     to: "FCO",
     outboundDate: "2026-10-16",
     currency: "EUR",
+    passengers: 1,
   }
 
   it("lists the best flights first, with airline, times, duration, stops and price", () => {
@@ -190,6 +191,7 @@ describe("Mapping a flights Search", () => {
       to: "HND",
       outboundDate: "2026-11-10",
       currency: "EUR",
+      passengers: 1,
     })
 
     expect(outcome.results[0]).toMatchObject({
@@ -203,18 +205,19 @@ describe("Mapping a flights Search", () => {
     })
   })
 
-  it("prices a round trip as such and gives both dates", () => {
+  it("prices a round trip for every passenger, as the provider does, and gives both dates", () => {
     const outcome = mapFlights(FLIGHTS_ROUND_TRIP, {
       from: "MAD",
       to: "LIS",
       outboundDate: "2026-11-03",
       returnDate: "2026-11-07",
       currency: "EUR",
+      passengers: 2,
     })
 
     expect(outcome.heading).toBe("Vuelos MAD ⇄ LIS · mar 3 nov – sáb 7 nov")
     expect(outcome.results[0]?.facts[0]).toEqual({
-      label: "Precio ida y vuelta",
+      label: "Precio ida y vuelta, 2 pasajeros",
       value: "172 €",
     })
   })

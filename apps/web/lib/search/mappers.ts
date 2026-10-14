@@ -203,16 +203,18 @@ export type FlightsSearch = {
   outboundDate: string
   returnDate?: string
   currency: string
+  /** Every price is for all of them together (ticket 01). */
+  passengers: number
 }
 
 /**
  * Best flights first, then the others. A round trip lists its outbound
- * flights, priced for the whole trip. No flight has a link of its own, so
+ * flights, priced for the whole trip. Prices are for all the passengers. No flight has a link of its own, so
  * each links to the whole search on Google Flights.
  */
 export function mapFlights(
   data: unknown,
-  { from, to, outboundDate, returnDate, currency }: FlightsSearch
+  { from, to, outboundDate, returnDate, currency, passengers }: FlightsSearch
 ) {
   const { best_flights, other_flights, search_metadata } =
     flightsSchema.parse(data).results
@@ -224,6 +226,9 @@ export function mapFlights(
     }
   )
 
+  const priceLabel =
+    (returnDate ? "Precio ida y vuelta" : "Precio") +
+    (passengers > 1 ? `, ${passengers} pasajeros` : "")
   const results = flights.slice(0, MAX_RESULTS).map((flight) => {
     const first = flight.flights[0]!
     const last = flight.flights.at(-1)!
@@ -239,10 +244,7 @@ export function mapFlights(
       subtitle: `${first.departure_airport.id} ${departTime} → ${last.arrival_airport.id} ${arriveTime}${nextDay}`,
       facts: [
         flight.price != null
-          ? {
-              label: returnDate ? "Precio ida y vuelta" : "Precio",
-              value: money(flight.price, currency),
-            }
+          ? { label: priceLabel, value: money(flight.price, currency) }
           : null,
         flight.total_duration != null
           ? { label: "Duración", value: duration(flight.total_duration) }

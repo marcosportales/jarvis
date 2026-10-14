@@ -7,7 +7,7 @@ import { openDatabase } from "../db"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
 import { createPlugins, type Plugins } from "../plugins/plugins"
-import { fakeSearch } from "../search/fixtures"
+import { fakeSearch, NEWS } from "../search/fixtures"
 import {
   createSessionStore,
   UnknownSessionError,
@@ -477,39 +477,53 @@ describe("Taking a Turn", () => {
 
     it("shows the Results Widget when a Search found several results", async () => {
       const { turns } = setup([
-        call("search_web", { query: "horario del Prado" }),
-        answer("Abre a las diez; te dejo el resto en pantalla."),
+        call("search_news", { query: "Real Madrid" }),
+        answer("Hablan del Villarreal; te dejo el resto en pantalla."),
       ])
 
       const reply = await turns.take({
-        text: "¿Abre el Prado?",
+        text: "¿Qué pasa con el Real Madrid?",
         widgets: LAYOUT,
       })
 
       expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
     })
 
+    it("leaves the Results Widget alone for a web Search, whose results back up a single answer", async () => {
+      const { turns } = setup([
+        call("search_web", { query: "horario del Prado" }),
+        answer("Cierra a las ocho."),
+      ])
+
+      const reply = await turns.take({
+        text: "¿A qué hora cierra el Prado?",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.search?.results.length).toBeGreaterThan(1)
+      expect(reply.widgetChanges).toEqual([])
+    })
+
     it.each([
-      ["one result", { results: [{ url: "https://museodelprado.es/" }] }],
-      ["no results", {}],
+      ["one result", [NEWS.news_results[0]]],
+      ["no results", []],
     ])(
       "leaves the Results Widget alone when a Search found %s",
-      async (_, data) => {
+      async (_, newsResults) => {
         const { turns } = setup(
-          [call("search_web", { query: "Prado" }), answer("Abre a las diez.")],
+          [
+            call("search_news", { query: "Real Madrid" }),
+            answer("Solo hay una noticia."),
+          ],
           {
             search: fakeSearch({
-              COMPOSIO_SEARCH_WEB: {
-                data: {
-                  citations: "results" in data ? data.results : [],
-                },
-              },
+              COMPOSIO_SEARCH_NEWS: { data: { news_results: newsResults } },
             }),
           }
         )
 
         const reply = await turns.take({
-          text: "¿Abre el Prado?",
+          text: "¿Qué pasa con el Real Madrid?",
           widgets: LAYOUT,
         })
 
@@ -520,7 +534,7 @@ describe("Taking a Turn", () => {
 
     it("keeps the Results Widget hidden when the model hid it in the same Turn", async () => {
       const { turns } = setup([
-        call("search_web", { query: "horario del Prado" }),
+        call("search_news", { query: "Real Madrid" }),
         call("hide_widget", { id: "results" }),
         answer("Abre a las diez."),
       ])
@@ -535,7 +549,7 @@ describe("Taking a Turn", () => {
 
     it("doesn't show the Results Widget twice when the model already showed it", async () => {
       const { turns } = setup([
-        call("search_web", { query: "horario del Prado" }),
+        call("search_news", { query: "Real Madrid" }),
         call("move_widget", { id: "results", spot: "right-middle" }),
         answer("Abre a las diez."),
       ])

@@ -63,14 +63,17 @@ const RESULTS_WIDGET = "results"
 
 /**
  * The Turn's Widget changes, plus Showing the Results Widget when its Search
- * found a list. A Turn rule, so it doesn't depend on the model remembering;
- * the model hiding, showing or moving that Widget itself wins.
+ * found a list. A web Search's results are the sources of one answer, not a
+ * list, so they never Show it. A Turn rule, so it doesn't depend on the model
+ * remembering; the model hiding, showing or moving that Widget itself wins.
  */
 function withResultsShown(
   changes: WidgetChange[],
   outcome: SearchOutcome | undefined
 ): WidgetChange[] {
-  if (!outcome || outcome.results.length <= 1) return changes
+  if (!outcome || outcome.kind === "web" || outcome.results.length <= 1) {
+    return changes
+  }
   if (changes.some(({ id }) => id === RESULTS_WIDGET)) return changes
   return [...changes, { type: "show", id: RESULTS_WIDGET }]
 }

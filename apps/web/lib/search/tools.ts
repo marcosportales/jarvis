@@ -255,7 +255,14 @@ export function createSearchTools({
               ...region(country),
             },
             (data) =>
-              mapFlights(data, { from, to, outboundDate, returnDate, currency })
+              mapFlights(data, {
+                from,
+                to,
+                outboundDate,
+                returnDate,
+                currency,
+                passengers: adults + children + infants,
+              })
           ),
       }),
       search_news: tool({
