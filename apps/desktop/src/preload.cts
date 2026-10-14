@@ -37,7 +37,27 @@ const FLOATING_ORB_GESTURES = new Set<unknown>(["press", "release", "click"])
 let latestJarvisState: JarvisState | undefined
 const jarvisStateListeners = new Set<(state: JarvisState) => void>()
 
+/**
+ * Whether Push-to-talk is held from the Jarvis App right now. A page that
+ * starts listening mid-hold, e.g. the Jarvis page the Marketplace went back
+ * to on that press, gets the press at once.
+ */
+let pushToTalkHeld = false
+const pushToTalkListeners = new Set<(action: PushToTalkAction) => void>()
+
 ipcRenderer.on(PAGE_CHANNEL, (_event: IpcRendererEvent, message: unknown) => {
+  if (
+    typeof message === "object" &&
+    message !== null &&
+    "type" in message &&
+    message.type === "push-to-talk" &&
+    "action" in message &&
+    (message.action === "press" || message.action === "release")
+  ) {
+    const action: PushToTalkAction = message.action
+    pushToTalkHeld = action === "press"
+    for (const listener of pushToTalkListeners) listener(action)
+  }
   if (
     typeof message === "object" &&
     message !== null &&
@@ -53,25 +73,15 @@ ipcRenderer.on(PAGE_CHANNEL, (_event: IpcRendererEvent, message: unknown) => {
 
 const jarvisApp = {
   /**
-   * Push-to-talk held from the Jarvis App: the key from any other app.
-   * Returns a function that stops listening.
+   * Push-to-talk held from the Jarvis App: the key from any other app, or
+   * the Floating Orb. A hold already going on is handed over at once as a
+   * press. Returns a function that stops listening.
    */
   onPushToTalk(listener: (action: PushToTalkAction) => void): () => void {
-    const onMessage = (_event: IpcRendererEvent, message: unknown) => {
-      if (
-        typeof message === "object" &&
-        message !== null &&
-        "type" in message &&
-        message.type === "push-to-talk" &&
-        "action" in message &&
-        (message.action === "press" || message.action === "release")
-      ) {
-        listener(message.action)
-      }
-    }
-    ipcRenderer.on(PAGE_CHANNEL, onMessage)
+    pushToTalkListeners.add(listener)
+    if (pushToTalkHeld) listener("press")
     return () => {
-      ipcRenderer.removeListener(PAGE_CHANNEL, onMessage)
+      pushToTalkListeners.delete(listener)
     }
   },
 

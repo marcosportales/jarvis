@@ -85,6 +85,30 @@ describe("The preload script", () => {
     expect(actions).toEqual([])
   })
 
+  it("hands a page that starts listening mid-hold the press at once", async () => {
+    // e.g. a press on the Marketplace takes the window to the Jarvis page,
+    // whose Session starts listening while the key is still held.
+    const jarvisApp = await loadPreload()
+    sendToPage({ type: "push-to-talk", action: "press" })
+
+    const actions: string[] = []
+    jarvisApp.onPushToTalk((action) => actions.push(action))
+    sendToPage({ type: "push-to-talk", action: "release" })
+
+    expect(actions).toEqual(["press", "release"])
+  })
+
+  it("doesn't hand a later page a hold that has ended", async () => {
+    const jarvisApp = await loadPreload()
+    sendToPage({ type: "push-to-talk", action: "press" })
+    sendToPage({ type: "push-to-talk", action: "release" })
+
+    const actions: string[] = []
+    jarvisApp.onPushToTalk((action) => actions.push(action))
+
+    expect(actions).toEqual([])
+  })
+
   it("publishes the page's Jarvis State, and nothing else", async () => {
     const jarvisApp = await loadPreload()
 

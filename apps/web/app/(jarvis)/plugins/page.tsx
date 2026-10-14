@@ -3,6 +3,7 @@ import { connection } from "next/server"
 
 import { Button } from "@workspace/ui/components/button"
 
+import { PushToTalkReturnsToJarvis } from "@/components/push-to-talk-returns-to-jarvis"
 import type { MarketplaceItem, PluginState } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
 
@@ -72,6 +73,7 @@ export default async function PluginsPage({
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-2xl flex-col gap-6 p-4 pt-10">
       <RefreshOnReturn />
+      <PushToTalkReturnsToJarvis />
       <header>
         <h1 className="text-xl font-semibold">Plugins</h1>
         <p className="text-sm text-muted-foreground">

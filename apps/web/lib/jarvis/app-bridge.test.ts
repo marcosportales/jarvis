@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { connectAppBridge, type JarvisAppApi } from "./app-bridge"
+import {
+  connectAppBridge,
+  returnToJarvisOnPushToTalk,
+  type JarvisAppApi,
+} from "./app-bridge"
 import { createPushToTalk } from "./push-to-talk"
 import { DISCARDED_UTTERANCE_HINT, type JarvisState } from "./session"
 import { fakeRecorder, flush, setup } from "./session-fakes"
@@ -217,6 +221,42 @@ describe("The App Bridge", () => {
     await flush()
 
     expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
+  })
+})
+
+describe("Push-to-talk on a page without a Session", () => {
+  it("goes back to the Jarvis page on a Jarvis App press", () => {
+    const jarvisApp = fakeJarvisApp()
+    const visits: string[] = []
+    returnToJarvisOnPushToTalk({
+      app: jarvisApp.app,
+      goToJarvisPage: () => visits.push("/"),
+    })
+
+    jarvisApp.press()
+    jarvisApp.release()
+
+    expect(visits).toEqual(["/"])
+  })
+
+  it("stays once it stops listening, and does nothing without the Jarvis App", () => {
+    const jarvisApp = fakeJarvisApp()
+    const visits: string[] = []
+    const stop = returnToJarvisOnPushToTalk({
+      app: jarvisApp.app,
+      goToJarvisPage: () => visits.push("/"),
+    })
+
+    stop()
+    jarvisApp.press()
+
+    expect(visits).toEqual([])
+    expect(() =>
+      returnToJarvisOnPushToTalk({
+        app: undefined,
+        goToJarvisPage: () => visits.push("/"),
+      })()
+    ).not.toThrow()
   })
 })
 

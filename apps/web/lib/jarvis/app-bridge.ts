@@ -15,7 +15,8 @@ export type FloatingOrbGesture = "press" | "release" | "click"
 export type JarvisAppApi = {
   /**
    * Push-to-talk held from the Jarvis App: the key from any other app, or
-   * the Floating Orb. Returns a function that stops listening.
+   * the Floating Orb. A hold already going on is handed over at once as a
+   * press. Returns a function that stops listening.
    */
   onPushToTalk(listener: (action: "press" | "release") => void): () => void
   /** Hands the Jarvis App the Jarvis State, e.g. for the Floating Orb. */
@@ -75,4 +76,24 @@ export function connectAppBridge({
     // another one connects, Jarvis is doing nothing.
     app.publishJarvisState("idle")
   }
+}
+
+/**
+ * For a page of Jarvis without a Session, e.g. the Marketplace: a
+ * Push-to-talk press from the Jarvis App goes back to the Jarvis page, whose
+ * new Session is handed the hold still going on (see `onPushToTalk`). The
+ * window stays hidden or behind, as for any Push-to-talk from the Jarvis
+ * App. Returns a function that stops listening.
+ */
+export function returnToJarvisOnPushToTalk({
+  app,
+  goToJarvisPage,
+}: {
+  app: Pick<JarvisAppApi, "onPushToTalk"> | undefined
+  goToJarvisPage: () => void
+}): () => void {
+  if (!app) return () => {}
+  return app.onPushToTalk((action) => {
+    if (action === "press") goToJarvisPage()
+  })
 }
