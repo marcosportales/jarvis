@@ -1,6 +1,7 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
+import { SPOTS, type Spot } from "./board"
 import type { WidgetInfo } from "./catalog"
 import type { WidgetChange, WidgetLayout } from "./changes"
 
@@ -9,6 +10,24 @@ export type WidgetTurnTools = {
   tools: ToolSet
   /** In the order the tools were called. */
   changes(): WidgetChange[]
+}
+
+/** How Jarvis should say each Spot to the Owner. */
+const SPOT_NAMES: Record<Spot, string> = {
+  "left-top": "arriba a la izquierda",
+  "left-middle": "a la izquierda en medio",
+  "left-bottom": "abajo a la izquierda",
+  "right-top": "arriba a la derecha",
+  "right-middle": "a la derecha en medio",
+  "right-bottom": "abajo a la derecha",
+}
+
+const spotLines = SPOTS.map((spot) => `- ${spot}: ${SPOT_NAMES[spot]}`).join(
+  "\n"
+)
+
+function isSpot(value: string): value is Spot {
+  return (SPOTS as readonly string[]).includes(value)
 }
 
 function catalogLines(catalog: readonly WidgetInfo[]) {
@@ -56,6 +75,21 @@ export function createWidgetTools(
         execute: async ({ id }) =>
           record({ type: "hide", id }, (name) => `Widget ${name} ocultado.`),
       }),
+      move_widget: tool({
+        description: `Mueve un widget a un sitio de la pantalla del dueño; si estaba oculto, también lo muestra. Si el sitio ya tiene otro widget, se coloca junto a él.\nSitios:\n${spotLines}\nWidgets disponibles:\n${widgets}`,
+        inputSchema: idInput.extend({
+          spot: z.enum(SPOTS).describe("El sitio al que moverlo."),
+        }),
+        execute: async ({ id, spot }) => {
+          if (!isSpot(spot)) {
+            return `El sitio «${spot}» no existe. Los sitios son: ${SPOTS.join(", ")}.`
+          }
+          return record(
+            { type: "move", id, spot },
+            (name) => `Widget ${name} movido ${SPOT_NAMES[spot]}.`
+          )
+        },
+      }),
     },
     changes: () => [...changes],
   }
@@ -65,8 +99,8 @@ export function createWidgetTools(
 export function widgetLayoutNotice(layout: WidgetLayout) {
   if (layout.length === 0) return "El dueño no tiene widgets."
   const lines = layout.map(
-    ({ id, name, shown }) =>
-      `- ${id} (${name}): ${shown ? "visible" : "oculto"}`
+    ({ id, name, shown, spot }) =>
+      `- ${id} (${name}): ${shown ? "visible" : "oculto"}, en ${spot} (${SPOT_NAMES[spot]})`
   )
   return `Widgets del dueño ahora mismo:\n${lines.join("\n")}`
 }

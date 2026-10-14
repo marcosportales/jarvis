@@ -310,13 +310,114 @@ describe("Widget Board and Jarvis", () => {
     expect(widgets.getSnapshot().widgets[0]!.shown).toBe(false)
   })
 
-  it("describes the layout for Jarvis: id, name and whether it is Shown", () => {
+  it("describes the layout for Jarvis: id, name, Shown and Spot", () => {
     const widgets = board(NAMED)
     widgets.hide("clock")
 
     expect(widgets.describeLayout()).toEqual([
-      { id: "weather", name: "Tiempo", shown: true },
-      { id: "clock", name: "Reloj", shown: false },
+      { id: "weather", name: "Tiempo", shown: true, spot: "right-top" },
+      { id: "clock", name: "Reloj", shown: false, spot: "left-bottom" },
     ])
+  })
+
+  it("applies a Turn's move changes", () => {
+    const widgets = board(NAMED)
+
+    widgets.applyChanges([{ type: "move", id: "weather", spot: "left-middle" }])
+
+    expect(pixels(widgets.getSnapshot().widgets[0]!.position)).toEqual({
+      left: 16,
+      top: 450,
+    })
+  })
+})
+
+describe("Widget Board Spots", () => {
+  // 16px from the edges of a 1600×1000 viewport, for a 200×100 Widget.
+  it.each([
+    ["left-top", { left: 16, top: 16 }],
+    ["left-middle", { left: 16, top: 450 }],
+    ["left-bottom", { left: 16, top: 884 }],
+    ["right-top", { left: 1384, top: 16 }],
+    ["right-middle", { left: 1384, top: 450 }],
+    ["right-bottom", { left: 1384, top: 884 }],
+  ] as const)("moves a Widget to %s", (spot, expected) => {
+    const { storage } = memoryStorage()
+    board([WEATHER], storage).moveToSpot("weather", spot)
+
+    const reloaded = board([WEATHER], storage).getSnapshot().widgets[0]!
+
+    expect(pixels(reloaded.position)).toEqual(expected)
+    expect(board([WEATHER], storage).describeLayout()[0]!.spot).toBe(spot)
+  })
+
+  it("Shows a Hidden Widget it moves", () => {
+    const widgets = board()
+    widgets.hide("weather")
+
+    widgets.moveToSpot("weather", "left-top")
+
+    expect(widgets.getSnapshot().widgets[0]!.shown).toBe(true)
+  })
+
+  it("stacks a Widget below the one already at a Spot", () => {
+    const widgets = board([WEATHER, CLOCK])
+
+    widgets.moveToSpot("clock", "right-top")
+
+    const [weather, clock] = widgets.getSnapshot().widgets
+    expect(pixels(weather!.position)).toEqual({ left: 1384, top: 16 })
+    // Below it, with an 8px gap.
+    expect(pixels(clock!.position)).toEqual({ left: 1384, top: 124 })
+  })
+
+  it("stacks a Widget above the one already at a bottom Spot", () => {
+    const widgets = board([WEATHER, CLOCK])
+    widgets.moveToSpot("weather", "left-bottom")
+
+    const clock = widgets.getSnapshot().widgets[1]!
+    const weather = widgets.getSnapshot().widgets[0]!
+    expect(pixels(clock.position)).toEqual({ left: 16, top: 884 })
+    expect(pixels(weather.position)).toEqual({ left: 16, top: 776 })
+  })
+
+  it("doesn't stack on a Hidden Widget at the Spot", () => {
+    const widgets = board([WEATHER, CLOCK])
+    widgets.hide("weather")
+
+    widgets.moveToSpot("clock", "right-top")
+
+    expect(pixels(widgets.getSnapshot().widgets[1]!.position)).toEqual({
+      left: 1384,
+      top: 16,
+    })
+  })
+
+  it("tells Jarvis the nearest Spot of a dragged Widget", () => {
+    const widgets = board()
+
+    widgets.drag("weather", { left: 300, top: 600 })
+
+    expect(widgets.describeLayout()[0]!.spot).toBe("left-middle")
+  })
+
+  it("glides only Widgets that moved to a Spot, never dragged ones", () => {
+    const widgets = board()
+    expect(widgets.getSnapshot().widgets[0]!.glide).toBe(false)
+
+    widgets.moveToSpot("weather", "left-bottom")
+    expect(widgets.getSnapshot().widgets[0]!.glide).toBe(true)
+
+    widgets.drag("weather", { left: 300, top: 300 })
+    expect(widgets.getSnapshot().widgets[0]!.glide).toBe(false)
+  })
+
+  it("ignores a move for a Widget it doesn't know", () => {
+    const widgets = board()
+    const before = widgets.getSnapshot()
+
+    widgets.moveToSpot("stocks", "left-top")
+
+    expect(widgets.getSnapshot()).toBe(before)
   })
 })

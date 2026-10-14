@@ -40,6 +40,8 @@ export type WidgetState = {
   id: string
   shown: boolean
   position: WidgetPosition
+  /** It last moved to a Spot, so the layer animates it; dragged ones don't. */
+  glide: boolean
 }
 
 /** Widgets in registry order. */
@@ -157,6 +159,20 @@ function spotPosition(
   return toPosition({ left, top }, viewport, widget)
 }
 
+/** Space between Widgets stacked at one Spot. */
+const STACK_GAP = 8
+
+/** The Spot whose place is closest to `at`. */
+function nearestSpot(at: PixelPosition, viewport: Size, widget: Size): Spot {
+  const distance = (spot: Spot) => {
+    const place = toPixels(spotPosition(spot, viewport, widget), viewport)
+    return Math.hypot(place.left - at.left, place.top - at.top)
+  }
+  return SPOTS.reduce((best, spot) =>
+    distance(spot) < distance(best) ? spot : best
+  )
+}
+
 function overlaps(a: PixelPosition, b: PixelPosition, widget: Size) {
   return (
     Math.abs(a.left - b.left) < widget.width &&
@@ -219,6 +235,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     return {
       id: widget.id,
       shown: true,
+      glide: false,
       position: widget.startingSpot
         ? spotPosition(widget.startingSpot, viewport, widgetSize)
         : toPosition(
@@ -264,6 +281,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
       const current = snapshot.widgets[index]!
       return (
         next.shown !== current.shown ||
+        next.glide !== current.glide ||
         next.position.x !== current.position.x ||
         next.position.y !== current.position.y
       )
@@ -281,6 +299,29 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         widget.id === id ? { ...widget, ...change } : widget
       )
     )
+  }
+
+  /**
+   * Shows the Widget at the Spot; if another Shown Widget is there it stacks
+   * below it, or above it at the bottom Spots, until it finds a free place.
+   */
+  function moveToSpot(id: string, spot: Spot) {
+    if (!snapshot.widgets.some((widget) => widget.id === id)) return
+    const taken = snapshot.widgets
+      .filter((widget) => widget.id !== id && widget.shown)
+      .map((widget) => toPixels(widget.position, viewport))
+    const step =
+      (widgetSize.height + STACK_GAP) * (spot.endsWith("bottom") ? -1 : 1)
+    const place = toPixels(spotPosition(spot, viewport, widgetSize), viewport)
+    for (let tries = 0; tries < taken.length; tries++) {
+      if (!taken.some((other) => overlaps(place, other, widgetSize))) break
+      place.top += step
+    }
+    update(id, {
+      shown: true,
+      glide: true,
+      position: toPosition(place, viewport, widgetSize),
+    })
   }
 
   return {
@@ -303,20 +344,28 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
           case "hide":
             update(change.id, { shown: false })
             break
+          case "move":
+            moveToSpot(change.id, change.spot)
+            break
         }
       }
     },
     /** What Jarvis is told about the layout each Turn. */
     describeLayout(): WidgetLayout {
-      return snapshot.widgets.map(({ id, shown }) => ({
+      return snapshot.widgets.map(({ id, shown, position }) => ({
         id,
         name: registry.find((widget) => widget.id === id)?.name ?? id,
         shown,
+        spot: nearestSpot(toPixels(position, viewport), viewport, widgetSize),
       }))
     },
+    moveToSpot,
     /** The Owner dragged a Widget's top-left corner to `to`. */
     drag: (id: string, to: PixelPosition) =>
-      update(id, { position: toPosition(to, viewport, widgetSize) }),
+      update(id, {
+        position: toPosition(to, viewport, widgetSize),
+        glide: false,
+      }),
     /** The window changed size; every Widget is kept fully inside it. */
     resize(next: Size) {
       viewport = next
@@ -324,6 +373,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         snapshot.widgets.map((widget) => ({
           ...widget,
           position: inView(widget.position),
+          glide: false,
         }))
       )
     },

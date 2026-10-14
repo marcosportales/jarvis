@@ -5,9 +5,10 @@ import { useRef, type PointerEvent } from "react"
 
 import { Button } from "@workspace/ui/components/button"
 import { Card } from "@workspace/ui/components/card"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { useWidgetLayout } from "@/hooks/use-widget-layout"
-import type { WidgetPosition } from "@/lib/widgets/board"
+import type { WidgetState } from "@/lib/widgets/board"
 import { getWidgetBoard } from "@/lib/widgets/browser-board"
 import { WIDGETS, type WidgetDefinition } from "@/lib/widgets/registry"
 
@@ -20,11 +21,11 @@ export function WidgetLayer() {
 
   return (
     <div className="pointer-events-none fixed inset-0 z-20">
-      {widgets.map(({ id, shown, position }) => {
-        const definition = WIDGETS.find((widget) => widget.id === id)
-        if (!shown || !definition) return null
+      {widgets.map((state) => {
+        const definition = WIDGETS.find((widget) => widget.id === state.id)
+        if (!state.shown || !definition) return null
         return (
-          <WidgetCard key={id} definition={definition} position={position} />
+          <WidgetCard key={state.id} definition={definition} state={state} />
         )
       })}
     </div>
@@ -34,13 +35,14 @@ export function WidgetLayer() {
 /**
  * One Widget, draggable with a mouse or a finger from anywhere but its
  * controls. Pointer capture keeps the drag going when the pointer outruns it.
+ * A move to a Spot glides there, unless the Owner prefers reduced motion.
  */
 function WidgetCard({
   definition: { id, name, component: Widget },
-  position,
+  state: { position, glide },
 }: {
   definition: WidgetDefinition
-  position: WidgetPosition
+  state: WidgetState
 }) {
   /** Where the pointer grabbed the card, from its top-left corner. */
   const grab = useRef<{ pointerId: number; x: number; y: number } | null>(null)
@@ -74,7 +76,11 @@ function WidgetCard({
       size="sm"
       role="region"
       aria-label={name}
-      className="pointer-events-auto absolute w-64 cursor-grab touch-none gap-2 select-none active:cursor-grabbing"
+      className={cn(
+        "pointer-events-auto absolute w-64 cursor-grab touch-none gap-2 select-none active:cursor-grabbing",
+        glide &&
+          "motion-safe:transition-[left,top] motion-safe:duration-500 motion-safe:ease-out"
+      )}
       style={{
         left: `${position.x * 100}%`,
         top: `${position.y * 100}%`,

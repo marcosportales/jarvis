@@ -82,6 +82,47 @@ describe("Jarvis's Widget tools for a Turn", () => {
     }
   })
 
+  it("records a move change for move_widget", async () => {
+    const turn = createWidgetTools(CATALOG)
+
+    const result = await call(turn, "move_widget", {
+      id: "weather",
+      spot: "left-bottom",
+    })
+
+    expect(turn.changes()).toEqual([
+      { type: "move", id: "weather", spot: "left-bottom" },
+    ])
+    expect(result).toMatch(/Tiempo/)
+  })
+
+  it("answers an invalid Spot or id for move_widget with an error and records nothing", async () => {
+    const turn = createWidgetTools(CATALOG)
+
+    const badSpot = await call(turn, "move_widget", {
+      id: "weather",
+      spot: "center",
+    })
+    const badId = await call(turn, "move_widget", {
+      id: "stocks",
+      spot: "left-top",
+    })
+
+    expect(turn.changes()).toEqual([])
+    expect(badSpot).toMatch(/left-top/)
+    expect(badId).toMatch(/no existe/)
+  })
+
+  it("offers the six Spots to move_widget", () => {
+    const { tools } = createWidgetTools(CATALOG)
+
+    const description = tools.move_widget?.description ?? ""
+    expect(description).toContain("weather")
+    for (const spot of ["left-top", "right-middle", "right-bottom"]) {
+      expect(description).toContain(spot)
+    }
+  })
+
   it("keeps each Turn's changes separate", async () => {
     const first = createWidgetTools(CATALOG)
     await call(first, "hide_widget", { id: "weather" })
@@ -93,11 +134,11 @@ describe("Jarvis's Widget tools for a Turn", () => {
 describe("Widget layout notice", () => {
   it("tells Jarvis which Widgets are Shown and which are Hidden", () => {
     const notice = widgetLayoutNotice([
-      { id: "weather", name: "Tiempo", shown: true },
-      { id: "clock", name: "Reloj", shown: false },
+      { id: "weather", name: "Tiempo", shown: true, spot: "right-top" },
+      { id: "clock", name: "Reloj", shown: false, spot: "left-middle" },
     ])
 
-    expect(notice).toContain("weather (Tiempo): visible")
-    expect(notice).toContain("clock (Reloj): oculto")
+    expect(notice).toContain("weather (Tiempo): visible, en right-top")
+    expect(notice).toContain("clock (Reloj): oculto, en left-middle")
   })
 })

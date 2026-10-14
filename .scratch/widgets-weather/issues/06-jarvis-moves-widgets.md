@@ -11,12 +11,23 @@ Use the vocabulary from CONTEXT.md (Spot).
 
 **Blocked by:** 04, 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "Pon el tiempo abajo a la izquierda" slides the Weather Widget to the bottom-left Spot, and the new position survives a reload
-- [ ] Moving it while Hidden Shows it
-- [ ] With reduced motion on, it jumps without animating
-- [ ] "¿Dónde está el tiempo?" gets a correct answer, also after the Owner dragged it
-- [ ] Widget Board tests cover: move to each Spot, moving a Hidden Widget Shows it, stacking at an occupied Spot, nearest Spot of a dragged position
-- [ ] Tool tests cover `move_widget` recording the change, and invalid Spots or ids giving an error and no change
-- [ ] Lint, typecheck and tests pass
+- [x] "Pon el tiempo abajo a la izquierda" slides the Weather Widget to the bottom-left Spot, and the new position survives a reload
+- [x] Moving it while Hidden Shows it
+- [x] With reduced motion on, it jumps without animating
+- [x] "¿Dónde está el tiempo?" gets a correct answer, also after the Owner dragged it
+- [x] Widget Board tests cover: move to each Spot, moving a Hidden Widget Shows it, stacking at an occupied Spot, nearest Spot of a dragged position
+- [x] Tool tests cover `move_widget` recording the change, and invalid Spots or ids giving an error and no change
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+Checked by hand against the real model (`next dev` on a side port, headless Chromium at 1600×1000):
+
+- "Pon el tiempo abajo a la izquierda" typed on the Jarvis page: the Widget glided there (an intermediate frame was caught mid-move) and stayed there after a reload.
+- With `prefers-reduced-motion: reduce` the same move jumped with no intermediate frame.
+- After the Owner dragged it to the right-middle area, "¿Dónde está el tiempo?" got "Lo tienes a la derecha en medio."
+- Closed with ✕, then "Pon el tiempo arriba a la izquierda" Showed it at left-top.
+- "Pon el tiempo en el centro" got an offer of the six Spots and no change.
+- Spoken input wasn't exercised (no microphone headless); it goes through the same Reply path.
