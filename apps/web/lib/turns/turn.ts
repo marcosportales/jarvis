@@ -3,6 +3,7 @@ import { generateText, stepCountIs, type LanguageModel, type ToolSet } from "ai"
 import type { Browse } from "../browse/browse"
 import { browseNotice, createBrowseTools } from "../browse/tools"
 import type { Health, HealthReporter } from "../health/health"
+import type { Machine } from "../machine/machine"
 import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
@@ -19,11 +20,13 @@ import {
   type SavedTurn,
   type SessionStore,
 } from "../sessions/store"
+import { createSystemTools } from "../system/tool"
 import { createWeatherTools } from "../weather/tool"
 import type { Coordinates, WeatherService } from "../weather/weather"
 import {
   BROWSER_WIDGET_ID,
   RESULTS_WIDGET_ID,
+  SYSTEM_WIDGET_ID,
   WIDGET_CATALOG,
 } from "../widgets/catalog"
 import {
@@ -71,7 +74,9 @@ export type TurnsDeps = {
   weather: WeatherService
   search: SearchPort
   browse: Browse
-  /** Hears how each real use of Jarvis's parts went. */
+  /** The computer Jarvis runs on, for `get_system_status`. */
+  machine: Pick<Machine, "read">
+  /** Hears how each real use of Jarvis's parts went, and tells Jarvis. */
   health: Pick<Health, "current" | "report">
   now: () => Date
 }
@@ -118,6 +123,20 @@ function withBrowserShown(changes: WidgetChange[], started: boolean) {
     return changes
   }
   return [...changes, { type: "show" as const, id: BROWSER_WIDGET_ID }]
+}
+
+/**
+ * Checking the computer or Jarvis Health Shows the System Widget, unless the
+ * model already did something with it this Turn. Never Expanded.
+ */
+function withSystemShown(changes: WidgetChange[], checked: boolean) {
+  if (
+    !checked ||
+    changes.some((change) => changesWidget(change, SYSTEM_WIDGET_ID))
+  ) {
+    return changes
+  }
+  return [...changes, { type: "show" as const, id: SYSTEM_WIDGET_ID }]
 }
 
 /** The earlier Turns as the chat model sees them. */
@@ -180,6 +199,7 @@ export function createTurns({
   weather,
   search,
   browse,
+  machine,
   health,
   now,
 }: TurnsDeps) {
@@ -238,6 +258,7 @@ export function createTurns({
       const weatherTools = createWeatherTools({ weather, coords, report })
       const searchTools = createSearchTools({ search, report })
       const browseTools = createBrowseTools({ browse, report })
+      const systemTools = createSystemTools({ machine, health })
       try {
         const system = [
           JARVIS_SYSTEM_PROMPT,
@@ -263,6 +284,7 @@ export function createTurns({
                 weatherTools,
                 searchTools.tools,
                 browseTools.tools,
+                systemTools.tools,
               ],
               plugin: pluginTools.tools,
             }),
@@ -302,7 +324,10 @@ export function createTurns({
           text: reply,
           memoryEvents,
           ...resultsForReply(
-            withBrowserShown(widgetTools.changes(), browseTools.started()),
+            withSystemShown(
+              withBrowserShown(widgetTools.changes(), browseTools.started()),
+              systemTools.used()
+            ),
             searchTools.outcome()
           ),
         }

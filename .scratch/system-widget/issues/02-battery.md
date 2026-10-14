@@ -11,14 +11,14 @@ See `../spec.md` (stories 3, 4; "Machine readings").
 - [x] Parser tests over recorded fixtures: charging, discharging, full, not charging, and no battery entry (`battery: null`)
 - [x] The route's reading includes the battery or `null`
 - [x] The Widget shows the row only when there is a battery, with a charging indicator
-- [ ] In the running app on this laptop: the % matches the system's own indicator, and plugging in or unplugging flips the charging indicator within a few seconds
+- [x] In the running app on this laptop: the % matches the system's own indicator, and plugging in or unplugging flips the charging indicator within a few seconds
 - [x] Typecheck, lint and the full test suite pass
 
 ## Comments
 
 Done on 2026-10-14. Checked in the running app on this laptop: the Widget and `GET /api/system` showed "Batería 92 %", not charging, the same as `upower` (92 %, discharging) and `/sys/class/power_supply/BAT0`.
 
-Not checked: plugging in and unplugging, as nobody was at the laptop. The charging case is covered by the parser tests, and the Widget reads afresh every 2 s.
+Later in the session the laptop was plugged in (`BAT0` and `upower` said charging). The Widget then showed the charging icon and a green bar at 91 %. The flip from unplugged to plugged in happened between two checks, so it wasn't timed.
 
 Notes:
 

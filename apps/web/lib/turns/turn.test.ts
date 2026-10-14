@@ -7,6 +7,7 @@ import { createBrowse, type Browse } from "../browse/browse"
 import { fakeBrowserPort, watch } from "../browse/fixtures"
 import { openDatabase } from "../db"
 import type { Health, HealthReport } from "../health/health"
+import type { Machine, MachineReading } from "../machine/machine"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
 import { createPlugins, type Plugins } from "../plugins/plugins"
@@ -61,6 +62,27 @@ function fakeHealth(report: HealthReport = WORKING) {
     report: (id, outcome) => void reports.push([id, outcome.ok]),
   }
   return { health, reports, rechecks: () => rechecks }
+}
+
+const GIB = 1024 ** 3
+
+/** The Owner's laptop: busy, half its RAM used, on battery. */
+const READING: MachineReading = {
+  cpu: { percent: 37.4 },
+  memory: { usedBytes: 7.1 * GIB, totalBytes: 15.3 * GIB },
+  battery: { percent: 92, charging: false },
+  at: NOW.toISOString(),
+}
+
+function fakeMachine(
+  reading: MachineReading | Error = READING
+): Pick<Machine, "read"> {
+  return {
+    read: async () => {
+      if (reading instanceof Error) throw reading
+      return reading
+    },
+  }
 }
 
 const usage = {
@@ -123,6 +145,7 @@ function setup(
     browser?: ReturnType<typeof fakeBrowserPort>
     browse?: Browse
     health?: Pick<Health, "current" | "report">
+    machine?: Pick<Machine, "read">
     /** How Open-Meteo's forecast answers; the recorded one by default. */
     forecast?: Route
     /** Wraps the real Session store, e.g. to make saving fail. */
@@ -161,6 +184,7 @@ function setup(
     search: (options.search ?? fakeSearch()).search,
     browse,
     health: options.health ?? fakeHealth().health,
+    machine: options.machine ?? fakeMachine(),
     now,
   })
   /** What the model was sent in its first step. */
@@ -1437,6 +1461,163 @@ describe("A Turn and Jarvis Health", () => {
     })
 
     expect(reply.text).toBe("Soleado.")
+  })
+})
+
+describe("Jarvis and the System Widget", () => {
+  it("Shows the System Widget when it checks the computer, never Expanded", async () => {
+    const { turns } = setup([
+      call("get_system_status", {}),
+      answer("Te queda un noventa y dos por ciento de batería."),
+    ])
+
+    const reply = await turns.take({
+      text: "¿Cuánta batería me queda?",
+      widgets: LAYOUT,
+    })
+
+    expect(reply.widgetChanges).toEqual([{ type: "show", id: "system" }])
+  })
+
+  it("leaves the System Widget alone when the model hid it in the same Turn", async () => {
+    const { turns } = setup([
+      call("get_system_status", {}),
+      call("hide_widget", { id: "system" }),
+      answer("Hecho; la memoria va bien."),
+    ])
+
+    const reply = await turns.take({
+      text: "¿Cómo va la memoria? Y quita el sistema.",
+      widgets: LAYOUT,
+    })
+
+    expect(reply.widgetChanges).toEqual([{ type: "hide", id: "system" }])
+  })
+
+  it("leaves the Widgets alone in a Turn that didn't check the computer", async () => {
+    const { turns } = setup([answer("Hola.")])
+
+    const reply = await turns.take({ text: "Hola", widgets: LAYOUT })
+
+    expect(reply.widgetChanges).toEqual([])
+  })
+
+  it("tells the model the CPU, RAM, battery and Health in plain Spanish", async () => {
+    const { turns, model } = setup([
+      call("get_system_status", {}),
+      answer("Va bien."),
+    ])
+
+    await turns.take({
+      text: "¿Está muy cargado el ordenador?",
+      widgets: LAYOUT,
+    })
+
+    const answered = sentInStep(model, 1)
+    expect(answered).toContain("CPU: 37 %")
+    expect(answered).toContain("RAM: 7,1 de 15,3 GB")
+    expect(answered).toContain("Batería: 92 %, no está cargando")
+    expect(answered).toContain("Salud de Jarvis: Funcionando")
+  })
+
+  it("says the computer has no battery when it hasn't", async () => {
+    const { turns, model } = setup(
+      [call("get_system_status", {}), answer("No tiene batería.")],
+      { machine: fakeMachine({ ...READING, battery: null }) }
+    )
+
+    await turns.take({ text: "¿Cuánta batería me queda?", widgets: LAYOUT })
+
+    expect(sentInStep(model, 1)).toContain("este ordenador no tiene batería")
+  })
+
+  it("names each failing part and why", async () => {
+    const { health } = fakeHealth({
+      level: "limited",
+      parts: [
+        { id: "thinking", label: "Pensar (modelo)", level: "working" },
+        {
+          id: "search",
+          label: "Búsqueda y Plugins",
+          level: "failing",
+          reason: "sin configurar",
+        },
+      ],
+      checkedAt: NOW.toISOString(),
+    })
+    const { turns, model } = setup(
+      [call("get_system_status", {}), answer("Búsqueda no está configurada.")],
+      { health }
+    )
+
+    await turns.take({ text: "¿Por qué no me buscas nada?", widgets: LAYOUT })
+
+    const answered = sentInStep(model, 1)
+    expect(answered).toContain("Salud de Jarvis: Limitado")
+    expect(answered).toContain("Búsqueda y Plugins: sin configurar")
+    expect(answered).not.toContain("Pensar (modelo)")
+  })
+
+  it("uses Health's latest report rather than forcing new probes", async () => {
+    const health = fakeHealth()
+    const { turns } = setup(
+      [call("get_system_status", {}), answer("Todo funciona.")],
+      { health: health.health }
+    )
+
+    await turns.take({ text: "¿Está todo funcionando?", widgets: LAYOUT })
+
+    expect(health.rechecks()).toBe(0)
+  })
+
+  it("answers that it couldn't read the computer, and still replies", async () => {
+    const { turns, model } = setup(
+      [call("get_system_status", {}), answer("No pude mirarlo.")],
+      { machine: fakeMachine(new Error("EACCES /proc/stat")) }
+    )
+
+    const reply = await turns.take({
+      text: "¿Cómo va la memoria?",
+      widgets: LAYOUT,
+    })
+
+    expect(reply.text).toBe("No pude mirarlo.")
+    const answered = sentInStep(model, 1)
+    expect(answered).toContain("No he podido leer el ordenador")
+    expect(answered).toContain("Salud de Jarvis: Funcionando")
+  })
+
+  it("answers that it couldn't check Health, and still replies", async () => {
+    const { turns, model } = setup(
+      [call("get_system_status", {}), answer("No pude comprobarlo.")],
+      {
+        health: {
+          current: () => Promise.reject(new Error("Health is broken")),
+          report: () => {},
+        },
+      }
+    )
+
+    const reply = await turns.take({
+      text: "¿Está todo funcionando?",
+      widgets: LAYOUT,
+    })
+
+    expect(reply.text).toBe("No pude comprobarlo.")
+    expect(sentInStep(model, 1)).toContain(
+      "No he podido comprobar la Salud de Jarvis"
+    )
+  })
+
+  it("tells the model to use the tool for these, and never to bring them up unasked", async () => {
+    const { turns, firstCall } = setup([answer("Hola.")])
+
+    await turns.take({ text: "Hola", widgets: LAYOUT })
+
+    expect(offeredTools(firstCall())).toContain("get_system_status")
+    expect(prompt(firstCall()).system).toContain(JARVIS_SYSTEM_PROMPT)
+    expect(JARVIS_SYSTEM_PROMPT).toMatch(/get_system_status/)
+    expect(JARVIS_SYSTEM_PROMPT).toMatch(/nunca saques/i)
   })
 })
 
