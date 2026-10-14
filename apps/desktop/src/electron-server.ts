@@ -69,9 +69,21 @@ export function jarvisServer(): JarvisServer {
         )
         return forkUtilityProcess(options)
       },
-      log: (text) => log?.write(text),
+      log: {
+        write: (text) => void log?.write(text),
+        end: () => endLog(log),
+      },
     }),
   }
+}
+
+/** Ends the log; resolves once it's all in the file, or writing failed. */
+function endLog(log: WriteStream | undefined) {
+  return new Promise<void>((resolve) => {
+    if (!log || log.writableFinished) return resolve()
+    log.once("error", () => resolve())
+    log.end(() => resolve())
+  })
 }
 
 function readEnvFile(file: string) {

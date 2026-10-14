@@ -19,8 +19,18 @@ export type Fork = (options: {
   env: Record<string, string>
 }) => ServerProcess
 
+/** Where the server's output goes: the log file in the config directory. */
+export type ServerLog = {
+  write(text: string): void
+  /** Ends the log; resolves once everything written is in the file. */
+  end(): Promise<void>
+}
+
 /** How long a stopping server gets before the Jarvis App quits anyway. */
 const STOP_GRACE_MS = 5_000
+
+/** How long the log gets to be written out before the Jarvis App quits. */
+const LOG_FLUSH_GRACE_MS = 2_000
 
 /**
  * The Server port in the packaged Jarvis App: Next's standalone server of
@@ -43,7 +53,7 @@ export function createOwnServer({
   env: Record<string, string>
   timeoutMs: number
   fork: Fork
-  log: (text: string) => void
+  log: ServerLog
   fetch?: (url: string) => Promise<Response>
   clock?: Clock
 }): Server {
@@ -65,7 +75,7 @@ export function createOwnServer({
       })
       child = started
       started.onOutput((text) => {
-        log(text)
+        log.write(text)
         const lines = text.split("\n").filter((line) => line.trim())
         if (lines.length) lastLine = lines.at(-1)!.trim()
       })
@@ -96,10 +106,14 @@ export function createOwnServer({
 
     async stop() {
       stopping = true
-      if (!child || !running) return
-      const exited = running
-      child.kill()
-      await Promise.race([exited, clock.wait(STOP_GRACE_MS)])
+      if (child && running) {
+        const exited = running
+        child.kill()
+        await Promise.race([exited, clock.wait(STOP_GRACE_MS)])
+      }
+      // The Jarvis App exits right after, which would drop the log's last
+      // lines, those an error dialog points the Owner to, still unwritten.
+      await Promise.race([log.end(), clock.wait(LOG_FLUSH_GRACE_MS)])
     },
 
     onExit(listener) {

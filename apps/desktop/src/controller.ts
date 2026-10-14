@@ -71,15 +71,21 @@ export function createAppController({
     windows.focusJarvis()
   }
 
-  function quit() {
+  /** Stops the server, then exits, once; `beforeExit` runs in between. */
+  function stopThenExit(beforeExit?: () => void) {
     quitting ??= (async () => {
       try {
         await server.stop()
       } finally {
+        beforeExit?.()
         exit()
       }
     })()
     return quitting
+  }
+
+  function quit() {
+    return stopThenExit()
   }
 
   /** Push-to-talk reaches the page without showing or focusing the window. */
@@ -91,14 +97,21 @@ export function createAppController({
     windows.sendToFloatingOrb({ type: "jarvis-state", state })
   }
 
-  /** Tells the Owner why Jarvis can't go on, then quits. */
+  /**
+   * Tells the Owner why Jarvis can't go on, then quits. The error dialog
+   * blocks the Jarvis App, so the server is stopped first: by then the log
+   * it points to is fully written.
+   */
   function failed(title: string, detail: string) {
     if (quitting) return quitting
-    dialogs.showError(
-      title,
-      logFile ? `${detail}\n\nMás detalles en el registro: ${logFile}` : detail
+    return stopThenExit(() =>
+      dialogs.showError(
+        title,
+        logFile
+          ? `${detail}\n\nMás detalles en el registro: ${logFile}`
+          : detail
+      )
     )
-    return quit()
   }
 
   return {

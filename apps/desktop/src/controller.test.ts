@@ -201,9 +201,11 @@ describe("Launching the Jarvis App", () => {
         ),
       },
     ])
+    // The error dialog blocks the Jarvis App, so the server is stopped, and
+    // its log written out, before it shows.
     expect(app.state.events).toEqual([
-      "error shown",
       "server stopped",
+      "error shown",
       "exited",
     ])
   })
@@ -354,9 +356,11 @@ describe("Quitting", () => {
         detail: expect.stringContaining("exited with code 1"),
       },
     ])
+    // The error dialog blocks the Jarvis App, so the server is stopped, and
+    // its log written out, before it shows.
     expect(app.state.events).toEqual([
-      "error shown",
       "server stopped",
+      "error shown",
       "exited",
     ])
   })
@@ -378,9 +382,11 @@ describe("Quitting", () => {
         ),
       },
     ])
+    // The error dialog blocks the Jarvis App, so the server is stopped, and
+    // its log written out, before it shows.
     expect(app.state.events).toEqual([
-      "error shown",
       "server stopped",
+      "error shown",
       "exited",
     ])
   })

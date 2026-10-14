@@ -32,11 +32,19 @@ function fakeProcess() {
 function fakeOwnServer({
   answers = [],
   timeoutMs = 10_000,
-}: { answers?: (number | "refused")[]; timeoutMs?: number } = {}) {
+  logFlushes = true,
+}: {
+  answers?: (number | "refused")[]
+  timeoutMs?: number
+  /** Whether the log file ever finishes writing once ended. */
+  logFlushes?: boolean
+} = {}) {
   let now = 0
   const child = fakeProcess()
   const forked: { modulePath: string; cwd: string; env: object }[] = []
   const logged: string[] = []
+  /** Whether everything logged is safely in the file. */
+  const logFile = { flushed: false }
   const server = createOwnServer({
     appDir: APP_DIR,
     origin: ORIGIN,
@@ -46,7 +54,15 @@ function fakeOwnServer({
       forked.push(options)
       return child.handle
     },
-    log: (text) => logged.push(text),
+    log: {
+      write: (text) => void logged.push(text),
+      end: () =>
+        logFlushes
+          ? settle().then(() => {
+              logFile.flushed = true
+            })
+          : new Promise(() => {}),
+    },
     fetch: async () => {
       const answer = answers.shift() ?? "refused"
       if (answer === "refused") throw new TypeError("fetch failed")
@@ -60,7 +76,7 @@ function fakeOwnServer({
       },
     },
   })
-  return { server, child, forked, logged }
+  return { server, child, forked, logged, logFile }
 }
 
 describe("The Jarvis App's own server", () => {
@@ -155,5 +171,39 @@ describe("The Jarvis App's own server", () => {
     await server.stop()
 
     expect(child.killed).toBe(false)
+  })
+})
+
+describe("The server's log when Jarvis quits", () => {
+  it("is fully written before stopping is done", async () => {
+    const { server, logFile } = fakeOwnServer({ answers: [200] })
+    await server.start()
+    await server.waitUntilReady()
+
+    await server.stop()
+
+    expect(logFile.flushed).toBe(true)
+  })
+
+  it("keeps the last words of a server that died on its own", async () => {
+    // The error dialog points the Owner at these lines.
+    const { server, child, logged, logFile } = fakeOwnServer({ answers: [200] })
+    await server.start()
+    await server.waitUntilReady()
+    child.print("FATAL: out of memory\n")
+    child.exit(134)
+
+    await server.stop()
+
+    expect(logged.join("")).toContain("FATAL: out of memory\n")
+    expect(logFile.flushed).toBe(true)
+  })
+
+  it("doesn't hold up quitting when it can't be written", async () => {
+    const { server } = fakeOwnServer({ answers: [200], logFlushes: false })
+    await server.start()
+    await server.waitUntilReady()
+
+    await expect(server.stop()).resolves.toBeUndefined()
   })
 })
