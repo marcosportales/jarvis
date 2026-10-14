@@ -5,7 +5,12 @@ import {
   JARVIS_STATE_CHANNEL,
   PAGE_CHANNEL,
 } from "./channels.js"
-import type { JarvisAppApi } from "./preload.cjs"
+import {
+  FLOATING_ORB_GESTURES,
+  JARVIS_STATES,
+  type JarvisAppApi,
+  type JarvisState,
+} from "./page-api.js"
 import type { FloatingOrbPageMessage, JarvisPageMessage } from "./ports.js"
 
 /** Electron's renderer side, as far as the preload script uses it. */
@@ -113,11 +118,25 @@ describe("The preload script", () => {
     const jarvisApp = await loadPreload()
 
     jarvisApp.publishJarvisState("listening")
-    jarvisApp.publishJarvisState("<script>")
+    jarvisApp.publishJarvisState("<script>" as JarvisState)
 
     expect(electron.sent).toEqual([
       { channel: JARVIS_STATE_CHANNEL, args: ["listening"] },
     ])
+  })
+
+  it("publishes every Jarvis State there is", async () => {
+    // The preload repeats the Jarvis States; none may be missing.
+    const jarvisApp = await loadPreload()
+
+    for (const state of JARVIS_STATES) jarvisApp.publishJarvisState(state)
+
+    expect(electron.sent).toEqual(
+      JARVIS_STATES.map((state) => ({
+        channel: JARVIS_STATE_CHANNEL,
+        args: [state],
+      }))
+    )
   })
 })
 
@@ -174,7 +193,7 @@ describe("The preload script on the Floating Orb", () => {
   it("sends the Owner's holds and clicks to the Jarvis App, and nothing else", async () => {
     const jarvisApp = await loadPreload()
 
-    for (const gesture of ["press", "release", "click"] as const) {
+    for (const gesture of FLOATING_ORB_GESTURES) {
       jarvisApp.sendFloatingOrbGesture(gesture)
     }
     jarvisApp.sendFloatingOrbGesture("drag" as "click")

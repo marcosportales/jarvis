@@ -9,8 +9,9 @@ export type FloatingOrbGesture = "press" | "release" | "click"
 
 /**
  * What the Jarvis App's preload script exposes to Jarvis's pages as
- * `window.jarvisApp`. A browser tab has none. Mirrors
- * `apps/desktop/src/preload.cts`, which can't share this file.
+ * `window.jarvisApp`. A browser tab has none. A copy of `JarvisAppApi` in
+ * `apps/desktop/src/page-api.ts`, which the web app doesn't depend on; this
+ * module's test fails typecheck when the two differ.
  */
 export type JarvisAppApi = {
   /**

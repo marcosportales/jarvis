@@ -7,9 +7,12 @@
  */
 
 import type {
-  Dialogs,
   FloatingOrbGesture,
   JarvisState,
+  PushToTalkAction,
+} from "./page-api.js"
+import type {
+  Dialogs,
   Server,
   Shell,
   Shortcuts,
@@ -89,7 +92,7 @@ export function createAppController({
   }
 
   /** Push-to-talk reaches the page without showing or focusing the window. */
-  function sendPushToTalk(action: "press" | "release") {
+  function sendPushToTalk(action: PushToTalkAction) {
     if (jarvisOpen) windows.sendToJarvis({ type: "push-to-talk", action })
   }
 

@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, expectTypeOf, it } from "vitest"
+
+// Type-only, so erased: the Jarvis App's own definition of `window.jarvisApp`.
+import type { JarvisAppApi as JarvisAppPreloadApi } from "../../../desktop/src/page-api"
 
 import {
   connectAppBridge,
@@ -257,6 +260,12 @@ describe("Push-to-talk on a page without a Session", () => {
         goToJarvisPage: () => visits.push("/"),
       })()
     ).not.toThrow()
+  })
+})
+
+describe("The Jarvis App's API", () => {
+  it("is the one the Jarvis App's preload script gives (checked by typecheck)", () => {
+    expectTypeOf<JarvisAppApi>().toEqualTypeOf<JarvisAppPreloadApi>()
   })
 })
 

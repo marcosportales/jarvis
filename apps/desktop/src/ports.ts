@@ -4,6 +4,8 @@
  * is tested with fakes and never touches Electron itself.
  */
 
+import type { JarvisState, PushToTalkAction } from "./page-api.js"
+
 /** Jarvis's server: in dev mode the `next dev` one, otherwise its own. */
 export type Server = {
   /** Starts it; a server that is already running elsewhere does nothing. */
@@ -15,13 +17,10 @@ export type Server = {
   onExit(listener: (reason: string) => void): void
 }
 
-/** What Jarvis is doing, as the Jarvis page's Session says. */
-export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
-
 /** A message from the Jarvis App to the Jarvis page. */
 export type JarvisPageMessage = {
   type: "push-to-talk"
-  action: "press" | "release"
+  action: PushToTalkAction
 }
 
 /** A message from the Jarvis App to the Floating Orb page. */
@@ -29,13 +28,6 @@ export type FloatingOrbPageMessage = {
   type: "jarvis-state"
   state: JarvisState
 }
-
-/**
- * What the Owner did with the mouse on the Floating Orb: a hold beyond a
- * short threshold is a Push-to-talk press then release; anything shorter is
- * a click.
- */
-export type FloatingOrbGesture = "press" | "release" | "click"
 
 /** The Jarvis App's windows: the Jarvis window and the Floating Orb. */
 export type Windows = {
