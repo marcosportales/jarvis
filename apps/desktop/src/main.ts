@@ -6,7 +6,8 @@
  * where it was) while hidden, and checks what the pages send over IPC.
  */
 
-import { readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import os from "node:os"
 import path from "node:path"
 
 import {
@@ -28,6 +29,7 @@ import {
 } from "./channels.js"
 import { createAppController, type AppController } from "./controller.js"
 import { connectSessionBus } from "./dbus.js"
+import { desktopEntry } from "./desktop-entry.js"
 import { jarvisServer, type JarvisServer } from "./electron-server.js"
 import { createFloatingOrbWindow } from "./floating-orb-window.js"
 import { parseFloatingOrbGesture, parseJarvisState } from "./page-messages.js"
@@ -48,8 +50,8 @@ const PRELOAD = path.join(import.meta.dirname, "preload.cjs")
 
 /**
  * Jarvis's app id for the desktop portal, which accepts it only with a
- * `Jarvis.desktop` installed (see the README). Push-to-talk from any app is
- * bound in Hyprland to `Jarvis:push-to-talk`.
+ * `Jarvis.desktop` installed (see `installDesktopEntry`). Push-to-talk from
+ * any app is bound in Hyprland to `Jarvis:push-to-talk`.
  */
 const PORTAL_APP_ID = "Jarvis"
 
@@ -76,6 +78,7 @@ function start() {
     return
   }
   const { origin } = jarvis
+  installDesktopEntry()
 
   const controller: AppController = createAppController({
     origin,
@@ -273,4 +276,31 @@ function readSaved(file: string) {
 
 function screenWorkAreas() {
   return screen.getAllDisplays().map((display) => display.workArea)
+}
+
+/**
+ * Writes `Jarvis.desktop` to the Owner's applications when none is
+ * installed, so the desktop portal knows Jarvis's app id. One the Owner
+ * installed (as in the README) is left alone.
+ */
+function installDesktopEntry() {
+  const applications = path.join(
+    process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local/share"),
+    "applications"
+  )
+  const file = path.join(applications, `${PORTAL_APP_ID}.desktop`)
+  if (existsSync(file)) return
+  // Packaged, Jarvis is its AppImage (set by the AppImage runtime, never
+  // through turbo); in dev mode, Electron on this app.
+  const command = app.isPackaged
+    ? // eslint-disable-next-line turbo/no-undeclared-env-vars
+      [process.env.APPIMAGE ?? process.execPath]
+    : [process.execPath, app.getAppPath()]
+  try {
+    mkdirSync(applications, { recursive: true })
+    writeFileSync(file, desktopEntry(command))
+    console.info(`Installed ${file} for the desktop portal`)
+  } catch (error) {
+    console.warn(`Couldn't install ${file}`, error)
+  }
 }
