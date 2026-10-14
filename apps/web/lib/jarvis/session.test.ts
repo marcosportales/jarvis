@@ -83,7 +83,9 @@ function fakeBrain() {
       sessionId = "session-1",
       memoryEvents: MemoryEvent[] = []
     ) =>
-      pending.shift()!.resolve({ sessionId, text, widgetChanges, memoryEvents }),
+      pending
+        .shift()!
+        .resolve({ sessionId, text, widgetChanges, memoryEvents }),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }

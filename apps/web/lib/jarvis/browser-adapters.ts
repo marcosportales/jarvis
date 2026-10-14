@@ -1,5 +1,6 @@
 import { titleSession } from "@/app/sessions/actions"
 
+import { searchOutcomeSchema } from "../search/outcome"
 import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
@@ -105,7 +106,11 @@ const httpBrain: Brain = {
       }
       throw error
     })
-    const reply = (await response.json()) as Reply
+    const { search, ...reply } = (await response.json()) as Reply
+    // A Search Outcome the client can't read is left out, never shown.
+    const parsed = searchOutcomeSchema.optional().safeParse(search)
+    if (!parsed.success)
+      console.error("Unreadable Search Outcome", parsed.error)
     // The Turn is saved: the Session is new or moved to the top of the list.
     notifySessionsChanged()
     if (!sessionId) {
@@ -114,7 +119,9 @@ const httpBrain: Brain = {
       // Without one, the list keeps showing the Session's date.
       titleSession(reply.sessionId).then(notifySessionsChanged, () => {})
     }
-    return reply
+    return parsed.success && parsed.data
+      ? { ...reply, search: parsed.data }
+      : reply
   },
 }
 

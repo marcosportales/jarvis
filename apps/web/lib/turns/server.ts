@@ -3,6 +3,7 @@ import "server-only"
 import { nan, nanConfig } from "../jarvis/server/nan"
 import { getMemories } from "../memory/server"
 import { getPlugins } from "../plugins/server"
+import { getSearch } from "../search/server"
 import { getSessions } from "../sessions/server"
 import { getWeather } from "../weather/server"
 import { createTurns, type Turns } from "./turn"
@@ -15,6 +16,7 @@ export function getTurns(): Turns {
     memories: getMemories(),
     plugins: getPlugins(),
     weather: getWeather(),
+    search: getSearch(),
     now: () => new Date(),
   })
 }

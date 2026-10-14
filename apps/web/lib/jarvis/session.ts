@@ -1,4 +1,5 @@
 import type { MemoryEvent } from "../memory/events"
+import type { SearchOutcome } from "../search/outcome"
 import type { SavedTurn } from "../sessions/store"
 import type { WidgetChange } from "../widgets/changes"
 
@@ -65,13 +66,15 @@ export type ReplyRequest = { sessionId?: string; text: string }
 
 /**
  * What the Brain says, the Session the Turn was saved in, and what it did to
- * the Widgets and to its Memory while deciding.
+ * the Widgets and to its Memory while deciding, plus what it found if it
+ * searched.
  */
 export type Reply = {
   sessionId: string
   text: string
   widgetChanges: WidgetChange[]
   memoryEvents: MemoryEvent[]
+  search?: SearchOutcome
 }
 
 /** Thrown by the Brain when the server doesn't know the Session. */

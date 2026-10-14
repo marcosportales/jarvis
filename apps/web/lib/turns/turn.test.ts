@@ -7,6 +7,7 @@ import { openDatabase } from "../db"
 import { createMemoryStore } from "../memory/store"
 import { GMAIL_TOOLS, fakeComposio, fakeConnector } from "../plugins/fixtures"
 import { createPlugins, type Plugins } from "../plugins/plugins"
+import { fakeSearch } from "../search/fixtures"
 import {
   createSessionStore,
   UnknownSessionError,
@@ -94,6 +95,7 @@ function setup(
     composio?: ReturnType<typeof fakeComposio>
     connector?: ReturnType<typeof fakeConnector>
     plugins?: Pick<Plugins, "toolsForTurn">
+    search?: ReturnType<typeof fakeSearch>
   } = {}
 ) {
   const db = openDatabase(":memory:")
@@ -119,6 +121,7 @@ function setup(
         connector: (options.connector ?? fakeConnector()).connector,
       }),
     weather: createWeather({ fetch: fakeFetch().fetch, env: {} }),
+    search: (options.search ?? fakeSearch()).search,
     now,
   })
   /** What the model was sent in its first step. */
@@ -145,6 +148,11 @@ function prompt({ prompt }: CallOptions) {
         : message.content,
     })),
   }
+}
+
+/** Everything the model was sent in step `index`, tool results included. */
+function sentInStep(model: MockLanguageModelV4, index: number) {
+  return JSON.stringify(model.doGenerateCalls[index]?.prompt)
 }
 
 /** The names of the tools the model was offered. */
@@ -335,6 +343,179 @@ describe("Taking a Turn", () => {
 
     const toolResult = JSON.stringify(model.doGenerateCalls[1]?.prompt)
     expect(toolResult).toMatch(/ubicación del dueño/)
+  })
+
+  describe("with Search", () => {
+    it("searches the web, shows the model plain lines and returns the Search Outcome", async () => {
+      const search = fakeSearch()
+      const { turns, model } = setup(
+        [
+          call("search_web", { query: "horario del Prado" }),
+          answer("Abre de diez a ocho."),
+        ],
+        { search }
+      )
+
+      const reply = await turns.take({
+        text: "¿A qué hora abre el Prado?",
+        widgets: LAYOUT,
+      })
+
+      expect(search.calls).toEqual([
+        {
+          slug: "COMPOSIO_SEARCH_WEB",
+          args: { query: "horario del Prado" },
+        },
+      ])
+      expect(reply.text).toBe("Abre de diez a ocho.")
+      expect(reply.search).toMatchObject({
+        kind: "web",
+        heading: "Búsqueda: horario del Prado",
+        results: expect.arrayContaining([
+          expect.objectContaining({
+            title: "Horarios y precios - Museo Nacional del Prado",
+            url: "https://museodelprado.es/visita/horarios-y-tarifas",
+          }),
+        ]),
+      })
+      const seen = sentInStep(model, 1)
+      expect(seen).toContain("1. Horarios y precios - Museo Nacional del Prado")
+      // Lines for the model, never the provider's raw JSON.
+      expect(seen).not.toContain("citations")
+    })
+
+    it("reads a page and gives the model its text", async () => {
+      const search = fakeSearch()
+      const { turns, model } = setup(
+        [
+          call("read_page", {
+            url: "https://museodelprado.es/visita/horarios-y-tarifas",
+          }),
+          answer("Cierra a las ocho."),
+        ],
+        { search }
+      )
+
+      const reply = await turns.take({
+        text: "¿Qué dice la web del Prado sobre los horarios?",
+        widgets: LAYOUT,
+      })
+
+      expect(search.calls).toEqual([
+        {
+          slug: "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
+          args: {
+            urls: ["https://museodelprado.es/visita/horarios-y-tarifas"],
+            max_characters: expect.any(Number),
+          },
+        },
+      ])
+      expect(reply.search).toMatchObject({ kind: "page" })
+      expect(sentInStep(model, 1)).toContain("de 10:00 a 20:00 h")
+    })
+
+    it("still replies when Search fails, telling the model it couldn't search", async () => {
+      const { turns, model } = setup(
+        [
+          call("search_web", { query: "noticias de hoy" }),
+          answer("No he podido comprobarlo."),
+        ],
+        {
+          search: fakeSearch({
+            COMPOSIO_SEARCH_WEB: { error: new Error("429 Too Many Requests") },
+          }),
+        }
+      )
+
+      const reply = await turns.take({
+        text: "¿Qué ha pasado hoy?",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.text).toBe("No he podido comprobarlo.")
+      expect(reply).not.toHaveProperty("search")
+      expect(sentInStep(model, 1)).toContain("No he podido buscar ahora mismo")
+    })
+
+    it("tells the model when a Search found nothing, and returns the empty outcome", async () => {
+      const { turns, model } = setup(
+        [call("search_web", { query: "xyzzy" }), answer("No encontré nada.")],
+        { search: fakeSearch({ COMPOSIO_SEARCH_WEB: { data: {} } }) }
+      )
+
+      const reply = await turns.take({ text: "Busca xyzzy", widgets: LAYOUT })
+
+      expect(reply.search).toEqual({
+        kind: "web",
+        heading: "Búsqueda: xyzzy",
+        results: [],
+      })
+      expect(sentInStep(model, 1)).toContain("La búsqueda no encontró nada")
+    })
+
+    it("returns the last Search that found something", async () => {
+      const search = fakeSearch({
+        COMPOSIO_SEARCH_FETCH_URL_CONTENT: { data: {} },
+      })
+      const { turns } = setup(
+        [
+          call("search_web", { query: "horario del Prado" }),
+          call("read_page", { url: "https://www.museodelprado.es/visita" }),
+          answer("Abre a las diez."),
+        ],
+        { search }
+      )
+
+      const reply = await turns.take({
+        text: "¿Abre el Prado?",
+        widgets: LAYOUT,
+      })
+
+      expect(search.calls).toHaveLength(2)
+      expect(reply.search).toMatchObject({ kind: "web" })
+    })
+
+    it("returns no Search Outcome when the Turn didn't search", async () => {
+      const { turns } = setup([answer("Hola.")])
+
+      const reply = await turns.take({ text: "Hola", widgets: LAYOUT })
+
+      expect(reply).not.toHaveProperty("search")
+    })
+
+    describe("and a Plugin tool named like a Search tool", () => {
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it("runs Jarvis's own Search tool", async () => {
+        vi.spyOn(console, "error").mockImplementation(() => {})
+        const pluginCalls: string[] = []
+        const search = fakeSearch()
+        const { turns } = setup(
+          [call("search_web", { query: "Prado" }), answer("Listo.")],
+          {
+            search,
+            plugins: {
+              toolsForTurn: async () => ({
+                tools: {
+                  search_web: namedTool("Plugin search_web", () =>
+                    pluginCalls.push("search_web")
+                  ),
+                },
+                notices: [],
+                close: async () => {},
+              }),
+            },
+          }
+        )
+
+        await turns.take({ text: "Busca el Prado", widgets: LAYOUT })
+
+        expect(pluginCalls).toEqual([])
+        expect(search.calls).toHaveLength(1)
+      })
+    })
   })
 
   describe("with Plugins", () => {

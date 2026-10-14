@@ -4,6 +4,9 @@ import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
 import type { Plugins, TurnTools } from "../plugins/plugins"
+import type { SearchOutcome } from "../search/outcome"
+import type { SearchPort } from "../search/port"
+import { createSearchTools } from "../search/tools"
 import {
   UnknownSessionError,
   type SavedTurn,
@@ -39,6 +42,8 @@ export type TurnReply = {
   text: string
   widgetChanges: WidgetChange[]
   memoryEvents: MemoryEvent[]
+  /** The Turn's latest Search Outcome; absent if it didn't search. */
+  search?: SearchOutcome
 }
 
 export type TurnsDeps = {
@@ -47,6 +52,7 @@ export type TurnsDeps = {
   memories: MemoryStore
   plugins: Pick<Plugins, "toolsForTurn">
   weather: WeatherService
+  search: SearchPort
   now: () => Date
 }
 
@@ -108,6 +114,7 @@ export function createTurns({
   memories,
   plugins,
   weather,
+  search,
   now,
 }: TurnsDeps) {
   /** A Plugin problem must never fail the Turn, so fall back to no tools. */
@@ -143,6 +150,7 @@ export function createTurns({
       const pluginTools = await loadPluginTools()
       const widgetTools = createWidgetTools(WIDGET_CATALOG)
       const weatherTools = createWeatherTools({ weather, coords })
+      const searchTools = createSearchTools({ search })
       try {
         const generated = await generateText({
           model,
@@ -155,7 +163,12 @@ export function createTurns({
           ].join("\n\n"),
           messages: [...toMessages(earlier), { role: "user", content: text }],
           tools: mergeTools({
-            builtIn: [memoryTools.tools, widgetTools.tools, weatherTools],
+            builtIn: [
+              memoryTools.tools,
+              widgetTools.tools,
+              weatherTools,
+              searchTools.tools,
+            ],
             plugin: pluginTools.tools,
           }),
           stopWhen: stepCountIs(MAX_REPLY_STEPS),
@@ -175,11 +188,13 @@ export function createTurns({
           await memoryTools.adoptSession(savedIn)
         }
 
+        const outcome = searchTools.outcome()
         return {
           sessionId: savedIn,
           text: reply,
           widgetChanges: widgetTools.changes(),
           memoryEvents,
+          ...(outcome ? { search: outcome } : {}),
         }
       } finally {
         await pluginTools.close()
