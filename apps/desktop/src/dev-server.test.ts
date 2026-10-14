@@ -17,9 +17,11 @@ function fakeDevServer(answers: (number | "refused")[], timeoutMs = 10_000) {
       if (answer === "refused") throw new TypeError("fetch failed")
       return new Response(null, { status: answer })
     },
-    now: () => now,
-    wait: async (ms) => {
-      now += ms
+    clock: {
+      now: () => now,
+      wait: async (ms) => {
+        now += ms
+      },
     },
   })
   return { server, asked }

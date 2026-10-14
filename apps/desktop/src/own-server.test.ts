@@ -52,10 +52,12 @@ function fakeOwnServer({
       if (answer === "refused") throw new TypeError("fetch failed")
       return new Response(null, { status: answer })
     },
-    now: () => now,
-    wait: async (ms) => {
-      now += ms
-      await settle()
+    clock: {
+      now: () => now,
+      wait: async (ms) => {
+        now += ms
+        await settle()
+      },
     },
   })
   return { server, child, forked, logged }

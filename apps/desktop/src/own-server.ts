@@ -35,8 +35,7 @@ export function createOwnServer({
   fork,
   log,
   fetch = globalThis.fetch,
-  now = realClock.now,
-  wait = realClock.wait,
+  clock = realClock,
 }: {
   /** The standalone web app's folder, the one holding `server.js`. */
   appDir: string
@@ -46,10 +45,8 @@ export function createOwnServer({
   fork: Fork
   log: (text: string) => void
   fetch?: (url: string) => Promise<Response>
-  now?: () => number
-  wait?: (ms: number) => Promise<void>
+  clock?: Clock
 }): Server {
-  const clock: Clock = { now, wait }
   const exitListeners: ((reason: string) => void)[] = []
   let child: ServerProcess | undefined
   /** Settles when the started process exits; undefined once it has. */
@@ -102,7 +99,7 @@ export function createOwnServer({
       if (!child || !running) return
       const exited = running
       child.kill()
-      await Promise.race([exited, wait(STOP_GRACE_MS)])
+      await Promise.race([exited, clock.wait(STOP_GRACE_MS)])
     },
 
     onExit(listener) {

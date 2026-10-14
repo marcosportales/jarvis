@@ -1,4 +1,4 @@
-import { realClock, waitForAnswer } from "./answers.js"
+import { realClock, waitForAnswer, type Clock } from "./answers.js"
 import type { Server } from "./ports.js"
 
 /**
@@ -10,14 +10,12 @@ export function createDevServer({
   origin,
   timeoutMs,
   fetch = globalThis.fetch,
-  now = realClock.now,
-  wait = realClock.wait,
+  clock = realClock,
 }: {
   origin: string
   timeoutMs: number
   fetch?: (url: string) => Promise<Response>
-  now?: () => number
-  wait?: (ms: number) => Promise<void>
+  clock?: Clock
 }): Server {
   return {
     async start() {},
@@ -26,7 +24,7 @@ export function createDevServer({
         origin,
         timeoutMs,
         fetch,
-        clock: { now, wait },
+        clock,
         gaveUp: () =>
           new Error(
             `Nada responde en ${origin} tras ${timeoutMs / 1000} s. ¿Está corriendo \`pnpm dev\`?`
