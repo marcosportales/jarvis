@@ -31,6 +31,8 @@ NAN_API_KEY=...
 # NAN_TRANSCRIPTION_MODEL=whisper-1
 # NAN_SPEECH_MODEL=kokoro
 # NAN_VOICE=em_alex
+# City for the weather when the Owner's location is unknown (default Madrid)
+# JARVIS_WEATHER_FALLBACK_CITY=Madrid
 ```
 
 Then run `pnpm dev` and open http://localhost:3000. Hold the orb (or Space) to talk.

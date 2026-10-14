@@ -13,9 +13,9 @@ See the spec's "Weather" section. No Widget UI yet.
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Weather module tests (Vitest, fake `fetch` returning recorded Open-Meteo payloads) cover: coordinates, then the env fallback city when there are none; named-place geocoding with the country returned; place not found; service failure; WMO code mapping
-- [ ] Calling the weather endpoint locally returns real current conditions and 3 days for a named city and for coordinates
-- [ ] Fallback-city env var documented
-- [ ] Lint, typecheck and tests pass
+- [x] Weather module tests (Vitest, fake `fetch` returning recorded Open-Meteo payloads) cover: coordinates, then the env fallback city when there are none; named-place geocoding with the country returned; place not found; service failure; WMO code mapping
+- [x] Calling the weather endpoint locally returns real current conditions and 3 days for a named city and for coordinates
+- [x] Fallback-city env var documented
+- [x] Lint, typecheck and tests pass
