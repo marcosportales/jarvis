@@ -2,6 +2,12 @@ import type { PushToTalk } from "./push-to-talk"
 import type { JarvisSession, JarvisState } from "./session"
 
 /**
+ * What the Owner did with the mouse on the Floating Orb: a hold (a press,
+ * then its release) or a click.
+ */
+export type FloatingOrbGesture = "press" | "release" | "click"
+
+/**
  * What the Jarvis App's preload script exposes to Jarvis's pages as
  * `window.jarvisApp`. A browser tab has none. Mirrors
  * `apps/desktop/src/preload.cts`, which can't share this file.
@@ -14,6 +20,14 @@ export type JarvisAppApi = {
   onPushToTalk(listener: (action: "press" | "release") => void): () => void
   /** Hands the Jarvis App the Jarvis State, e.g. for the Floating Orb. */
   publishJarvisState(state: JarvisState): void
+  /**
+   * (Floating Orb page) The Jarvis page's Jarvis State, as the Jarvis App
+   * relays it: the latest one at once, if any, then every change. Returns a
+   * function that stops listening.
+   */
+  onJarvisState(listener: (state: JarvisState) => void): () => void
+  /** (Floating Orb page) Hands the Jarvis App a hold, its release or a click. */
+  sendFloatingOrbGesture(gesture: FloatingOrbGesture): void
 }
 
 declare global {
@@ -36,7 +50,7 @@ export function connectAppBridge({
 }: {
   session: Pick<JarvisSession, "getSnapshot" | "subscribe">
   pushToTalk: PushToTalk
-  app: JarvisAppApi | undefined
+  app: Pick<JarvisAppApi, "onPushToTalk" | "publishJarvisState"> | undefined
 }): () => void {
   if (!app) return () => {}
 

@@ -13,7 +13,6 @@ import {
   Message,
   MessageContent,
 } from "@workspace/ui/components/ai-elements/message"
-import { Persona } from "@workspace/ui/components/ai-elements/persona"
 import {
   PromptInput,
   PromptInputBody,
@@ -22,6 +21,7 @@ import {
   PromptInputTextarea,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import { Orb } from "@/components/orb"
 import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
@@ -141,22 +141,11 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
   return (
     <div className="mx-auto flex h-svh w-full max-w-2xl flex-col gap-4 p-4">
       <section className="flex flex-col items-center gap-2 pt-6">
-        <button
-          type="button"
-          aria-label="Mantén pulsado para hablar con Jarvis"
-          aria-pressed={state === "listening"}
-          className="touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
-          onPointerDown={(event) => {
-            if (event.button !== 0) return
-            event.currentTarget.setPointerCapture(event.pointerId)
-            pushToTalk.press("orb")
-          }}
-          onPointerUp={() => pushToTalk.release("orb")}
-          onPointerCancel={() => pushToTalk.release("orb")}
-          onContextMenu={(event) => event.preventDefault()}
-        >
-          <Persona className="size-48" state={state} variant="obsidian" />
-        </button>
+        <Orb
+          state={state}
+          onPress={() => pushToTalk.press("orb")}
+          onRelease={() => pushToTalk.release("orb")}
+        />
         <p className="text-sm text-muted-foreground" aria-live="polite">
           {STATE_LABELS[state]}
         </p>

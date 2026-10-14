@@ -1,4 +1,4 @@
-import { titleSession } from "@/app/sessions/actions"
+import { titleSession } from "@/app/(jarvis)/sessions/actions"
 
 import { browseViewSchema } from "../browse/view"
 import { searchOutcomeSchema, toResultsOnScreen } from "../search/outcome"

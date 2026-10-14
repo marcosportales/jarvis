@@ -34,7 +34,7 @@ import {
   useSidebar,
 } from "@workspace/ui/components/sidebar"
 
-import { deleteSession, listSessions } from "@/app/sessions/actions"
+import { deleteSession, listSessions } from "@/app/(jarvis)/sessions/actions"
 import { sessionPath } from "@/lib/navigation"
 import {
   notifySessionsChanged,

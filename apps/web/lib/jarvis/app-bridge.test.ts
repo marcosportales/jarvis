@@ -9,7 +9,7 @@ import { fakeRecorder, flush, setup } from "./session-fakes"
 function fakeJarvisApp() {
   let listener: ((action: "press" | "release") => void) | undefined
   const published: JarvisState[] = []
-  const app: JarvisAppApi = {
+  const app: Pick<JarvisAppApi, "onPushToTalk" | "publishJarvisState"> = {
     onPushToTalk(next) {
       listener = next
       return () => {
