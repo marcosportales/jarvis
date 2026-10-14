@@ -3,12 +3,12 @@ import { desc, eq, inArray, sql } from "drizzle-orm"
 import type { JarvisDatabase } from "../db"
 import { memories } from "../db/schema"
 
-/** One durable fact about the Owner. */
+/** One Memory about the Owner. */
 export type Memory = {
   topicKey: string
   title: string
   content: string
-  /** The Session it was learned in; null once that Session is deleted. */
+  /** The Session it was last Remembered in; null once that Session is deleted. */
   sourceSessionId: string | null
   createdAt: Date
   updatedAt: Date
@@ -27,7 +27,7 @@ export type MemoryStore = {
   remember(memory: NewMemory): Promise<void>
   /** Deletes the Memory with this topic key; null if there was none. */
   forget(topicKey: string): Promise<Memory | null>
-  /** Points Memories at the Session they were learned in. */
+  /** Points Memories at the Session they were Remembered in. */
   setSource(topicKeys: string[], sessionId: string): Promise<void>
   /** The Memories best matching the words of `query`, best first. */
   search(query: string, limit: number): Promise<Memory[]>

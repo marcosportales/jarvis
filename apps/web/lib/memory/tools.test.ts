@@ -91,7 +91,7 @@ describe("Jarvis's Memory tools for a Turn", () => {
     expect(createMemoryTools(memories).events()).toEqual([])
   })
 
-  it("keeps the Memory when the Session it was learned in is deleted", async () => {
+  it("keeps the Memory when the Session it was Remembered in is deleted", async () => {
     const { memories, sessions } = setup()
     const sessionId = await sessions.start({ owner: "Hola", reply: "Hola" })
     const turn = createMemoryTools(memories, { sessionId })

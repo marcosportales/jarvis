@@ -69,11 +69,11 @@ export const turns = sqliteTable(
  */
 export const memories = sqliteTable("memories", {
   id: integer("id").primaryKey({ autoIncrement: true }),
-  /** Reused to replace the Memory when the fact changes. */
+  /** Reused to replace the Memory when what it says changes. */
   topicKey: text("topic_key").notNull().unique(),
   title: text("title").notNull(),
   content: text("content").notNull(),
-  /** Where it was learned; cleared, not cascaded, when that Session goes. */
+  /** Where it was last Remembered; cleared, not cascaded, when that Session goes. */
   sourceSessionId: text("source_session_id").references(() => sessions.id, {
     onDelete: "set null",
   }),
