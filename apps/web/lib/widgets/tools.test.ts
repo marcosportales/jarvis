@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { z } from "zod"
 
-import type { WidgetInfo } from "./catalog"
+import { WIDGET_CATALOG, type WidgetInfo } from "./catalog"
 import { createWidgetTools, widgetLayoutNotice } from "./tools"
 
 const CATALOG: WidgetInfo[] = [
@@ -314,5 +314,16 @@ describe("Jarvis's tools for Expanded Widgets", () => {
     expect(notice).toContain("results (Resultados): visible, ampliado,")
     expect(notice).toContain("weather (Tiempo): visible, en right-top")
     expect(notice.match(/ampliado/g)).toHaveLength(1)
+  })
+})
+
+describe("Jarvis's tools for its own Widgets", () => {
+  it("offers the Today Widget, but never to expand", () => {
+    const { tools } = createWidgetTools(WIDGET_CATALOG)
+
+    for (const name of ["show_widget", "hide_widget", "move_widget"]) {
+      expect(tools[name]?.description).toContain("- today (Hoy): ")
+    }
+    expect(tools.expand_widget?.description).not.toContain("today (Hoy)")
   })
 })

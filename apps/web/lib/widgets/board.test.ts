@@ -7,6 +7,7 @@ import {
   type BoardWidget,
   type WidgetBoardStorage,
 } from "./board"
+import { WIDGET_CATALOG } from "./catalog"
 
 const VIEWPORT = { width: 1600, height: 1000 }
 const WIDGET_SIZE = { width: 200, height: 100 }
@@ -791,5 +792,47 @@ describe("Widget Board Expanded Widget", () => {
 
     widgets.applyChanges([{ type: "collapse" }])
     expect(widgets.getSnapshot().expanded).toBeNull()
+  })
+})
+
+describe("Widget Board with Jarvis's own Widgets", () => {
+  const spotOf = (widgets: ReturnType<typeof board>, id: string) =>
+    widgets.describeLayout().find((widget) => widget.id === id)?.spot
+
+  it("starts the Today Widget at right-top and the Weather Widget just below it", () => {
+    const widgets = board([...WIDGET_CATALOG])
+
+    expect(spotOf(widgets, "today")).toBe("right-top")
+    expect(spotOf(widgets, "weather")).toBe("right-middle")
+  })
+
+  it("stacks the Today Widget below a Weather Widget saved at right-top before it existed", () => {
+    const { storage } = memoryStorage()
+    // The catalog before the Today Widget, which saves Weather's place on load.
+    board(
+      WIDGET_CATALOG.filter(({ id }) => id !== "today").map((widget) =>
+        widget.id === "weather"
+          ? { ...widget, startingSpot: "right-top" as const }
+          : widget
+      ),
+      storage
+    )
+
+    const widgets = board([...WIDGET_CATALOG], storage)
+
+    const position = (id: string) =>
+      pixels(widgets.getSnapshot().widgets.find((w) => w.id === id)!.position)
+    expect(position("weather")).toEqual({ left: 1384, top: 16 })
+    // Below it, with an 8px gap.
+    expect(position("today")).toEqual({ left: 1384, top: 124 })
+  })
+
+  it("keeps the Weather Widget where the Owner already placed it", () => {
+    const { storage } = memoryStorage()
+    board([...WIDGET_CATALOG], storage).moveToSpot("weather", "right-top")
+
+    const reloaded = board([...WIDGET_CATALOG], storage)
+
+    expect(spotOf(reloaded, "weather")).toBe("right-top")
   })
 })

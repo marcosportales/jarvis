@@ -34,11 +34,20 @@ export type WeatherSettings = z.infer<typeof weatherSettingsSchema>
 /** Every Widget; the client registry adds each one's component. */
 export const WIDGET_CATALOG = [
   {
+    id: "today",
+    name: "Hoy",
+    description:
+      "La fecha de hoy con el día de la semana y la hora, donde está el dueño.",
+    startingSpot: "right-top",
+    source: "built-in",
+  },
+  {
     id: "weather",
     name: "Tiempo",
     description:
       "El tiempo actual: temperatura, estado del cielo, máxima y mínima de hoy y viento.",
-    startingSpot: "right-top",
+    // Just below the Today Widget.
+    startingSpot: "right-middle",
     source: "built-in",
     settingsSchema: weatherSettingsSchema,
   },

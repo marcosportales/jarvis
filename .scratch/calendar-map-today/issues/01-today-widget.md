@@ -9,13 +9,22 @@ See `../spec.md` (Today Widget, stories 1–11).
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Unit tests for the pure formatting function: fixed dates and time zones, Spanish weekday and month, single-digit hours (`07:05`), midnight (`00:00`), and a date in another time zone
-- [ ] Board tests: with empty storage, Today starts at right-top and Weather at right-middle; a saved Weather position is kept
-- [ ] Tool test: the Today Widget appears in Jarvis's Widget tools and isn't in the Expandable list
-- [ ] In the running app:
+- [x] Unit tests for the pure formatting function: fixed dates and time zones, Spanish weekday and month, single-digit hours (`07:05`), midnight (`00:00`), and a date in another time zone
+- [x] Board tests: with empty storage, Today starts at right-top and Weather at right-middle; a saved Weather position is kept
+- [x] Tool test: the Today Widget appears in Jarvis's Widget tools and isn't in the Expandable list
+- [x] In the running app:
   - the Today Widget sits above Weather on a fresh profile
   - the time turns over on the minute
   - "quita la hora" Hides it, and "pon la fecha abajo a la izquierda" moves it
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
+
+## Comments
+
+Done on 2026-10-14. Checked in the running app (headless Chrome, 1600 × 1000):
+
+- On a fresh profile, "Hoy" sits at right-top ("13:50" and "miércoles, 14 de octubre de 2026"), with Weather below it at right-middle.
+- The time went from 13:50 to 13:51 on the minute.
+- "quita la hora" Hid it ("Hecho, ya no ves la hora."), and "pon la fecha abajo a la izquierda" Showed it at left-bottom.
+- Every profile that loaded the page before this already had Weather saved at right-top, because the first load saves every Widget's place. So a new Widget's Starting Spot now stacks clear of the Shown Widgets already there, the same way a move does. On such a profile, Weather stays at right-top and Today starts just below it. The Owner chose this over moving an unmoved Weather. Covered by a Board test with a layout saved under the old catalog.

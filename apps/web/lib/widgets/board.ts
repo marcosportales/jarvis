@@ -200,6 +200,28 @@ function spotPosition(
 /** Space between Widgets stacked at one Spot. */
 const STACK_GAP = 8
 
+/**
+ * Where a Widget goes at the Spot: its place there, or if a `taken` place is
+ * in the way, stacked below it, or above it at the bottom Spots, until free.
+ */
+function stackedSpotPlace(
+  spot: Spot,
+  taken: PixelRect[],
+  viewport: Size,
+  widget: Size
+): PixelPosition {
+  const upwards = spot.endsWith("bottom")
+  const place = toPixels(spotPosition(spot, viewport, widget), viewport)
+  for (let tries = 0; tries < taken.length; tries++) {
+    const other = taken.find((rect) => overlaps({ ...place, ...widget }, rect))
+    if (!other) break
+    place.top = upwards
+      ? other.top - widget.height - STACK_GAP
+      : other.top + other.height + STACK_GAP
+  }
+  return place
+}
+
 /** The Spot whose place is closest to `at`. */
 function nearestSpot(at: PixelPosition, viewport: Size, widget: Size): Spot {
   const distance = (spot: Spot) => {
@@ -279,7 +301,8 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
 
   /**
    * Before a Widget is ever placed: Shown, at its Starting Spot, or else at a
-   * random free place in the margins, clear of the `others` already placed.
+   * random free place in the margins, clear of the `others` already placed
+   * either way, so a new Widget never lands on one the Owner already has.
    */
   function defaultState(
     widget: BoardWidget,
@@ -291,19 +314,24 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
       shown: true,
       glide: false,
       settings: defaultSettings(widget),
-      position: widget.startingSpot
-        ? spotPosition(widget.startingSpot, viewport, size)
-        : toPosition(
-            randomMarginPlace(
+      position: toPosition(
+        widget.startingSpot
+          ? stackedSpotPlace(
+              widget.startingSpot,
+              takenBy(others, widget.id),
+              viewport,
+              size
+            )
+          : randomMarginPlace(
               takenBy(others, widget.id),
               viewport,
               size,
               columnWidth,
               random
             ),
-            viewport,
-            size
-          ),
+        viewport,
+        size
+      ),
     }
   }
 
@@ -313,16 +341,13 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
   }
 
   // Saved Widgets no longer in the registry are dropped; new ones get defaults.
-  // A layout saved in a bigger window is pulled into this one. Widgets with a
-  // known place go first, so random places can steer clear of them.
+  // A layout saved in a bigger window is pulled into this one. Saved Widgets
+  // go first, then those with a Starting Spot, so new ones steer clear of them.
   const saved = loadLayout(storage)
-  const known = (widget: BoardWidget) =>
-    widget.id in saved || widget.startingSpot !== undefined
+  const order = (widget: BoardWidget) =>
+    widget.id in saved ? 0 : widget.startingSpot !== undefined ? 1 : 2
   const placed: WidgetState[] = []
-  for (const widget of [
-    ...registry.filter(known),
-    ...registry.filter((widget) => !known(widget)),
-  ]) {
+  for (const widget of [...registry].sort((a, b) => order(a) - order(b))) {
     const defaults = defaultState(widget, placed)
     const { settings, ...rest } = saved[widget.id] ?? {}
     const state = {
@@ -415,23 +440,16 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     })
   }
 
-  /**
-   * Shows the Widget at the Spot; if another Shown Widget is there it stacks
-   * below it, or above it at the bottom Spots, until it finds a free place.
-   */
+  /** Shows the Widget at the Spot, stacked clear of the Shown Widgets there. */
   function moveToSpot(id: string, spot: Spot) {
     if (!snapshot.widgets.some((widget) => widget.id === id)) return
-    const taken = takenBy(snapshot.widgets, id)
     const size = sizeOf(id)
-    const upwards = spot.endsWith("bottom")
-    const place = toPixels(spotPosition(spot, viewport, size), viewport)
-    for (let tries = 0; tries < taken.length; tries++) {
-      const other = taken.find((rect) => overlaps({ ...place, ...size }, rect))
-      if (!other) break
-      place.top = upwards
-        ? other.top - size.height - STACK_GAP
-        : other.top + other.height + STACK_GAP
-    }
+    const place = stackedSpotPlace(
+      spot,
+      takenBy(snapshot.widgets, id),
+      viewport,
+      size
+    )
     update(
       id,
       { shown: true, glide: true, position: toPosition(place, viewport, size) },
