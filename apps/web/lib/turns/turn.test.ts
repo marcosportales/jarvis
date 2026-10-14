@@ -1,5 +1,7 @@
+import { tool } from "ai"
 import { MockLanguageModelV4 } from "ai/test"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { z } from "zod"
 
 import { openDatabase } from "../db"
 import { createMemoryStore } from "../memory/store"
@@ -14,7 +16,12 @@ import { fakeFetch } from "../weather/fixtures"
 import { createWeather } from "../weather/weather"
 import type { WidgetLayout } from "../widgets/changes"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
-import { createTurns, FALLBACK_REPLY, MAX_REPLY_STEPS } from "./turn"
+import {
+  createTurns,
+  FALLBACK_REPLY,
+  MAX_REPLY_STEPS,
+  mergeTools,
+} from "./turn"
 
 type CallOptions = MockLanguageModelV4["doGenerateCalls"][number]
 type GenerateResult = Awaited<ReturnType<MockLanguageModelV4["doGenerate"]>>
@@ -143,6 +150,18 @@ function prompt({ prompt }: CallOptions) {
 /** The names of the tools the model was offered. */
 function offeredTools({ tools }: CallOptions) {
   return (tools ?? []).map((tool) => tool.name)
+}
+
+/** A tool that takes any input and records nothing beyond `onCall`. */
+function namedTool(description: string, onCall: () => void = () => {}) {
+  return tool({
+    description,
+    inputSchema: z.object({}).passthrough(),
+    execute: async () => {
+      onCall()
+      return description
+    },
+  })
 }
 
 const sister = {
@@ -423,5 +442,71 @@ describe("Taking a Turn", () => {
         /Gmail no responde ahora mismo/
       )
     })
+
+    describe("whose tool is named like one of Jarvis's own", () => {
+      afterEach(() => {
+        vi.restoreAllMocks()
+      })
+
+      it("runs Jarvis's own tool, logs the clash and still offers the Plugin's other tools", async () => {
+        const errors = vi.spyOn(console, "error").mockImplementation(() => {})
+        const pluginCalls: string[] = []
+        const pluginTool = (name: string) =>
+          namedTool(`Plugin ${name}`, () => pluginCalls.push(name))
+        // The real Plugins module only serves allowlisted Composio names, so
+        // a stub stands in for a Plugin that serves a clashing one.
+        const { turns, memories, firstCall } = setup(
+          [call("remember", sister), answer("Lo tendré en cuenta.")],
+          {
+            plugins: {
+              toolsForTurn: async () => ({
+                tools: {
+                  remember: pluginTool("remember"),
+                  GMAIL_FETCH_EMAILS: pluginTool("GMAIL_FETCH_EMAILS"),
+                },
+                notices: [],
+                close: async () => {},
+              }),
+            },
+          }
+        )
+
+        const reply = await turns.take({
+          text: "Mi hermana se llama Lucía",
+          widgets: LAYOUT,
+        })
+
+        expect(pluginCalls).toEqual([])
+        expect(reply.memoryEvents).toEqual([
+          { kind: "remembered", title: "Su hermana" },
+        ])
+        expect(await memories.all()).toMatchObject([sister])
+        const offered = firstCall().tools ?? []
+        expect(offered.map((tool) => tool.name)).toContain("GMAIL_FETCH_EMAILS")
+        const remember = offered.find((tool) => tool.name === "remember")
+        expect(
+          remember && "description" in remember && remember.description
+        ).not.toBe("Plugin remember")
+        expect(errors).toHaveBeenCalledWith(
+          expect.stringContaining('"remember"')
+        )
+      })
+    })
+  })
+})
+
+// Today's built-in tool factories can't be made to clash from a Turn, so
+// this one rule is checked on the merge itself.
+describe("Merging a Turn's tools", () => {
+  it("throws when two of Jarvis's own tools share a name", () => {
+    expect(() =>
+      mergeTools({
+        builtIn: [
+          { remember: namedTool("Memory") },
+          { remember: namedTool("Widgets") },
+        ],
+        plugin: {},
+      })
+    ).toThrow(/remember/)
   })
 })

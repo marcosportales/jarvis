@@ -1,4 +1,4 @@
-import { generateText, stepCountIs, type LanguageModel } from "ai"
+import { generateText, stepCountIs, type LanguageModel, type ToolSet } from "ai"
 
 import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
@@ -67,6 +67,40 @@ function currentDateLine(now: Date) {
   return `Fecha y hora actuales: ${formatted}.`
 }
 
+/**
+ * One tool set for the model, where Jarvis's own tools always win. A Plugin
+ * tool whose name is taken is left out and logged; two built-in tools with
+ * the same name are a programming mistake, so they throw. Exported only so
+ * that last rule can be tested, as no Turn can trigger it today.
+ */
+export function mergeTools({
+  builtIn,
+  plugin,
+}: {
+  builtIn: ToolSet[]
+  plugin: ToolSet
+}): ToolSet {
+  const merged: ToolSet = {}
+  for (const tools of builtIn) {
+    for (const [name, tool] of Object.entries(tools)) {
+      if (name in merged) {
+        throw new Error(`Two built-in tools are named "${name}"`)
+      }
+      merged[name] = tool
+    }
+  }
+  for (const [name, tool] of Object.entries(plugin)) {
+    if (name in merged) {
+      console.error(
+        `Left out the Plugin tool "${name}": a built-in tool has that name`
+      )
+      continue
+    }
+    merged[name] = tool
+  }
+  return merged
+}
+
 /** Jarvis's Turns over the given model and stores. */
 export function createTurns({
   model,
@@ -120,12 +154,10 @@ export function createTurns({
             ...pluginTools.notices,
           ].join("\n\n"),
           messages: [...toMessages(earlier), { role: "user", content: text }],
-          tools: {
-            ...pluginTools.tools,
-            ...widgetTools.tools,
-            ...weatherTools,
-            ...memoryTools.tools,
-          },
+          tools: mergeTools({
+            builtIn: [memoryTools.tools, widgetTools.tools, weatherTools],
+            plugin: pluginTools.tools,
+          }),
           stopWhen: stepCountIs(MAX_REPLY_STEPS),
         })
 

@@ -8,9 +8,11 @@ Today, whichever tool comes later in the merge silently wins.
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] When a Connected Plugin serves a tool named like a built-in tool, the model's call to that name runs the built-in tool, and the clash is logged
-- [ ] The Plugin's other tools still reach the model
-- [ ] Two built-in tools with the same name make taking a Turn throw
-- [ ] Typecheck, lint and the full test suite pass
+- [x] When a Connected Plugin serves a tool named like a built-in tool, the model's call to that name runs the built-in tool, and the clash is logged
+- [x] The Plugin's other tools still reach the model
+- [x] Two built-in tools with the same name make taking a Turn throw
+- [x] Typecheck, lint and the full test suite pass
+
+**Note:** Today's built-in tool factories can't be made to clash from a Turn, so the built-in clash is tested on the exported `mergeTools` rather than through taking a Turn. The Plugin clash is tested through a Turn, with a stub Plugins module, because the real one only serves allowlisted Composio names.
