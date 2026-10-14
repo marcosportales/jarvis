@@ -72,6 +72,25 @@ export function createMemoryTools(
           return `Memoria «${title}» guardada.`
         },
       }),
+      forget: tool({
+        description:
+          "Borra una memoria sobre el dueño por su clave. Usa la clave tal como aparece en tus memorias.",
+        inputSchema: z.object({ topicKey }),
+        execute: async ({ topicKey }) => {
+          let forgotten
+          try {
+            forgotten = await memories.forget(topicKey)
+          } catch (error) {
+            console.error("Forgetting failed", error)
+            return "No pude borrar la memoria."
+          }
+          if (!forgotten) {
+            return `No hay ninguna memoria con la clave «${topicKey}»; no se ha borrado nada.`
+          }
+          events.push({ kind: "forgotten", title: forgotten.title })
+          return `Memoria «${forgotten.title}» borrada.`
+        },
+      }),
     },
     events: () => [...events],
     async adoptSession(id) {

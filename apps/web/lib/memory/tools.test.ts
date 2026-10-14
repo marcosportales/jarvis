@@ -122,6 +122,45 @@ describe("Jarvis's Memory tools for a Turn", () => {
   })
 })
 
+describe("forget", () => {
+  it("removes the Memory and records a forgotten event", async () => {
+    const { memories } = setup()
+    await call(createMemoryTools(memories), "remember", sister)
+    const turn = createMemoryTools(memories)
+
+    const result = await call(turn, "forget", { topicKey: "hermana" })
+
+    expect(await memories.all()).toEqual([])
+    expect(turn.events()).toEqual([{ kind: "forgotten", title: "Su hermana" }])
+    expect(result).toMatch(/Su hermana/)
+  })
+
+  it("answers an unknown topic key with a model-facing no-match and records nothing", async () => {
+    const { memories } = setup()
+    await call(createMemoryTools(memories), "remember", sister)
+    const turn = createMemoryTools(memories)
+
+    const result = await call(turn, "forget", { topicKey: "trabajo" })
+
+    expect(await memories.all()).toHaveLength(1)
+    expect(turn.events()).toEqual([])
+    expect(result).toMatch(/no hay ninguna memoria/i)
+  })
+
+  it("records both events when a Memory is remembered and then forgotten in one Turn", async () => {
+    const { memories } = setup()
+    const turn = createMemoryTools(memories)
+
+    await call(turn, "remember", sister)
+    await call(turn, "forget", { topicKey: "hermana" })
+
+    expect(turn.events()).toEqual([
+      { kind: "remembered", title: "Su hermana" },
+      { kind: "forgotten", title: "Su hermana" },
+    ])
+  })
+})
+
 describe("Core Memories notice", () => {
   it("says when Jarvis has no Memories yet", async () => {
     const { memories } = setup()

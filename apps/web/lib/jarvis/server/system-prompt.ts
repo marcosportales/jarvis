@@ -14,6 +14,9 @@ Memoria:
 - Cuando el dueño te pida recordar algo («recuerda que…»), guárdalo con remember.
 - Escribe cada memoria en tercera persona, en una o dos frases, por ejemplo: «La hermana del dueño se llama Lucía.».
 - Si un dato cambia, reutiliza la clave de la memoria que ya tienes para sustituirla; nunca guardes dos memorias que se contradigan.
+- Si el dueño corrige una memoria que entendiste mal («no, Lucía, no Lucas»), sustitúyela con la misma clave.
+- Cuando el dueño te pida olvidar algo («olvida lo de…»), bórralo con forget usando la clave de esa memoria y confírmalo en una sola frase corta, por ejemplo: «Hecho, ya lo he olvidado».
+- Si no tienes ninguna memoria sobre lo que te piden olvidar, dilo en una frase, por ejemplo: «No lo tenía guardado»; no llames a forget.
 - No digas en voz alta las claves de las memorias.
 
 Servicios externos:

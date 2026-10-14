@@ -25,6 +25,8 @@ export type NewMemory = {
 export type MemoryStore = {
   /** Replaces the Memory with the same topic key, otherwise adds one. */
   remember(memory: NewMemory): Promise<void>
+  /** Deletes the Memory with this topic key; null if there was none. */
+  forget(topicKey: string): Promise<Memory | null>
   /** Points Memories at the Session they were learned in. */
   setSource(topicKeys: string[], sessionId: string): Promise<void>
   /** Every Memory, newest-updated first. */
@@ -61,6 +63,16 @@ export function createMemoryStore(
           set: { title, content, sourceSessionId, updatedAt: at },
         })
         .run()
+    },
+
+    async forget(topicKey) {
+      return (
+        db
+          .delete(memories)
+          .where(eq(memories.topicKey, topicKey))
+          .returning(columns)
+          .get() ?? null
+      )
     },
 
     async setSource(topicKeys, sessionId) {
