@@ -229,11 +229,15 @@ export function createJarvisSession(
   }
 
   /**
-   * Shows a new Browse Task view. One that just ended Shows the Browser
-   * Widget, Hidden or not, and highlights it; that is the only cue.
+   * Shows a new Browse Task view. One that just ended on its own Shows the
+   * Browser Widget, Hidden or not, and highlights it; that is the only cue.
+   * A stopped one doesn't: the Owner stopped it, by voice or in the Widget.
    */
   function showBrowse(view: BrowseView | null) {
-    const ended = isRunning(snapshot.browse) && !isRunning(view)
+    const ended =
+      isRunning(snapshot.browse) &&
+      !isRunning(view) &&
+      view?.status !== "stopped"
     if (ended) widgets.apply([{ type: "show", id: BROWSER_WIDGET_ID }])
     update({
       browse: view,

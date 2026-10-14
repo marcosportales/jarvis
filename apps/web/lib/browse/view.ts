@@ -46,6 +46,21 @@ export const browseViewSchema = z.object({
   endedAt: z.coerce.date().nullable(),
 }) satisfies z.ZodType<BrowseView, unknown>
 
+const ENDED_LABELS: Record<Exclude<BrowseStatus, "running">, string> = {
+  finished: "Terminada",
+  failed: "Ha fallado",
+  stopped: "Parada",
+  "timed-out": "Parada por tardar demasiado",
+}
+
+/** How an ended Browse Task is named, on screen and to Jarvis. */
+export function endedLabel(view: BrowseView) {
+  if (view.status === "running") return null
+  return view.status === "finished" && view.success === false
+    ? "Terminada sin conseguirlo"
+    : ENDED_LABELS[view.status]
+}
+
 export const isRunning = (view: BrowseView | null) => view?.status === "running"
 
 /** "renfe.com" for "https://www.renfe.com/es/en"; null if it isn't a URL. */

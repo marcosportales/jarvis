@@ -51,6 +51,19 @@ export function readOnlyTask(task: string) {
   ].join("\n")
 }
 
+/**
+ * The remote browser couldn't start. The running Browse Task, if any, was
+ * already stopped and comes along so Jarvis can say so.
+ */
+export class BrowseStartFailedError extends Error {
+  constructor(
+    readonly stopped: BrowseView | null,
+    options?: ErrorOptions
+  ) {
+    super("The remote browser couldn't start", options)
+  }
+}
+
 type Row = typeof browseTask.$inferSelect
 
 function toView(row: Row): BrowseView {
@@ -103,6 +116,9 @@ export function createBrowse({
 
   const load = () => db.select().from(browseTask).get() ?? null
 
+  const overTime = (row: Row) =>
+    now().getTime() - row.startedAt.getTime() >= timeLimitMs
+
   function save(id: string, patch: Partial<Row>) {
     db.update(browseTask).set(patch).where(eq(browseTask.id, id)).run()
   }
@@ -117,7 +133,7 @@ export function createBrowse({
   }
 
   async function refresh(row: Row) {
-    if (now().getTime() - row.startedAt.getTime() >= timeLimitMs) {
+    if (overTime(row)) {
       await freeRemoteBrowser(row.id)
       save(row.id, {
         status: "timed-out",
@@ -146,7 +162,7 @@ export function createBrowse({
     save(row.id, {
       ...progress,
       status: watched.status,
-      // A stopped task's output is just "Agent stopped by user".
+      // A stopped task's output only says it was stopped.
       outcome: stopped ? null : watched.output,
       success: watched.success,
       liveViewUrl: null,
@@ -168,15 +184,20 @@ export function createBrowse({
         // A remote browser that won't stop must not block the new task.
         await stopRunning(previous).catch((error: unknown) => {
           console.error("Stopping the previous Browse Task failed", error)
-          save(previous.id, { status: "stopped", endedAt: now() })
+          save(previous.id, {
+            status: "stopped",
+            liveViewUrl: null,
+            endedAt: now(),
+          })
         })
         stopped = toView(load() ?? previous)
       }
 
-      const { taskId, browserSessionId } = await port.start({
-        task: readOnlyTask(task),
-        ...(startUrl ? { startUrl } : {}),
-      })
+      const { taskId, browserSessionId } = await port
+        .start({ task: readOnlyTask(task), ...(startUrl ? { startUrl } : {}) })
+        .catch((cause: unknown) => {
+          throw new BrowseStartFailedError(stopped, { cause })
+        })
       let liveViewUrl: string | null = null
       try {
         liveViewUrl = await port.liveViewUrl(browserSessionId)
@@ -220,7 +241,7 @@ export function createBrowse({
       if (!row) return null
       const due =
         now().getTime() - row.checkedAt.getTime() >= checkEveryMs ||
-        now().getTime() - row.startedAt.getTime() >= timeLimitMs
+        overTime(row)
       if (row.status === "running" && due && !refreshing) {
         refreshing = refresh(row)
           .catch((error: unknown) => {

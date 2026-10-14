@@ -967,6 +967,26 @@ describe("Taking a Turn", () => {
       expect(sentInStep(model, 1)).toMatch(/No he podido empezar/)
     })
 
+    it("tells the model when a failed start had already stopped the Browse Task before it", async () => {
+      const { turns, browse, browser, model } = setup([
+        call("start_browse", {
+          task: "Mira el precio de una maleta en Ryanair",
+        }),
+        answer("He parado la anterior, pero no he podido empezar esta."),
+      ])
+      await browse.start(PRADO)
+      browser.failures.start = true
+
+      const reply = await turns.take({
+        text: "Mejor mira lo de la maleta",
+        widgets: LAYOUT,
+      })
+
+      expect(sentInStep(model, 1)).toMatch(/Paré la navegación anterior/)
+      expect(sentInStep(model, 1)).toMatch(/No he podido empezar/)
+      expect(reply.widgetChanges).toEqual([])
+    })
+
     it("stops the Browse Task when the model calls stop_browse", async () => {
       const { turns, browse, browser, model } = setup([
         call("stop_browse", {}),
@@ -1051,7 +1071,7 @@ describe("Taking a Turn", () => {
       const { system } = prompt(firstCall())
       expect(system).toContain(PRADO.task)
       expect(system).toContain("Abre hoy de 10:00 a 20:00.")
-      expect(system).toMatch(/terminó/i)
+      expect(system).toMatch(/Estado: Terminada/)
     })
 
     it("tells the model nothing about Browse when there is no Browse Task", async () => {

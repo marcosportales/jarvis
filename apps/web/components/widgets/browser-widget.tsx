@@ -8,17 +8,10 @@ import { Spinner } from "@workspace/ui/components/spinner"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { shownBrowse } from "@/lib/browse/browser-view"
-import { domainOf, type BrowseView } from "@/lib/browse/view"
+import { domainOf, endedLabel, type BrowseView } from "@/lib/browse/view"
 
 /** How long the Widget stays highlighted once the Browse Task ends. */
 const HIGHLIGHT_MS = 3_000
-
-const ENDED_LABELS: Record<Exclude<BrowseView["status"], "running">, string> = {
-  finished: "Terminada",
-  failed: "Ha fallado",
-  stopped: "Parada",
-  "timed-out": "Parada por tardar demasiado",
-}
 
 /** The Browse Task isn't known until the page loads it. */
 const getServerSnapshot = () => null
@@ -124,10 +117,7 @@ function Progress({ view }: { view: BrowseView }) {
 }
 
 function Outcome({ view }: { view: BrowseView }) {
-  const label =
-    view.status === "finished" && view.success === false
-      ? "Terminada sin conseguirlo"
-      : ENDED_LABELS[view.status as keyof typeof ENDED_LABELS]
+  const label = endedLabel(view)
   return (
     <div className="flex flex-col gap-1">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>

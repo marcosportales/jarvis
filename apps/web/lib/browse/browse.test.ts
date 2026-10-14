@@ -4,6 +4,7 @@ import { openDatabase, type JarvisDatabase } from "../db"
 import {
   BROWSE_CHECK_INTERVAL_MS,
   BROWSE_TIME_LIMIT_MS,
+  BrowseStartFailedError,
   createBrowse,
 } from "./browse"
 import { fakeBrowserPort, watch } from "./fixtures"
@@ -230,6 +231,32 @@ describe("Browse", () => {
 
     expect(stopped).toBeNull()
     expect(calls.stop).toEqual(["task-1"])
+  })
+
+  it("reports the Browse Task it stopped when the next one then can't start", async () => {
+    const { browse, failures } = setup()
+    await browse.start(PRADO)
+    failures.start = true
+
+    const failed = await browse
+      .start({ task: "Otra cosa que mirar" })
+      .catch((error: unknown) => error)
+
+    expect(failed).toBeInstanceOf(BrowseStartFailedError)
+    expect((failed as BrowseStartFailedError).stopped).toMatchObject({
+      task: PRADO.task,
+      status: "stopped",
+    })
+  })
+
+  it("marks the previous Browse Task stopped, without its live view, even when stopping it fails", async () => {
+    const { browse, failures } = setup()
+    await browse.start(PRADO)
+    failures.stop = true
+
+    const { stopped } = await browse.start({ task: "Otra cosa que mirar" })
+
+    expect(stopped).toMatchObject({ status: "stopped", liveViewUrl: null })
   })
 
   it("stops the running Browse Task", async () => {

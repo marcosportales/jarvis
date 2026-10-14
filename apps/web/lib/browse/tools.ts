@@ -1,8 +1,8 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
-import type { Browse } from "./browse"
-import { domainOf, type BrowseView } from "./view"
+import { BrowseStartFailedError, type Browse } from "./browse"
+import { domainOf, endedLabel, type BrowseView } from "./view"
 
 export const BROWSE_STARTED =
   "Navegación iniciada. Dilo en una sola frase y remite al navegador en pantalla; no hables del resultado hasta que te lo pregunten."
@@ -57,7 +57,9 @@ export function createBrowseTools({
               : BROWSE_STARTED
           } catch (error) {
             console.error("Starting a Browse Task failed", error)
-            return BROWSE_START_FAILED
+            return error instanceof BrowseStartFailedError && error.stopped
+              ? `Paré la navegación anterior («${error.stopped.task}»), pero no empezó la nueva. Dilo también. ${BROWSE_START_FAILED}`
+              : BROWSE_START_FAILED
           }
         },
       }),
@@ -91,13 +93,6 @@ function ago(from: Date, now: Date) {
   return minutes === 1 ? "hace 1 minuto" : `hace ${minutes} minutos`
 }
 
-const ENDED: Record<Exclude<BrowseView["status"], "running">, string> = {
-  finished: "Terminó",
-  failed: "Falló",
-  stopped: "Se paró antes de terminar",
-  "timed-out": "Se paró por tardar demasiado",
-}
-
 /**
  * What Jarvis is told each Turn about the current Browse Task, so it can
  * answer «¿cómo va?» and «¿qué has encontrado?». Null with no Browse Task.
@@ -117,12 +112,8 @@ export function browseNotice(view: BrowseView | null, now: Date) {
       "Si preguntan cómo va, cuéntalo en una frase; el resultado llegará al navegador en pantalla.",
     ].join("\n")
   }
-  const outcome =
-    view.status === "finished" && view.success === false
-      ? "Terminó sin conseguirlo del todo"
-      : ENDED[view.status]
   return [
-    `Última navegación: «${view.task}». ${outcome}${view.endedAt ? ` ${ago(view.endedAt, now)}` : ""}.`,
+    `Última navegación: «${view.task}». Estado: ${endedLabel(view)}${view.endedAt ? ` ${ago(view.endedAt, now)}` : ""}.`,
     view.outcome ? `Resultado: «${view.outcome}»` : "No dejó ningún resultado.",
     view.currentUrl
       ? `Acabó en ${domainOf(view.currentUrl) ?? view.currentUrl}.`

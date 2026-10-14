@@ -6,6 +6,7 @@ import {
   text,
 } from "drizzle-orm/sqlite-core"
 
+import { BROWSE_STATUSES } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
 
 /** A saved Session; it exists only once its first Turn is done. */
@@ -76,9 +77,7 @@ export const browseTask = sqliteTable("browse_task", {
   /** What was asked, as the model wrote it, without the read-only wrapper. */
   task: text("task").notNull(),
   startUrl: text("start_url"),
-  status: text("status", {
-    enum: ["running", "finished", "failed", "stopped", "timed-out"],
-  }).notNull(),
+  status: text("status", { enum: BROWSE_STATUSES }).notNull(),
   currentGoal: text("current_goal"),
   currentUrl: text("current_url"),
   liveViewUrl: text("live_view_url"),

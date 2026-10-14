@@ -779,6 +779,22 @@ describe("Jarvis Session", () => {
       expect(jarvis.session.getSnapshot().browseJustEnded).toBe(true)
     })
 
+    it("gives no cue when the Owner stopped the Browse Task by voice", async () => {
+      const stopped = view({ status: "stopped", liveViewUrl: null })
+      const jarvis = setup({ browse: fakeBrowse([running, stopped]) })
+      jarvis.session.watchBrowse()
+      await tick()
+
+      jarvis.session.sendTypedMessage("Para")
+      await tick()
+      jarvis.brain.answer("Hecho, la he parado.")
+      await tick()
+
+      expect(jarvis.session.getSnapshot().browse).toEqual(stopped)
+      expect(jarvis.session.getSnapshot().browseJustEnded).toBe(false)
+      expect(jarvis.widgets.applied).toEqual([[]])
+    })
+
     it("leaves the Browser Widget alone for a Browse Task that had already ended", async () => {
       const jarvis = setup({ browse: fakeBrowse([finished]) })
 

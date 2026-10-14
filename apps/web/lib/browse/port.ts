@@ -115,7 +115,7 @@ export function createComposioBrowserPort(
 ): BrowserPort {
   const composio = apiKey ? new Composio({ apiKey }) : null
 
-  async function run(
+  async function callTool(
     slug: string,
     args: Record<string, unknown>,
     timeoutMs = TIMEOUT_MS
@@ -139,7 +139,7 @@ export function createComposioBrowserPort(
   return {
     async start({ task, startUrl }) {
       const created = createdSchema.parse(
-        await run("BROWSER_TOOL_CREATE_TASK", {
+        await callTool("BROWSER_TOOL_CREATE_TASK", {
           task,
           ...(startUrl ? { startUrl } : {}),
         })
@@ -151,7 +151,7 @@ export function createComposioBrowserPort(
     },
     async watch(taskId, lastStep) {
       return toBrowserWatch(
-        await run(
+        await callTool(
           "BROWSER_TOOL_WATCH_TASK",
           { taskId, lastStepSeen: lastStep },
           WATCH_TIMEOUT_MS
@@ -160,12 +160,14 @@ export function createComposioBrowserPort(
     },
     async liveViewUrl(browserSessionId) {
       const session = sessionSchema.parse(
-        await run("BROWSER_TOOL_GET_SESSION", { sessionId: browserSessionId })
+        await callTool("BROWSER_TOOL_GET_SESSION", {
+          sessionId: browserSessionId,
+        })
       )
       return session.liveUrl ?? null
     },
     async stop(taskId) {
-      await run("BROWSER_TOOL_STOP_TASK", { taskId })
+      await callTool("BROWSER_TOOL_STOP_TASK", { taskId })
     },
   }
 }
