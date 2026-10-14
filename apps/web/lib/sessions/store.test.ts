@@ -171,4 +171,27 @@ describe("Sessions store", () => {
 
     expect(await store.list()).toEqual({ sessions: [], nextCursor: null })
   })
+
+  it("shows a Session's Session Title in the list once set", async () => {
+    const { store } = setup()
+    const id = await store.start(turn(1))
+
+    await store.setTitle(id, "Viaje a Lisboa")
+
+    const [listed] = (await store.list()).sessions
+    expect(listed).toMatchObject({ id, title: "Viaje a Lisboa" })
+  })
+
+  it("setting a title doesn't count as activity", async () => {
+    const { store, later } = setup()
+    const trip = await store.start(turn(1))
+    later()
+    const work = await store.start(turn(1))
+    later()
+
+    await store.setTitle(trip, "Viaje a Lisboa")
+
+    const listed = (await store.list()).sessions.map(({ id }) => id)
+    expect(listed).toEqual([work, trip])
+  })
 })

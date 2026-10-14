@@ -1,7 +1,7 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import {
   Conversation,
@@ -22,10 +22,12 @@ import {
   PromptInputTextarea,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import { titleSession } from "@/app/sessions/actions"
 import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
 import { sessionPath } from "@/lib/navigation"
+import { notifySessionsChanged } from "@/lib/sessions/browser-events"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 
 const STATE_LABELS: Record<JarvisState, string> = {
@@ -59,6 +61,15 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     if (sessionId && window.location.pathname !== sessionPath(sessionId)) {
       window.history.replaceState(null, "", sessionPath(sessionId))
     }
+  }, [sessionId])
+
+  // A Session started here gets its Session Title once its first Turn is saved.
+  const titled = useRef(saved !== undefined)
+  useEffect(() => {
+    if (!sessionId || titled.current) return
+    titled.current = true
+    // Without a title the list keeps showing the Session's date.
+    titleSession(sessionId).then(notifySessionsChanged, () => {})
   }, [sessionId])
 
   // Holding Space is push-to-talk, except while typing in a text field.

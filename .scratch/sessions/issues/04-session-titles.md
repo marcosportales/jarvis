@@ -6,10 +6,10 @@ See `.scratch/sessions/spec.md` → "Session Title".
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A new Session shows a sensible Spanish title in the list shortly after its first Turn
-- [ ] The first Reply is not slower than before
-- [ ] A failed title generation leaves the date showing and doesn't fail the Turn
-- [ ] Store test: setting a title is reflected in the list
-- [ ] Lint, typecheck and tests pass
+- [x] A new Session shows a sensible Spanish title in the list shortly after its first Turn
+- [x] The first Reply is not slower than before
+- [x] A failed title generation leaves the date showing and doesn't fail the Turn
+- [x] Store test: setting a title is reflected in the list
+- [x] Lint, typecheck and tests pass

@@ -45,6 +45,9 @@ export type SessionStore = {
   transcript(sessionId: string): Promise<SavedTurn[] | null>
   /** A page of Sessions by last activity, newest first. */
   list(cursor?: string): Promise<SessionPage>
+  /** One Session as the list shows it; null if it doesn't exist. */
+  get(sessionId: string): Promise<SessionSummary | null>
+  setTitle(sessionId: string, title: string): Promise<void>
 }
 
 // The cursor is the last listed Session's position in the order: its last
@@ -67,6 +70,13 @@ export function createSessionStore(
     newId = () => crypto.randomUUID(),
   }: { now?: () => Date; newId?: () => string } = {}
 ): SessionStore {
+  const summary = {
+    id: sessions.id,
+    title: sessions.title,
+    createdAt: sessions.createdAt,
+    lastActivityAt: sessions.lastActivityAt,
+  }
+
   function exists(sessionId: string) {
     return (
       db
@@ -148,12 +158,7 @@ export function createSessionStore(
       const after = cursor ? decodeCursor(cursor) : undefined
       if (after === null) return { sessions: [], nextCursor: null }
       const rows = db
-        .select({
-          id: sessions.id,
-          title: sessions.title,
-          createdAt: sessions.createdAt,
-          lastActivityAt: sessions.lastActivityAt,
-        })
+        .select(summary)
         .from(sessions)
         .where(
           after &&
@@ -175,6 +180,20 @@ export function createSessionStore(
         nextCursor:
           rows.length > SESSIONS_PAGE_SIZE ? encodeCursor(page.at(-1)!) : null,
       }
+    },
+
+    async get(sessionId) {
+      return (
+        db
+          .select(summary)
+          .from(sessions)
+          .where(eq(sessions.id, sessionId))
+          .get() ?? null
+      )
+    },
+
+    async setTitle(sessionId, title) {
+      db.update(sessions).set({ title }).where(eq(sessions.id, sessionId)).run()
     },
   }
 }
