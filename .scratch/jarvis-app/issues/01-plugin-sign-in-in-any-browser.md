@@ -16,12 +16,12 @@ See `../spec.md` (stories 44–48; "Plugins: a pending install no longer lives i
 
 **Status:** ready-for-agent
 
-- [ ] Plugins tests, with fixtures:
+- [x] Plugins tests, with fixtures:
   - begin then complete by state → Connected
   - unknown state fails
   - a second complete with the same state fails
   - a state older than 10 minutes fails
-- [ ] The install action and the callback route no longer touch any cookie
+- [x] The install action and the callback route no longer touch any cookie
 - [ ] In the running app (browser tab): installing a Plugin still ends Connected on the Marketplace
 - [ ] In the running app: start an install in one browser, then open the authorization URL in another browser profile → the Plugin ends Connected, and the first tab shows it after regaining focus
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
