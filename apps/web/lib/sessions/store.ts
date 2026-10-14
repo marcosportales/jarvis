@@ -22,7 +22,7 @@ export type SessionSummary = {
 }
 
 /** One page of the list; `nextCursor` is null on the last page. */
-export type SessionPage = {
+export type SessionListPage = {
   sessions: SessionSummary[]
   nextCursor: string | null
 }
@@ -44,7 +44,7 @@ export type SessionStore = {
   /** Every Turn of a Session, oldest first; null if it doesn't exist. */
   transcript(sessionId: string): Promise<SavedTurn[] | null>
   /** A page of Sessions by last activity, newest first. */
-  list(cursor?: string): Promise<SessionPage>
+  list(cursor?: string): Promise<SessionListPage>
   /** One Session as the list shows it; null if it doesn't exist. */
   get(sessionId: string): Promise<SessionSummary | null>
   setTitle(sessionId: string, title: string): Promise<void>

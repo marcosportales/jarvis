@@ -40,8 +40,8 @@ import {
   notifySessionsChanged,
   onSessionsChanged,
 } from "@/lib/sessions/browser-events"
-import { relativeDate, sessionLabel } from "@/lib/sessions/labels"
-import type { SessionPage, SessionSummary } from "@/lib/sessions/store"
+import { relativeDate, sessionHeading } from "@/lib/sessions/headings"
+import type { SessionListPage, SessionSummary } from "@/lib/sessions/store"
 
 /** The "Sesiones" group: every saved Session, newest activity first. */
 export function SessionsList() {
@@ -52,12 +52,18 @@ export function SessionsList() {
   const [toDelete, setToDelete] = useState<SessionSummary | null>(null)
   const [deleting, setDeleting] = useState(false)
   // Null until the first page arrives.
-  const [list, setList] = useState<SessionPage | null>(null)
+  const [list, setList] = useState<SessionListPage | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
   const end = useRef<HTMLLIElement>(null)
 
   const loadFirstPage = useCallback(async () => {
-    setList(await listSessions())
+    try {
+      setList(await listSessions())
+    } catch (error) {
+      // Keeps what is shown; the next change retries.
+      console.error("Loading the Sessions failed", error)
+      setList((current) => current ?? { sessions: [], nextCursor: null })
+    }
   }, [])
 
   useEffect(() => {
@@ -74,17 +80,23 @@ export function SessionsList() {
       if (!entry?.isIntersecting) return
       observer.disconnect()
       setLoadingMore(true)
-      const next = await listSessions(cursor)
-      setList((current) =>
-        // A refresh replaced the list meanwhile; this page no longer follows.
-        current?.nextCursor === cursor
-          ? {
-              sessions: [...current.sessions, ...next.sessions],
-              nextCursor: next.nextCursor,
-            }
-          : current
-      )
-      setLoadingMore(false)
+      try {
+        const next = await listSessions(cursor)
+        setList((current) =>
+          // A refresh replaced the list meanwhile; this page no longer follows.
+          current?.nextCursor === cursor
+            ? {
+                sessions: [...current.sessions, ...next.sessions],
+                nextCursor: next.nextCursor,
+              }
+            : current
+        )
+      } catch (error) {
+        console.error("Loading more Sessions failed", error)
+      } finally {
+        // Also re-arms the observer, so scrolling again retries.
+        setLoadingMore(false)
+      }
     })
     observer.observe(target)
     return () => observer.disconnect()
@@ -94,10 +106,14 @@ export function SessionsList() {
     setDeleting(true)
     try {
       await deleteSession(session.id)
+    } catch (error) {
+      // The dialog stays open so the Owner can try again or cancel.
+      console.error("Deleting the Session failed", error)
+      return
     } finally {
       setDeleting(false)
-      setToDelete(null)
     }
+    setToDelete(null)
     setList(
       (current) =>
         current && {
@@ -158,7 +174,7 @@ export function SessionsList() {
                   }
                 >
                   <span className="w-full truncate">
-                    {sessionLabel(session)}
+                    {sessionHeading(session)}
                   </span>
                   <span className="text-xs text-muted-foreground">
                     {relativeDate(session.lastActivityAt, now)}
@@ -170,7 +186,7 @@ export function SessionsList() {
                   >
                     <MoreHorizontalIcon />
                     <span className="sr-only">
-                      Más opciones de {sessionLabel(session)}
+                      Más opciones de {sessionHeading(session)}
                     </span>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent side="right" align="start">
@@ -200,7 +216,7 @@ export function SessionsList() {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Eliminar esta sesión?</AlertDialogTitle>
             <AlertDialogDescription>
-              «{toDelete && sessionLabel(toDelete)}» y toda su conversación se
+              «{toDelete && sessionHeading(toDelete)}» y toda su conversación se
               borrarán para siempre.
             </AlertDialogDescription>
           </AlertDialogHeader>

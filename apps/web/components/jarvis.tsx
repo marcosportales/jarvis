@@ -1,6 +1,6 @@
 "use client"
 
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import {
@@ -46,6 +46,16 @@ export function Jarvis({ saved }: { saved?: SavedSession }) {
     setLastPathname(pathname)
     if (pathname === "/") setNewSessions(newSessions + 1)
   }
+
+  // Back to a Session URL set that way restores the "/" page, i.e. a new
+  // Session under a saved Session's URL; load the saved Session instead.
+  const router = useRouter()
+  const [restoredUnderSessionUrl] = useState(() => !saved && pathname !== "/")
+  useEffect(() => {
+    if (restoredUnderSessionUrl) router.refresh()
+  }, [restoredUnderSessionUrl, router])
+
+  if (restoredUnderSessionUrl) return null
   return <JarvisSession key={newSessions} saved={saved} />
 }
 

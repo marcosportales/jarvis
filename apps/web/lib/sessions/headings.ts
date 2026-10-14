@@ -27,7 +27,7 @@ const dateFormat = new Intl.DateTimeFormat("es", {
 })
 
 /** The Session Title, or the Session's date while it has none. */
-export function sessionLabel({
+export function sessionHeading({
   title,
   createdAt,
 }: {

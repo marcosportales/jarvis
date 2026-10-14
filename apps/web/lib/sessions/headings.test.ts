@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { relativeDate, sessionLabel } from "./labels"
+import { relativeDate, sessionHeading } from "./headings"
 
 const NOW = new Date("2026-10-14T10:00:00Z")
 const ago = (ms: number) => new Date(NOW.getTime() - ms)
@@ -21,15 +21,15 @@ describe("relativeDate", () => {
   })
 })
 
-describe("sessionLabel", () => {
+describe("sessionHeading", () => {
   it("is the Session Title once there is one", () => {
-    expect(sessionLabel({ title: "Viaje a Lisboa", createdAt: NOW })).toBe(
+    expect(sessionHeading({ title: "Viaje a Lisboa", createdAt: NOW })).toBe(
       "Viaje a Lisboa"
     )
   })
 
   it("falls back to the Session's date while untitled", () => {
-    expect(sessionLabel({ title: null, createdAt: NOW })).toMatch(
+    expect(sessionHeading({ title: null, createdAt: NOW })).toMatch(
       /^Sesión del 14 oct/
     )
   })

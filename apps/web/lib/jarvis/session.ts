@@ -136,18 +136,18 @@ export function createJarvisSession(
   }
 
   /** Stops a Turn whose Jarvis State now belongs to a newer Turn or none. */
-  function ensureCurrent(turn: number) {
-    if (turn !== generation) throw new TurnSuperseded()
+  function ensureCurrent(turnGeneration: number) {
+    if (turnGeneration !== generation) throw new TurnSuperseded()
   }
 
-  async function reply(message: string, turn: number) {
+  async function reply(message: string, turnGeneration: number) {
     const { sessionId } = snapshot
     const { text, widgetChanges, ...saved } = await orFail(
       brain.reply(sessionId ? { sessionId, text: message } : { text: message }),
       ERRORS.reply
     )
     // The server saved the Turn in its Session anyway; just don't show it.
-    ensureCurrent(turn)
+    ensureCurrent(turnGeneration)
     update({ sessionId: saved.sessionId })
     // Before Speaking, so the screen matches what Jarvis is about to say.
     widgets.apply(widgetChanges)
@@ -158,7 +158,7 @@ export function createJarvisSession(
       () => false
     )
     // Interrupted: a newer Turn now owns the Jarvis State.
-    if (turn !== generation) return
+    if (turnGeneration !== generation) return
     if (!played) throw new TurnFailed(ERRORS.voice)
     setState("idle")
   }
@@ -167,12 +167,12 @@ export function createJarvisSession(
     update({ state: "idle", hint: DISCARDED_UTTERANCE_HINT })
   }
 
-  async function runTurn(turn: number, work: () => Promise<void>) {
+  async function runTurn(turnGeneration: number, work: () => Promise<void>) {
     try {
       await work()
     } catch (error) {
       // Cut short: its late failure is no longer the Owner's concern.
-      if (turn !== generation) return
+      if (turnGeneration !== generation) return
       if (
         error instanceof TurnFailed &&
         error.cause instanceof SessionGoneError
@@ -219,12 +219,12 @@ export function createJarvisSession(
     },
     async releasePushToTalk() {
       if (snapshot.state !== "listening") return
-      const turn = generation
+      const turnGeneration = generation
       setState("thinking")
-      if (!(await micStarted) || turn !== generation) return
-      await runTurn(turn, async () => {
+      if (!(await micStarted) || turnGeneration !== generation) return
+      await runTurn(turnGeneration, async () => {
         const utterance = await orFail(recorder.stop(), ERRORS.microphone)
-        ensureCurrent(turn)
+        ensureCurrent(turnGeneration)
         if (utterance.durationMs < MIN_UTTERANCE_MS) {
           return discardUtterance()
         }
@@ -234,12 +234,12 @@ export function createJarvisSession(
             ERRORS.transcription
           )
         ).trim()
-        ensureCurrent(turn)
+        ensureCurrent(turnGeneration)
         if (!text) {
           return discardUtterance()
         }
         append("owner", text)
-        await reply(text, turn)
+        await reply(text, turnGeneration)
       })
     },
     async sendTypedMessage(text: string) {
@@ -248,8 +248,8 @@ export function createJarvisSession(
       update({ hint: null })
       append("owner", text)
       setState("thinking")
-      const turn = generation
-      await runTurn(turn, () => reply(text, turn))
+      const turnGeneration = generation
+      await runTurn(turnGeneration, () => reply(text, turnGeneration))
     },
     /**
      * Leaves this Session, e.g. when the Owner opens another one: the Voice

@@ -10,11 +10,13 @@ export default async function SessionPage({
 }) {
   const { id } = await params
   const turns = await getSessions().transcript(id)
-  if (!turns) return <SessionGone />
-
   return (
     <>
-      <Jarvis key={id} saved={{ sessionId: id, turns }} />
+      {turns ? (
+        <Jarvis key={id} saved={{ sessionId: id, turns }} />
+      ) : (
+        <SessionGone />
+      )}
       <WidgetLayer />
     </>
   )
