@@ -4,7 +4,7 @@ import type { NextConfig } from "next"
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@workspace/ui"],
-  // No dev badge in the corner, where it would show in the Floating Orb.
+  // No dev badge: it would show inside the Floating Orb. Hidden on every page.
   devIndicators: false,
   // The Jarvis App runs this standalone server inside itself (ADR 0009).
   output: "standalone",
