@@ -1,6 +1,6 @@
 # Jarvis
 
-A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. Jarvis reaches outside services (Gmail, Calendar, Linear…) only through Plugins the Owner has installed.
+A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. Jarvis reaches outside services (Gmail, Calendar, Linear…) only through Plugins the Owner has installed, apart from a few abilities built into Jarvis itself, such as the weather.
 
 ## Language
 
