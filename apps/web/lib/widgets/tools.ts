@@ -63,7 +63,10 @@ export function createWidgetTools(
   })
 
   /** Unknown ids become an answer for the model, never a thrown error. */
-  function record(change: WidgetChange, done: (name: string) => string) {
+  function record(
+    change: Extract<WidgetChange, { id: string }>,
+    done: (name: string) => string
+  ) {
     const widget = catalog.find(({ id }) => id === change.id)
     if (!widget) {
       return `El widget «${change.id}» no existe. Los widgets disponibles son: ${ids}.`

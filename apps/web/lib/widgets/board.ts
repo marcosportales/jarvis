@@ -4,7 +4,8 @@ import type { WidgetChange, WidgetLayout } from "./changes"
 
 /**
  * The Widget Board owns the Widget layout: for each Widget in the registry,
- * whether it is Shown, where it sits and its Widget Settings. Framework-free, so the Jarvis page,
+ * whether it is Shown, where it sits and its Widget Settings, plus which one
+ * is Expanded, if any. Framework-free, so the Jarvis page,
  * the sidebar and the Session can all share one per tab.
  */
 
@@ -33,6 +34,8 @@ export type BoardWidget = {
   settingsSchema?: z.ZodType<WidgetSettings>
   /** Its size on screen when it differs from the Board's usual one. */
   size?: Size
+  /** It can be Expanded. */
+  expandable?: boolean
 }
 
 export type Size = { width: number; height: number }
@@ -55,8 +58,12 @@ export type WidgetState = {
   settings: WidgetSettings
 }
 
-/** Widgets in registry order. */
-export type WidgetBoardSnapshot = { widgets: WidgetState[] }
+export type WidgetBoardSnapshot = {
+  /** In registry order. */
+  widgets: WidgetState[]
+  /** The id of the one Expanded Widget, always a Shown one; null if none. */
+  expanded: string | null
+}
 
 export type WidgetBoardOptions = {
   registry: readonly BoardWidget[]
@@ -110,7 +117,7 @@ function loadLayout(storage: WidgetBoardStorage): SavedLayout["widgets"] {
 
 function saveLayout(
   storage: WidgetBoardStorage,
-  snapshot: WidgetBoardSnapshot
+  snapshot: Pick<WidgetBoardSnapshot, "widgets">
 ) {
   const layout: SavedLayout = {
     version: STORAGE_VERSION,
@@ -330,15 +337,26 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     widgets: registry.map((widget) =>
       placed.find((state) => state.id === widget.id)!
     ),
+    // Never saved: every page load starts with all Widgets Collapsed.
+    expanded: null,
   }
   // A random first place must not jump to another one on the next start.
   if (registry.some((widget) => !(widget.id in saved))) {
     saveLayout(storage, snapshot)
   }
 
-  /** Saves and notifies only if some Widget actually changed. */
-  function commit(widgets: WidgetState[]) {
-    const changed = widgets.some((next, index) => {
+  /**
+   * Saves and notifies only if something actually changed. A Widget that ends
+   * up Hidden can't stay Expanded.
+   */
+  function commit(widgets: WidgetState[], expanded = snapshot.expanded) {
+    if (
+      expanded !== null &&
+      !widgets.some((w) => w.id === expanded && w.shown)
+    ) {
+      expanded = null
+    }
+    const moved = widgets.some((next, index) => {
       const current = snapshot.widgets[index]!
       return (
         next.shown !== current.shown ||
@@ -348,19 +366,35 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         !sameSettings(next.settings, current.settings)
       )
     })
-    if (!changed) return
-    snapshot = { widgets }
-    saveLayout(storage, snapshot)
+    if (!moved && expanded === snapshot.expanded) return
+    snapshot = { widgets, expanded }
+    if (moved) saveLayout(storage, snapshot)
     for (const listener of listeners) listener()
   }
 
   /** Replaces one Widget's state; unknown ids and no-op changes do nothing. */
-  function update(id: string, change: Partial<Omit<WidgetState, "id">>) {
+  function update(
+    id: string,
+    change: Partial<Omit<WidgetState, "id">>,
+    expanded = snapshot.expanded
+  ) {
     commit(
       snapshot.widgets.map((widget) =>
         widget.id === id ? { ...widget, ...change } : widget
-      )
+      ),
+      expanded
     )
+  }
+
+  /** Shows an Expandable Widget Expanded, Collapsing any other. */
+  function expand(id: string) {
+    const widget = registry.find((entry) => entry.id === id)
+    if (!widget?.expandable) return
+    update(id, { shown: true }, id)
+  }
+
+  function collapse() {
+    commit(snapshot.widgets, null)
   }
 
   /**
@@ -398,11 +432,12 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         ? other.top - size.height - STACK_GAP
         : other.top + other.height + STACK_GAP
     }
-    update(id, {
-      shown: true,
-      glide: true,
-      position: toPosition(place, viewport, size),
-    })
+    update(
+      id,
+      { shown: true, glide: true, position: toPosition(place, viewport, size) },
+      // Collapses there, so the Owner sees it move.
+      snapshot.expanded === id ? null : snapshot.expanded
+    )
   }
 
   return {
@@ -431,6 +466,12 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
           case "move":
             moveToSpot(change.id, change.spot)
             break
+          case "expand":
+            expand(change.id)
+            break
+          case "collapse":
+            collapse()
+            break
         }
       }
     },
@@ -440,17 +481,23 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         id,
         name: registry.find((widget) => widget.id === id)?.name ?? id,
         shown,
+        expanded: id === snapshot.expanded,
         spot: nearestSpot(toPixels(position, viewport), viewport, sizeOf(id)),
         settings,
       }))
     },
     moveToSpot,
-    /** The Owner dragged a Widget's top-left corner to `to`. */
-    drag: (id: string, to: PixelPosition) =>
+    expand,
+    /** Collapses the Expanded Widget, if any, back to its place. */
+    collapse,
+    /** The Owner dragged a Widget's top-left corner to `to`; never the Expanded one. */
+    drag(id: string, to: PixelPosition) {
+      if (id === snapshot.expanded) return
       update(id, {
         position: toPosition(to, viewport, sizeOf(id)),
         glide: false,
-      }),
+      })
+    },
     /** The window changed size; every Widget is kept fully inside it. */
     resize(next: Size) {
       viewport = next

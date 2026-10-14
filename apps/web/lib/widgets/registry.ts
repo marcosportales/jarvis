@@ -14,6 +14,8 @@ export type WidgetProps = {
   settings: WidgetSettings
   /** Replaces its Widget Settings; empty ones give back the defaults. */
   updateSettings(settings: WidgetSettings): void
+  /** Shown large in the middle of the page, with room to arrange itself. */
+  expanded: boolean
 }
 
 export type WidgetDefinition = WidgetInfo & {

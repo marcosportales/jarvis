@@ -36,6 +36,7 @@ const LAYOUT: WidgetLayout = [
     id: "weather",
     name: "Tiempo",
     shown: false,
+    expanded: false,
     spot: "right-top",
     settings: {},
   },

@@ -6,7 +6,10 @@ import type { WidgetBoardSnapshot } from "@/lib/widgets/board"
 import { getWidgetBoard } from "@/lib/widgets/browser-board"
 
 /** The server has no saved layout, so nothing renders until hydration. */
-const SERVER_SNAPSHOT: WidgetBoardSnapshot = { widgets: [] }
+const SERVER_SNAPSHOT: WidgetBoardSnapshot = {
+  widgets: [],
+  expanded: null,
+}
 
 const subscribe = (listener: () => void) => getWidgetBoard().subscribe(listener)
 const getSnapshot = () => getWidgetBoard().getSnapshot()

@@ -51,6 +51,7 @@ export const WIDGET_CATALOG = [
     source: "built-in",
     // Larger than the Weather Widget so a list fits; it scrolls inside.
     size: { width: 336, height: 440 },
+    expandable: true,
   },
   {
     id: "browser",
@@ -61,6 +62,7 @@ export const WIDGET_CATALOG = [
     source: "built-in",
     // A 16:10 screen across the card, plus what was asked and a status line.
     size: { width: 400, height: 420 },
+    expandable: true,
   },
 ] as const satisfies readonly WidgetInfo[]
 

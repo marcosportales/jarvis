@@ -25,7 +25,11 @@ import {
   RESULTS_WIDGET_ID,
   WIDGET_CATALOG,
 } from "../widgets/catalog"
-import type { WidgetChange, WidgetLayout } from "../widgets/changes"
+import {
+  changesWidget,
+  type WidgetChange,
+  type WidgetLayout,
+} from "../widgets/changes"
 import { createWidgetTools, widgetLayoutNotice } from "../widgets/tools"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
 
@@ -80,7 +84,9 @@ function resultsForReply(
   changes: WidgetChange[],
   outcome: SearchOutcome | undefined
 ): { widgetChanges: WidgetChange[]; search?: SearchOutcome } {
-  const touched = changes.filter(({ id }) => id === RESULTS_WIDGET_ID)
+  const touched = changes.filter((change) =>
+    changesWidget(change, RESULTS_WIDGET_ID)
+  )
   if (!outcome) return { widgetChanges: changes }
   if (!isList(outcome)) {
     const shownByModel = touched.some(({ type }) => type !== "hide")
@@ -102,7 +108,10 @@ function resultsForReply(
  * already did something with it this Turn.
  */
 function withBrowserShown(changes: WidgetChange[], started: boolean) {
-  if (!started || changes.some(({ id }) => id === BROWSER_WIDGET_ID)) {
+  if (
+    !started ||
+    changes.some((change) => changesWidget(change, BROWSER_WIDGET_ID))
+  ) {
     return changes
   }
   return [...changes, { type: "show" as const, id: BROWSER_WIDGET_ID }]

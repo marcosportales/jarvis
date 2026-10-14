@@ -7,6 +7,7 @@ const LAYOUT = [
     id: "results",
     name: "Resultados",
     shown: true,
+    expanded: false,
     spot: "left-top",
     settings: {},
   },

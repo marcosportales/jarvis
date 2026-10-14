@@ -311,7 +311,7 @@ describe("Widget Board and Jarvis", () => {
     expect(widgets.getSnapshot().widgets[0]!.shown).toBe(false)
   })
 
-  it("describes the layout for Jarvis: id, name, Shown and Spot", () => {
+  it("describes the layout for Jarvis: id, name, Shown, Expanded and Spot", () => {
     const widgets = board(NAMED)
     widgets.hide("clock")
 
@@ -320,6 +320,7 @@ describe("Widget Board and Jarvis", () => {
         id: "weather",
         name: "Tiempo",
         shown: true,
+        expanded: false,
         spot: "right-top",
         settings: {},
       },
@@ -327,6 +328,7 @@ describe("Widget Board and Jarvis", () => {
         id: "clock",
         name: "Reloj",
         shown: false,
+        expanded: false,
         spot: "left-bottom",
         settings: {},
       },
@@ -612,5 +614,182 @@ describe("Widget Board Widget Settings", () => {
     widgets.show("weather", { place: "Londres" })
 
     expect(widgets.describeLayout()[0]!.settings).toEqual({ place: "Londres" })
+  })
+})
+
+describe("Widget Board Expanded Widget", () => {
+  const RESULTS: BoardWidget = {
+    id: "results",
+    startingSpot: "left-top",
+    expandable: true,
+  }
+  const BROWSER: BoardWidget = {
+    id: "browser",
+    startingSpot: "left-middle",
+    expandable: true,
+  }
+
+  function expandable(storage = memoryStorage().storage) {
+    return board([WEATHER, RESULTS, BROWSER], storage)
+  }
+
+  function stateOf(widgets: ReturnType<typeof board>, id: string) {
+    return widgets.getSnapshot().widgets.find((widget) => widget.id === id)!
+  }
+
+  it("starts with nothing Expanded", () => {
+    expect(expandable().getSnapshot().expanded).toBeNull()
+  })
+
+  it("Expands an Expandable Widget and tells its subscribers", () => {
+    const widgets = expandable()
+    let notified = 0
+    widgets.subscribe(() => notified++)
+
+    widgets.expand("results")
+
+    expect(widgets.getSnapshot().expanded).toBe("results")
+    expect(notified).toBe(1)
+  })
+
+  it("doesn't Expand a Widget that isn't Expandable, or one it doesn't know", () => {
+    const widgets = expandable()
+    const before = widgets.getSnapshot()
+
+    widgets.expand("weather")
+    widgets.expand("stocks")
+
+    expect(widgets.getSnapshot()).toBe(before)
+  })
+
+  it("Collapses the first Widget when it Expands a second one", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+
+    widgets.expand("browser")
+
+    expect(widgets.getSnapshot().expanded).toBe("browser")
+  })
+
+  it("Shows a Hidden Widget it Expands", () => {
+    const widgets = expandable()
+    widgets.hide("browser")
+
+    widgets.expand("browser")
+
+    expect(stateOf(widgets, "browser").shown).toBe(true)
+    expect(widgets.getSnapshot().expanded).toBe("browser")
+  })
+
+  it("Collapses the Widget back to its place, still Shown", () => {
+    const widgets = expandable()
+    widgets.drag("results", { left: 300, top: 400 })
+    const before = stateOf(widgets, "results")
+    widgets.expand("results")
+
+    widgets.collapse()
+
+    expect(widgets.getSnapshot().expanded).toBeNull()
+    expect(stateOf(widgets, "results")).toEqual(before)
+  })
+
+  it("does nothing when it Collapses with nothing Expanded", () => {
+    const widgets = expandable()
+    const before = widgets.getSnapshot()
+
+    widgets.collapse()
+
+    expect(widgets.getSnapshot()).toBe(before)
+  })
+
+  it("Collapses the Expanded Widget it hides, so it comes back Collapsed", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+
+    widgets.hide("results")
+    expect(widgets.getSnapshot().expanded).toBeNull()
+
+    widgets.show("results")
+    expect(widgets.getSnapshot().expanded).toBeNull()
+  })
+
+  it("keeps the Expanded Widget when it hides another", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+
+    widgets.hide("browser")
+
+    expect(widgets.getSnapshot().expanded).toBe("results")
+  })
+
+  it("Collapses the Expanded Widget it moves, at its new Spot", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+
+    widgets.moveToSpot("results", "right-bottom")
+
+    expect(widgets.getSnapshot().expanded).toBeNull()
+    expect(widgets.describeLayout()[1]!.spot).toBe("right-bottom")
+  })
+
+  it("leaves the Expanded Widget when it moves another", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+
+    widgets.moveToSpot("browser", "right-bottom")
+
+    expect(widgets.getSnapshot().expanded).toBe("results")
+  })
+
+  it("ignores a drag of the Expanded Widget", () => {
+    const widgets = expandable()
+    widgets.expand("results")
+    const before = widgets.getSnapshot()
+
+    widgets.drag("results", { left: 900, top: 900 })
+
+    expect(widgets.getSnapshot()).toBe(before)
+  })
+
+  it("never remembers the Expanded Widget on the next start", () => {
+    const { storage } = memoryStorage()
+    const first = expandable(storage)
+    first.expand("results")
+    // Something else changes, so the layout is saved while it is Expanded.
+    first.moveToSpot("browser", "right-top")
+
+    expect(expandable(storage).getSnapshot().expanded).toBeNull()
+  })
+
+  it("tells Jarvis which Widget is Expanded", () => {
+    const widgets = expandable()
+    widgets.expand("browser")
+
+    expect(
+      widgets.describeLayout().map(({ id, expanded }) => [id, expanded])
+    ).toEqual([
+      ["weather", false],
+      ["results", false],
+      ["browser", true],
+    ])
+  })
+
+  it("applies a Turn's expand and collapse changes in order with the others", () => {
+    const widgets = expandable()
+    widgets.hide("browser")
+
+    widgets.applyChanges([
+      { type: "expand", id: "results" },
+      { type: "collapse" },
+      { type: "expand", id: "browser" },
+      { type: "hide", id: "weather" },
+    ])
+
+    expect(widgets.getSnapshot().expanded).toBe("browser")
+    expect(stateOf(widgets, "browser").shown).toBe(true)
+    expect(stateOf(widgets, "weather").shown).toBe(false)
+
+    widgets.applyChanges([{ type: "collapse" }])
+    expect(widgets.getSnapshot().expanded).toBeNull()
   })
 })

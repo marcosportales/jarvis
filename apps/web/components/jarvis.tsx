@@ -27,6 +27,7 @@ import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
 import { sessionPath } from "@/lib/navigation"
 import { shownBrowse } from "@/lib/browse/browser-view"
+import { shownJarvisState } from "@/lib/jarvis/browser-state"
 import { shownResults } from "@/lib/search/browser-results"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 import type { MemoryEvent } from "@/lib/memory/events"
@@ -93,6 +94,9 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       }),
     [browse, browseJustEnded, session]
   )
+
+  // An Expanded Widget covers the orb, so it shows the Jarvis State itself.
+  useEffect(() => shownJarvisState.set(state), [state])
 
   // Once the first Turn is saved, reloading should stay in this Session.
   // Replacing the URL doesn't remount the page, so Speaking carries on.
