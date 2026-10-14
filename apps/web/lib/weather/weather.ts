@@ -6,6 +6,12 @@ export type Env = Record<string, string | undefined>
 
 export type Coordinates = { latitude: number; longitude: number }
 
+/** Real coordinates, as the browser sends them. */
+export const coordinatesSchema = z.object({
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+})
+
 /** Used when no place is named, there are no coordinates and env has none. */
 const DEFAULT_FALLBACK_CITY = "Madrid"
 

@@ -5,6 +5,9 @@ import { nan, nanConfig } from "@/lib/jarvis/server/nan"
 import { JARVIS_SYSTEM_PROMPT } from "@/lib/jarvis/server/system-prompt"
 import type { TurnTools } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
+import { getWeather } from "@/lib/weather/server"
+import { createWeatherTools } from "@/lib/weather/tool"
+import { coordinatesSchema } from "@/lib/weather/weather"
 import { WIDGET_CATALOG } from "@/lib/widgets/catalog"
 import { widgetLayoutSchema } from "@/lib/widgets/changes"
 import { createWidgetTools, widgetLayoutNotice } from "@/lib/widgets/tools"
@@ -42,9 +45,10 @@ function currentDateLine() {
 }
 
 export async function POST(request: Request) {
-  const { lines, widgets } = (await request.json()) as {
+  const { lines, widgets, coords } = (await request.json()) as {
     lines?: unknown
     widgets?: unknown
+    coords?: unknown
   }
   if (!Array.isArray(lines) || !lines.every(isTranscriptLine)) {
     return Response.json({ error: "Invalid lines" }, { status: 400 })
@@ -53,9 +57,18 @@ export async function POST(request: Request) {
   if (!layout.success) {
     return Response.json({ error: "Invalid widgets" }, { status: 400 })
   }
+  // The Owner's coordinates, only when the browser already had permission.
+  const owner = coordinatesSchema.optional().safeParse(coords ?? undefined)
+  if (!owner.success) {
+    return Response.json({ error: "Invalid coords" }, { status: 400 })
+  }
 
   const turn = await loadTurnTools()
   const widgetTools = createWidgetTools(WIDGET_CATALOG)
+  const weatherTools = createWeatherTools({
+    weather: getWeather(),
+    coords: owner.data,
+  })
   try {
     const { text } = await generateText({
       model: nan.chat(nanConfig.chatModel),
@@ -69,7 +82,7 @@ export async function POST(request: Request) {
         role: role === "owner" ? ("user" as const) : ("assistant" as const),
         content: text,
       })),
-      tools: { ...turn.tools, ...widgetTools.tools },
+      tools: { ...turn.tools, ...widgetTools.tools, ...weatherTools },
       stopWhen: stepCountIs(MAX_REPLY_STEPS),
     })
 

@@ -1,3 +1,4 @@
+import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
 import type {
   Brain,
@@ -72,12 +73,16 @@ const httpTranscriber: Transcriber = {
   },
 }
 
-/** Sends the Widget layout with every Turn so Jarvis knows what is Shown. */
+/**
+ * Sends the Widget layout with every Turn so Jarvis knows what is Shown, and
+ * the Owner's coordinates when the browser already allows it.
+ */
 const httpBrain: Brain = {
   async reply(lines) {
     const response = await post("/api/reply", {
       lines,
       widgets: getWidgetBoard().describeLayout(),
+      coords: await ownerLocationIfGranted(),
     })
     return (await response.json()) as Reply
   },
