@@ -56,6 +56,23 @@ export type TurnsDeps = {
   now: () => Date
 }
 
+/** The Results Widget's id in the Widget catalog. */
+const RESULTS_WIDGET = "results"
+
+/**
+ * The Turn's Widget changes, plus Showing the Results Widget when its Search
+ * found a list. A Turn rule, so it doesn't depend on the model remembering;
+ * the model hiding, showing or moving that Widget itself wins.
+ */
+function withResultsShown(
+  changes: WidgetChange[],
+  outcome: SearchOutcome | undefined
+): WidgetChange[] {
+  if (!outcome || outcome.results.length <= 1) return changes
+  if (changes.some(({ id }) => id === RESULTS_WIDGET)) return changes
+  return [...changes, { type: "show", id: RESULTS_WIDGET }]
+}
+
 /** The earlier Turns as the chat model sees them. */
 function toMessages(turns: SavedTurn[]) {
   return turns.flatMap(({ owner, reply }) => [
@@ -192,7 +209,7 @@ export function createTurns({
         return {
           sessionId: savedIn,
           text: reply,
-          widgetChanges: widgetTools.changes(),
+          widgetChanges: withResultsShown(widgetTools.changes(), outcome),
           memoryEvents,
           ...(outcome ? { search: outcome } : {}),
         }

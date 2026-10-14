@@ -6,11 +6,13 @@ import {
   type Brain,
   type JarvisState,
   type Recorder,
+  type Reply,
   type Transcriber,
   type Voice,
   type WidgetChanges,
 } from "./session"
 import type { MemoryEvent } from "../memory/events"
+import type { SearchOutcome } from "../search/outcome"
 import type { WidgetChange } from "../widgets/changes"
 
 type Deferred<T> = {
@@ -86,6 +88,14 @@ function fakeBrain() {
       pending
         .shift()!
         .resolve({ sessionId, text, widgetChanges, memoryEvents }),
+    /** Answers with a whole Reply, e.g. one carrying a Search Outcome. */
+    reply: (reply: Partial<Reply> & { text: string }) =>
+      pending.shift()!.resolve({
+        sessionId: "session-1",
+        widgetChanges: [],
+        memoryEvents: [],
+        ...reply,
+      }),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }
@@ -571,6 +581,77 @@ describe("Jarvis Session", () => {
     await flush()
 
     expect(widgets.applied).toEqual([])
+  })
+
+  describe("Search Outcome", () => {
+    const flights: SearchOutcome = {
+      kind: "flights",
+      heading: "Vuelos MAD → FCO · vie 16 oct",
+      results: [
+        { title: "Iberia", facts: [{ label: "Precio", value: "412 €" }] },
+        { title: "Ryanair", facts: [{ label: "Precio", value: "104 €" }] },
+      ],
+    }
+    const news: SearchOutcome = {
+      kind: "news",
+      heading: "Noticias: Real Madrid",
+      results: [],
+    }
+
+    async function turn(
+      { session, brain, voice }: ReturnType<typeof setup>,
+      reply: Partial<Reply> & { text: string }
+    ) {
+      session.sendTypedMessage("Hola")
+      await flush()
+      brain.reply(reply)
+      await flush()
+      voice.finish()
+      await flush()
+    }
+
+    it("has none in a new or resumed Session", () => {
+      expect(setup().session.getSnapshot().search).toBeNull()
+      expect(
+        setup({
+          saved: {
+            sessionId: "s",
+            turns: [{ owner: "Hola", reply: "Hola." }],
+          },
+        }).session.getSnapshot().search
+      ).toBeNull()
+    })
+
+    it("is replaced by a Reply that carries one", async () => {
+      const jarvis = setup()
+
+      await turn(jarvis, { text: "Hay dos vuelos.", search: flights })
+      expect(jarvis.session.getSnapshot().search).toEqual(flights)
+
+      await turn(jarvis, { text: "No encontré noticias.", search: news })
+      expect(jarvis.session.getSnapshot().search).toEqual(news)
+    })
+
+    it("is kept by a Reply that doesn't search", async () => {
+      const jarvis = setup()
+      await turn(jarvis, { text: "Hay dos vuelos.", search: flights })
+
+      await turn(jarvis, { text: "De nada." })
+
+      expect(jarvis.session.getSnapshot().search).toEqual(flights)
+    })
+
+    it("is in place before Speaking, with the Widget changes", async () => {
+      const { session, brain } = setup()
+      session.sendTypedMessage("Vuelos a Roma")
+      await flush()
+
+      brain.reply({ text: "Hay dos vuelos.", search: flights })
+      await flush()
+
+      expect(session.getSnapshot().state).toBe("speaking")
+      expect(session.getSnapshot().search).toEqual(flights)
+    })
   })
 
   describe("teardown, when the Owner switches Sessions", () => {

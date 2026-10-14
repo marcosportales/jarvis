@@ -23,6 +23,12 @@ export type JarvisSnapshot = {
   sessionId: string | null
   /** The server no longer has this Session, e.g. it was deleted. */
   gone: boolean
+  /**
+   * The latest Search Outcome, for the Results Widget. Kept in memory only:
+   * replaced by a Reply that searched, kept by one that didn't, and gone on
+   * reload.
+   */
+  search: SearchOutcome | null
 }
 
 export const MIN_UTTERANCE_MS = 500
@@ -122,6 +128,7 @@ export function createJarvisSession(
     hint: null,
     sessionId: saved?.sessionId ?? null,
     gone: false,
+    search: null,
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
@@ -155,13 +162,19 @@ export function createJarvisSession(
 
   async function reply(message: string, turnGeneration: number) {
     const { sessionId } = snapshot
-    const { text, widgetChanges, memoryEvents, ...saved } = await orFail(
-      brain.reply(sessionId ? { sessionId, text: message } : { text: message }),
-      ERRORS.reply
-    )
+    const { text, widgetChanges, memoryEvents, search, ...saved } =
+      await orFail(
+        brain.reply(
+          sessionId ? { sessionId, text: message } : { text: message }
+        ),
+        ERRORS.reply
+      )
     // The server saved the Turn in its Session anyway; just don't show it.
     ensureCurrent(turnGeneration)
-    update({ sessionId: saved.sessionId })
+    update({
+      sessionId: saved.sessionId,
+      ...(search ? { search } : {}),
+    })
     // Before Speaking, so the screen matches what Jarvis is about to say.
     widgets.apply(widgetChanges)
     append("jarvis", text, memoryEvents)

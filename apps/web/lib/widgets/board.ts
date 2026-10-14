@@ -31,6 +31,8 @@ export type BoardWidget = {
   startingSpot?: Spot
   /** Its Widget Settings; parsing `{}` gives the defaults. None means none. */
   settingsSchema?: z.ZodType<WidgetSettings>
+  /** Its size on screen when it differs from the Board's usual one. */
+  size?: Size
 }
 
 export type Size = { width: number; height: number }
@@ -40,6 +42,9 @@ export type WidgetPosition = { x: number; y: number }
 
 /** A place on screen in pixels from the viewport's top-left corner. */
 export type PixelPosition = { left: number; top: number }
+
+/** A Widget's place on screen and its size, in pixels. */
+type PixelRect = PixelPosition & Size
 
 export type WidgetState = {
   id: string
@@ -199,10 +204,12 @@ function nearestSpot(at: PixelPosition, viewport: Size, widget: Size): Spot {
   )
 }
 
-function overlaps(a: PixelPosition, b: PixelPosition, widget: Size) {
+function overlaps(a: PixelRect, b: PixelRect) {
   return (
-    Math.abs(a.left - b.left) < widget.width &&
-    Math.abs(a.top - b.top) < widget.height
+    a.left < b.left + b.width &&
+    b.left < a.left + a.width &&
+    a.top < b.top + b.height &&
+    b.top < a.top + a.height
   )
 }
 
@@ -215,7 +222,7 @@ const PLACEMENT_ATTEMPTS = 50
  * margins uses the whole window.
  */
 function randomMarginPlace(
-  taken: PixelPosition[],
+  taken: PixelRect[],
   viewport: Size,
   widget: Size,
   columnWidth: number,
@@ -237,7 +244,9 @@ function randomMarginPlace(
       left: min! + random() * (max! - min!),
       top: top + random() * Math.max(0, bottom - top),
     }
-    if (!taken.some((other) => overlaps(place, other, widget))) break
+    if (!taken.some((other) => overlaps({ ...place, ...widget }, other))) {
+      break
+    }
   }
   return place
 }
@@ -247,6 +256,20 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
   let viewport = options.viewport
   const listeners = new Set<() => void>()
 
+  function sizeOf(id: string): Size {
+    return registry.find((widget) => widget.id === id)?.size ?? widgetSize
+  }
+
+  /** Where the Shown Widgets other than `id` are, to keep clear of them. */
+  function takenBy(others: WidgetState[], id: string): PixelRect[] {
+    return others
+      .filter((other) => other.id !== id && other.shown)
+      .map((other) => ({
+        ...toPixels(other.position, viewport),
+        ...sizeOf(other.id),
+      }))
+  }
+
   /**
    * Before a Widget is ever placed: Shown, at its Starting Spot, or else at a
    * random free place in the margins, clear of the `others` already placed.
@@ -255,27 +278,31 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     widget: BoardWidget,
     others: WidgetState[]
   ): WidgetState {
-    const taken = others
-      .filter((other) => other.shown)
-      .map((other) => toPixels(other.position, viewport))
+    const size = sizeOf(widget.id)
     return {
       id: widget.id,
       shown: true,
       glide: false,
       settings: defaultSettings(widget),
       position: widget.startingSpot
-        ? spotPosition(widget.startingSpot, viewport, widgetSize)
+        ? spotPosition(widget.startingSpot, viewport, size)
         : toPosition(
-            randomMarginPlace(taken, viewport, widgetSize, columnWidth, random),
+            randomMarginPlace(
+              takenBy(others, widget.id),
+              viewport,
+              size,
+              columnWidth,
+              random
+            ),
             viewport,
-            widgetSize
+            size
           ),
     }
   }
 
   /** The same place, nudged so the whole Widget fits the current viewport. */
-  function inView(position: WidgetPosition) {
-    return toPosition(toPixels(position, viewport), viewport, widgetSize)
+  function inView(id: string, position: WidgetPosition) {
+    return toPosition(toPixels(position, viewport), viewport, sizeOf(id))
   }
 
   // Saved Widgets no longer in the registry are dropped; new ones get defaults.
@@ -297,7 +324,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
       settings:
         (settings && parseSettings(widget, settings)) ?? defaults.settings,
     }
-    placed.push({ ...state, position: inView(state.position) })
+    placed.push({ ...state, position: inView(widget.id, state.position) })
   }
   let snapshot: WidgetBoardSnapshot = {
     widgets: registry.map((widget) =>
@@ -360,20 +387,21 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
    */
   function moveToSpot(id: string, spot: Spot) {
     if (!snapshot.widgets.some((widget) => widget.id === id)) return
-    const taken = snapshot.widgets
-      .filter((widget) => widget.id !== id && widget.shown)
-      .map((widget) => toPixels(widget.position, viewport))
-    const step =
-      (widgetSize.height + STACK_GAP) * (spot.endsWith("bottom") ? -1 : 1)
-    const place = toPixels(spotPosition(spot, viewport, widgetSize), viewport)
+    const taken = takenBy(snapshot.widgets, id)
+    const size = sizeOf(id)
+    const upwards = spot.endsWith("bottom")
+    const place = toPixels(spotPosition(spot, viewport, size), viewport)
     for (let tries = 0; tries < taken.length; tries++) {
-      if (!taken.some((other) => overlaps(place, other, widgetSize))) break
-      place.top += step
+      const other = taken.find((rect) => overlaps({ ...place, ...size }, rect))
+      if (!other) break
+      place.top = upwards
+        ? other.top - size.height - STACK_GAP
+        : other.top + other.height + STACK_GAP
     }
     update(id, {
       shown: true,
       glide: true,
-      position: toPosition(place, viewport, widgetSize),
+      position: toPosition(place, viewport, size),
     })
   }
 
@@ -412,7 +440,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         id,
         name: registry.find((widget) => widget.id === id)?.name ?? id,
         shown,
-        spot: nearestSpot(toPixels(position, viewport), viewport, widgetSize),
+        spot: nearestSpot(toPixels(position, viewport), viewport, sizeOf(id)),
         settings,
       }))
     },
@@ -420,7 +448,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     /** The Owner dragged a Widget's top-left corner to `to`. */
     drag: (id: string, to: PixelPosition) =>
       update(id, {
-        position: toPosition(to, viewport, widgetSize),
+        position: toPosition(to, viewport, sizeOf(id)),
         glide: false,
       }),
     /** The window changed size; every Widget is kept fully inside it. */
@@ -429,7 +457,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
       commit(
         snapshot.widgets.map((widget) => ({
           ...widget,
-          position: inView(widget.position),
+          position: inView(widget.id, widget.position),
           glide: false,
         }))
       )

@@ -435,6 +435,50 @@ describe("Widget Board Spots", () => {
   })
 })
 
+describe("Widget Board with a Widget of its own size", () => {
+  const RESULTS: BoardWidget = {
+    id: "results",
+    startingSpot: "left-top",
+    size: { width: 400, height: 300 },
+  }
+
+  it("places it at a Spot by its own size", () => {
+    const widgets = board([RESULTS])
+
+    widgets.moveToSpot("results", "right-bottom")
+
+    // 16px in from the right and bottom edges for a 400×300 Widget.
+    expect(pixels(widgets.getSnapshot().widgets[0]!.position)).toEqual({
+      left: 1184,
+      top: 684,
+    })
+    expect(widgets.describeLayout()[0]!.spot).toBe("right-bottom")
+  })
+
+  it("keeps it fully inside the window when dragged past the edge", () => {
+    const widgets = board([RESULTS])
+
+    widgets.drag("results", { left: 1500, top: 900 })
+
+    expect(pixels(widgets.getSnapshot().widgets[0]!.position)).toEqual({
+      left: 1200,
+      top: 700,
+    })
+  })
+
+  it("stacks a smaller Widget below it at its Spot", () => {
+    const widgets = board([RESULTS, CLOCK])
+
+    widgets.moveToSpot("clock", "left-top")
+
+    // Below the 300px-tall Widget, with an 8px gap.
+    expect(pixels(widgets.getSnapshot().widgets[1]!.position)).toEqual({
+      left: 16,
+      top: 324,
+    })
+  })
+})
+
 describe("Widget Board Widget Settings", () => {
   const WEATHER_WITH_PLACE: BoardWidget = {
     ...WEATHER,

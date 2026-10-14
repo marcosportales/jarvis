@@ -475,6 +475,81 @@ describe("Taking a Turn", () => {
       expect(reply.search).toMatchObject({ kind: "web" })
     })
 
+    it("shows the Results Widget when a Search found several results", async () => {
+      const { turns } = setup([
+        call("search_web", { query: "horario del Prado" }),
+        answer("Abre a las diez; te dejo el resto en pantalla."),
+      ])
+
+      const reply = await turns.take({
+        text: "¿Abre el Prado?",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
+    })
+
+    it.each([
+      ["one result", { results: [{ url: "https://museodelprado.es/" }] }],
+      ["no results", {}],
+    ])(
+      "leaves the Results Widget alone when a Search found %s",
+      async (_, data) => {
+        const { turns } = setup(
+          [call("search_web", { query: "Prado" }), answer("Abre a las diez.")],
+          {
+            search: fakeSearch({
+              COMPOSIO_SEARCH_WEB: {
+                data: {
+                  citations: "results" in data ? data.results : [],
+                },
+              },
+            }),
+          }
+        )
+
+        const reply = await turns.take({
+          text: "¿Abre el Prado?",
+          widgets: LAYOUT,
+        })
+
+        expect(reply.search).toBeDefined()
+        expect(reply.widgetChanges).toEqual([])
+      }
+    )
+
+    it("keeps the Results Widget hidden when the model hid it in the same Turn", async () => {
+      const { turns } = setup([
+        call("search_web", { query: "horario del Prado" }),
+        call("hide_widget", { id: "results" }),
+        answer("Abre a las diez."),
+      ])
+
+      const reply = await turns.take({
+        text: "¿Abre el Prado? Y quita los resultados.",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.widgetChanges).toEqual([{ type: "hide", id: "results" }])
+    })
+
+    it("doesn't show the Results Widget twice when the model already showed it", async () => {
+      const { turns } = setup([
+        call("search_web", { query: "horario del Prado" }),
+        call("move_widget", { id: "results", spot: "right-middle" }),
+        answer("Abre a las diez."),
+      ])
+
+      const reply = await turns.take({
+        text: "¿Abre el Prado?",
+        widgets: LAYOUT,
+      })
+
+      expect(reply.widgetChanges).toEqual([
+        { type: "move", id: "results", spot: "right-middle" },
+      ])
+    })
+
     it("returns no Search Outcome when the Turn didn't search", async () => {
       const { turns } = setup([answer("Hola.")])
 

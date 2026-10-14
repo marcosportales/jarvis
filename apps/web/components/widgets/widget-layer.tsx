@@ -9,11 +9,11 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { useWidgetLayout } from "@/hooks/use-widget-layout"
 import type { WidgetState } from "@/lib/widgets/board"
-import { getWidgetBoard } from "@/lib/widgets/browser-board"
+import { getWidgetBoard, WIDGET_SIZE } from "@/lib/widgets/browser-board"
 import { WIDGETS, type WidgetDefinition } from "@/lib/widgets/registry"
 
-/** Controls inside a Widget are pressed, never dragged from. */
-const NOT_A_DRAG_HANDLE = "button, a, input, select, textarea"
+/** Controls inside a Widget are pressed, and its scrolling body scrolled. */
+const NOT_A_DRAG_HANDLE = "button, a, input, select, textarea, [data-scrolls]"
 
 /** Floats every Shown Widget over the Jarvis page at its place. */
 export function WidgetLayer() {
@@ -35,10 +35,11 @@ export function WidgetLayer() {
 /**
  * One Widget, draggable with a mouse or a finger from anywhere but its
  * controls. Pointer capture keeps the drag going when the pointer outruns it.
- * A move to a Spot glides there, unless the Owner prefers reduced motion.
+ * A move to a Spot glides there, unless the Owner prefers reduced motion. A
+ * Widget with its own size keeps it and scrolls inside, dragged by its header.
  */
 function WidgetCard({
-  definition: { id, name, component: Widget },
+  definition: { id, name, size, component: Widget },
   state: { position, glide, settings },
 }: {
   definition: WidgetDefinition
@@ -77,13 +78,15 @@ function WidgetCard({
       role="region"
       aria-label={name}
       className={cn(
-        "pointer-events-auto absolute w-64 cursor-grab touch-none gap-2 select-none active:cursor-grabbing",
+        "pointer-events-auto absolute cursor-grab touch-none gap-2 select-none active:cursor-grabbing",
         glide &&
           "motion-safe:transition-[left,top] motion-safe:duration-500 motion-safe:ease-out"
       )}
       style={{
         left: `${position.x * 100}%`,
         top: `${position.y * 100}%`,
+        width: (size ?? WIDGET_SIZE).width,
+        ...(size ? { height: size.height } : {}),
       }}
       onPointerDown={startDrag}
       onPointerMove={drag}
@@ -105,7 +108,13 @@ function WidgetCard({
           <XIcon />
         </Button>
       </div>
-      <div className="px-(--card-spacing)">
+      <div
+        className={cn(
+          "px-(--card-spacing)",
+          size && "min-h-0 flex-1 touch-pan-y overflow-y-auto select-text"
+        )}
+        data-scrolls={size ? "" : undefined}
+      >
         <Widget
           settings={settings}
           updateSettings={(next) => getWidgetBoard().updateSettings(id, next)}

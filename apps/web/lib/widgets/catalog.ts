@@ -42,6 +42,16 @@ export const WIDGET_CATALOG = [
     source: "built-in",
     settingsSchema: weatherSettingsSchema,
   },
+  {
+    id: "results",
+    name: "Resultados",
+    description:
+      "Lo que encontró la última búsqueda: una tarjeta por resultado con sus datos clave y un enlace para abrirlo.",
+    startingSpot: "left-top",
+    source: "built-in",
+    // Larger than the Weather Widget so a list fits; it scrolls inside.
+    size: { width: 336, height: 440 },
+  },
 ] as const satisfies readonly WidgetInfo[]
 
 export type WidgetId = (typeof WIDGET_CATALOG)[number]["id"]
