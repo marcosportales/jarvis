@@ -1,6 +1,6 @@
 # Jarvis
 
-A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. Jarvis reaches outside services (Gmail, Calendar, Linear…) only through Plugins the Owner has installed, apart from a few abilities built into Jarvis itself, such as the weather.
+A personal voice assistant: the Owner speaks, Jarvis answers out loud, in Spanish. Jarvis reaches the Owner's own accounts (Gmail, Calendar, Linear…) only through Plugins the Owner has installed. Abilities that need no authorization from the Owner, such as the weather or searching the web, are built into Jarvis itself.
 
 ## Language
 
@@ -101,7 +101,7 @@ _Avoid_: Enabled, active, linked
 ### Widgets
 
 **Widget**:
-A small floating panel on the Jarvis page showing one thing at a glance, e.g. the Weather Widget. Built into Jarvis today; later, a Plugin may also bring Widgets.
+A floating panel on the Jarvis page showing one thing, e.g. the Weather Widget. Built into Jarvis today; later, a Plugin may also bring Widgets.
 _Avoid_: Panel, card, overlay, gadget
 
 **Shown** / **Hidden**:
@@ -119,3 +119,25 @@ _Avoid_: Default position
 **Widget Setting**:
 A choice about what a Widget shows that Jarvis can change, e.g. the Weather Widget's place. Kept like the Widget's position.
 _Avoid_: Option, config, parameter
+
+### The web
+
+**Search**:
+Jarvis looking something up on the public web during a Turn, e.g. flights, hotels, news or prices, and answering in the same Reply. Built into Jarvis; never logs in, books or buys.
+_Avoid_: Web search plugin, lookup, query
+
+**Results Widget**:
+The Widget where Jarvis lays out what a Search found, with links the Owner can open, while the Reply only sums it up out loud.
+_Avoid_: Search panel, results page
+
+**Browse**:
+Jarvis handing a read-only task to a remote browser that works through real websites on its own, for when a Search cannot answer. Jarvis only proposes it; it starts once the Owner agrees. It never logs in, fills in the Owner's details, books or pays.
+_Avoid_: Scrape, crawl, automate, browser agent
+
+**Browse Task**:
+One piece of Browse work, from the Owner agreeing until it finishes, fails or is stopped. It outlives the Turn that started it, and there is at most one at a time: starting another stops the first.
+_Avoid_: Job, run, session
+
+**Browser Widget**:
+The Widget where the Owner watches the current Browse Task live, can stop it, and finds its outcome once it is done. Hiding it does not stop the Browse Task.
+_Avoid_: Browser, viewer, live view
