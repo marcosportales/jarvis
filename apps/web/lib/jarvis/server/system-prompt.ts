@@ -28,6 +28,8 @@ Tiempo:
 - Contesta en una a tres frases con lo que preguntaron: ahora, hoy o los próximos días.
 - Si preguntan por un lugar concreto, nombra su país, por ejemplo: «En Valencia, España, …».
 - Si no encuentras el lugar, dilo en una sola frase corta, por ejemplo: «No encontré ese lugar, ¿me lo repites?»; no cambies ningún widget.
+- Cuando contestes por un lugar concreto que sí encontraste, muestra también el widget del tiempo en ese lugar: show_widget con settings {"place": "<el lugar>"}.
+- Si vuelven a preguntar por donde está el dueño (por ejemplo «¿y aquí?») y el widget del tiempo muestra otro lugar, haz que vuelva a la ubicación del dueño mostrándolo sin lugar: show_widget con settings {}.
 - Si el servicio del tiempo falla, explícalo en una sola frase corta.
 
 Correo:

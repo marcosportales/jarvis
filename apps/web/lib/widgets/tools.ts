@@ -36,6 +36,17 @@ function catalogLines(catalog: readonly WidgetInfo[]) {
     .join("\n")
 }
 
+/** Each Widget's Widget Settings as JSON Schema, so the model knows them. */
+function settingsLines(catalog: readonly WidgetInfo[]) {
+  return catalog
+    .map(({ id, settingsSchema }) =>
+      settingsSchema
+        ? `- ${id}: ${JSON.stringify(z.toJSONSchema(settingsSchema, { io: "input" }))}`
+        : `- ${id}: sin ajustes`
+    )
+    .join("\n")
+}
+
 /**
  * Generated from the Widget registry, so a new Widget needs no new tool. Each
  * call records a Widget change for the Reply; nothing changes on screen until
@@ -64,10 +75,37 @@ export function createWidgetTools(
   return {
     tools: {
       show_widget: tool({
-        description: `Muestra un widget en la pantalla del dueño.\nWidgets disponibles:\n${widgets}`,
-        inputSchema: idInput,
-        execute: async ({ id }) =>
-          record({ type: "show", id }, (name) => `Widget ${name} mostrado.`),
+        description: `Muestra un widget en la pantalla del dueño. Con \`settings\` cambia sus ajustes, que sustituyen a los que tenía; sin \`settings\` conserva los suyos.\nWidgets disponibles:\n${widgets}\nAjustes de cada widget:\n${settingsLines(catalog)}`,
+        inputSchema: idInput.extend({
+          settings: z
+            .record(z.string(), z.unknown())
+            .optional()
+            .describe("Los nuevos ajustes del widget, según su esquema."),
+        }),
+        execute: async ({ id, settings }) => {
+          if (settings === undefined) {
+            return record(
+              { type: "show", id },
+              (name) => `Widget ${name} mostrado.`
+            )
+          }
+          const widget = catalog.find((entry) => entry.id === id)
+          if (widget && !widget.settingsSchema) {
+            if (Object.keys(settings).length > 0) {
+              return `El widget «${id}» no tiene ajustes; muéstralo sin \`settings\`.`
+            }
+          } else if (widget?.settingsSchema) {
+            const parsed = widget.settingsSchema.safeParse(settings)
+            if (!parsed.success) {
+              return `Los ajustes ${JSON.stringify(settings)} no son válidos para el widget «${id}»: ${z.prettifyError(parsed.error)}`
+            }
+          }
+          return record(
+            { type: "show", id, settings },
+            (name) =>
+              `Widget ${name} mostrado con ajustes ${JSON.stringify(settings)}.`
+          )
+        },
       }),
       hide_widget: tool({
         description: `Oculta un widget de la pantalla del dueño.\nWidgets disponibles:\n${widgets}`,
@@ -99,8 +137,8 @@ export function createWidgetTools(
 export function widgetLayoutNotice(layout: WidgetLayout) {
   if (layout.length === 0) return "El dueño no tiene widgets."
   const lines = layout.map(
-    ({ id, name, shown, spot }) =>
-      `- ${id} (${name}): ${shown ? "visible" : "oculto"}, en ${spot} (${SPOT_NAMES[spot]})`
+    ({ id, name, shown, spot, settings }) =>
+      `- ${id} (${name}): ${shown ? "visible" : "oculto"}, en ${spot} (${SPOT_NAMES[spot]}), ajustes ${JSON.stringify(settings)}`
   )
   return `Widgets del dueño ahora mismo:\n${lines.join("\n")}`
 }

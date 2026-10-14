@@ -4,7 +4,7 @@ import type { WidgetChange, WidgetLayout } from "./changes"
 
 /**
  * The Widget Board owns the Widget layout: for each Widget in the registry,
- * whether it is Shown and where it sits. Framework-free, so the Jarvis page,
+ * whether it is Shown, where it sits and its Widget Settings. Framework-free, so the Jarvis page,
  * the sidebar and the Session can all share one per tab.
  */
 
@@ -20,12 +20,17 @@ export const SPOTS = [
 /** One of six named places in the side margins; there is no centre Spot. */
 export type Spot = (typeof SPOTS)[number]
 
+/** A Widget's own options, like the Weather Widget's place. */
+export type WidgetSettings = Record<string, unknown>
+
 /** What the Board needs to know about a registry entry. */
 export type BoardWidget = {
   id: string
   /** Spanish; tells Jarvis which Widget is which. Defaults to the id. */
   name?: string
   startingSpot?: Spot
+  /** Its Widget Settings; parsing `{}` gives the defaults. None means none. */
+  settingsSchema?: z.ZodType<WidgetSettings>
 }
 
 export type Size = { width: number; height: number }
@@ -42,6 +47,7 @@ export type WidgetState = {
   position: WidgetPosition
   /** It last moved to a Spot, so the layer animates it; dragged ones don't. */
   glide: boolean
+  settings: WidgetSettings
 }
 
 /** Widgets in registry order. */
@@ -77,6 +83,8 @@ const savedLayoutSchema = z.object({
     z.object({
       shown: z.boolean(),
       position: z.object({ x: z.number(), y: z.number() }),
+      // Absent in layouts saved before Widget Settings existed.
+      settings: z.record(z.string(), z.unknown()).optional(),
     })
   ),
 })
@@ -102,9 +110,9 @@ function saveLayout(
   const layout: SavedLayout = {
     version: STORAGE_VERSION,
     widgets: Object.fromEntries(
-      snapshot.widgets.map(({ id, shown, position }) => [
+      snapshot.widgets.map(({ id, shown, position, settings }) => [
         id,
-        { shown, position },
+        { shown, position, settings },
       ])
     ),
   }
@@ -114,6 +122,24 @@ function saveLayout(
     // Full or blocked storage only costs remembering the layout.
     console.error("Saving the Widget layout failed", error)
   }
+}
+
+/** Valid Widget Settings for `widget`, or `undefined` if they aren't. */
+function parseSettings(
+  widget: BoardWidget,
+  settings: unknown
+): WidgetSettings | undefined {
+  if (!widget.settingsSchema) return {}
+  const parsed = widget.settingsSchema.safeParse(settings)
+  return parsed.success ? parsed.data : undefined
+}
+
+function defaultSettings(widget: BoardWidget): WidgetSettings {
+  return parseSettings(widget, {}) ?? {}
+}
+
+function sameSettings(a: WidgetSettings, b: WidgetSettings) {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -236,6 +262,7 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
       id: widget.id,
       shown: true,
       glide: false,
+      settings: defaultSettings(widget),
       position: widget.startingSpot
         ? spotPosition(widget.startingSpot, viewport, widgetSize)
         : toPosition(
@@ -262,7 +289,14 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     ...registry.filter(known),
     ...registry.filter((widget) => !known(widget)),
   ]) {
-    const state = { ...defaultState(widget, placed), ...saved[widget.id] }
+    const defaults = defaultState(widget, placed)
+    const { settings, ...rest } = saved[widget.id] ?? {}
+    const state = {
+      ...defaults,
+      ...rest,
+      settings:
+        (settings && parseSettings(widget, settings)) ?? defaults.settings,
+    }
     placed.push({ ...state, position: inView(state.position) })
   }
   let snapshot: WidgetBoardSnapshot = {
@@ -283,7 +317,8 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         next.shown !== current.shown ||
         next.glide !== current.glide ||
         next.position.x !== current.position.x ||
-        next.position.y !== current.position.y
+        next.position.y !== current.position.y ||
+        !sameSettings(next.settings, current.settings)
       )
     })
     if (!changed) return
@@ -299,6 +334,24 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         widget.id === id ? { ...widget, ...change } : widget
       )
     )
+  }
+
+  /**
+   * Replaces the Widget's Settings when `settings` are valid for it; invalid
+   * ones are ignored, so the Widget keeps the ones it had.
+   */
+  function withSettings(id: string, settings: unknown) {
+    const widget = registry.find((entry) => entry.id === id)
+    const parsed = widget && parseSettings(widget, settings)
+    return parsed ? { settings: parsed } : {}
+  }
+
+  /** Shows the Widget, with new Widget Settings if given and valid. */
+  function show(id: string, settings?: unknown) {
+    update(id, {
+      shown: true,
+      ...(settings === undefined ? {} : withSettings(id, settings)),
+    })
   }
 
   /**
@@ -332,14 +385,17 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
         listeners.delete(listener)
       }
     },
-    show: (id: string) => update(id, { shown: true }),
+    show,
     hide: (id: string) => update(id, { shown: false }),
+    /** Replaces the Widget Settings; empty ones give back the defaults. */
+    updateSettings: (id: string, settings: unknown) =>
+      update(id, withSettings(id, settings)),
     /** A Turn's Widget changes, in order; unknown ids are skipped. */
     applyChanges(changes: readonly WidgetChange[]) {
       for (const change of changes) {
         switch (change.type) {
           case "show":
-            update(change.id, { shown: true })
+            show(change.id, change.settings)
             break
           case "hide":
             update(change.id, { shown: false })
@@ -352,11 +408,12 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     },
     /** What Jarvis is told about the layout each Turn. */
     describeLayout(): WidgetLayout {
-      return snapshot.widgets.map(({ id, shown, position }) => ({
+      return snapshot.widgets.map(({ id, shown, position, settings }) => ({
         id,
         name: registry.find((widget) => widget.id === id)?.name ?? id,
         shown,
         spot: nearestSpot(toPixels(position, viewport), viewport, widgetSize),
+        settings,
       }))
     },
     moveToSpot,

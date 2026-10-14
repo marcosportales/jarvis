@@ -39,7 +39,7 @@ export function WidgetLayer() {
  */
 function WidgetCard({
   definition: { id, name, component: Widget },
-  state: { position, glide },
+  state: { position, glide, settings },
 }: {
   definition: WidgetDefinition
   state: WidgetState
@@ -106,7 +106,10 @@ function WidgetCard({
         </Button>
       </div>
       <div className="px-(--card-spacing)">
-        <Widget />
+        <Widget
+          settings={settings}
+          updateSettings={(next) => getWidgetBoard().updateSettings(id, next)}
+        />
       </div>
     </Card>
   )

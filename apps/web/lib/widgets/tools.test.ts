@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
 
 import type { WidgetInfo } from "./catalog"
 import { createWidgetTools, widgetLayoutNotice } from "./tools"
@@ -9,6 +10,9 @@ const CATALOG: WidgetInfo[] = [
     name: "Tiempo",
     description: "El tiempo actual.",
     source: "built-in",
+    settingsSchema: z.object({
+      place: z.string().optional().describe("El lugar; sin él, el del dueño."),
+    }),
   },
   {
     id: "clock",
@@ -131,14 +135,93 @@ describe("Jarvis's Widget tools for a Turn", () => {
   })
 })
 
+describe("show_widget with Widget Settings", () => {
+  it("records the Widget Settings with the show change", async () => {
+    const turn = createWidgetTools(CATALOG)
+
+    const result = await call(turn, "show_widget", {
+      id: "weather",
+      settings: { place: "Londres" },
+    })
+
+    expect(turn.changes()).toEqual([
+      { type: "show", id: "weather", settings: { place: "Londres" } },
+    ])
+    expect(result).toMatch(/Tiempo/)
+  })
+
+  it("records empty Widget Settings, which point the Widget back to its defaults", async () => {
+    const turn = createWidgetTools(CATALOG)
+
+    await call(turn, "show_widget", { id: "weather", settings: {} })
+
+    expect(turn.changes()).toEqual([
+      { type: "show", id: "weather", settings: {} },
+    ])
+  })
+
+  it("answers invalid Widget Settings with an error and records nothing", async () => {
+    const turn = createWidgetTools(CATALOG)
+
+    const wrongType = await call(turn, "show_widget", {
+      id: "weather",
+      settings: { place: 42 },
+    })
+    const noSettings = await call(turn, "show_widget", {
+      id: "clock",
+      settings: { city: "Lima" },
+    })
+
+    expect(turn.changes()).toEqual([])
+    expect(wrongType).toMatch(/no son válidos/)
+    expect(noSettings).toMatch(/no tiene ajustes/)
+  })
+
+  it("describes each Widget's Widget Settings in show_widget", () => {
+    const { tools } = createWidgetTools(CATALOG)
+
+    const description = tools.show_widget?.description ?? ""
+    expect(description).toContain("place")
+    expect(description).toContain("El lugar; sin él, el del dueño.")
+  })
+})
+
 describe("Widget layout notice", () => {
   it("tells Jarvis which Widgets are Shown and which are Hidden", () => {
     const notice = widgetLayoutNotice([
-      { id: "weather", name: "Tiempo", shown: true, spot: "right-top" },
-      { id: "clock", name: "Reloj", shown: false, spot: "left-middle" },
+      {
+        id: "weather",
+        name: "Tiempo",
+        shown: true,
+        spot: "right-top",
+        settings: {},
+      },
+      {
+        id: "clock",
+        name: "Reloj",
+        shown: false,
+        spot: "left-middle",
+        settings: {},
+      },
     ])
 
     expect(notice).toContain("weather (Tiempo): visible, en right-top")
     expect(notice).toContain("clock (Reloj): oculto, en left-middle")
+  })
+})
+
+describe("Widget layout notice with Widget Settings", () => {
+  it("tells Jarvis each Widget's Widget Settings", () => {
+    const notice = widgetLayoutNotice([
+      {
+        id: "weather",
+        name: "Tiempo",
+        shown: true,
+        spot: "right-top",
+        settings: { place: "Londres" },
+      },
+    ])
+
+    expect(notice).toContain('ajustes {"place":"Londres"}')
   })
 })

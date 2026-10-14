@@ -1,3 +1,5 @@
+import { z } from "zod"
+
 import type { BoardWidget } from "./board"
 
 /** Built into Jarvis; Plugin Widgets (MCP Apps, ADR 0003) come later. */
@@ -15,6 +17,20 @@ export type WidgetInfo = BoardWidget & {
   source: WidgetSource
 }
 
+/** No place means the Owner's location. */
+export const weatherSettingsSchema = z.object({
+  place: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .describe(
+      "El lugar que muestra, por ejemplo «Londres». Sin place, muestra la ubicación del dueño."
+    ),
+})
+
+export type WeatherSettings = z.infer<typeof weatherSettingsSchema>
+
 /** Every Widget; the client registry adds each one's component. */
 export const WIDGET_CATALOG = [
   {
@@ -24,6 +40,7 @@ export const WIDGET_CATALOG = [
       "El tiempo actual: temperatura, estado del cielo, máxima y mínima de hoy y viento.",
     startingSpot: "right-top",
     source: "built-in",
+    settingsSchema: weatherSettingsSchema,
   },
 ] as const satisfies readonly WidgetInfo[]
 

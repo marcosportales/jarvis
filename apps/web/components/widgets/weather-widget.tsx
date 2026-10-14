@@ -13,11 +13,14 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
+import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 import type { WeatherIcon } from "@/lib/weather/conditions"
 import { locateOwner } from "@/lib/weather/owner-location"
 import type { WeatherResult } from "@/lib/weather/weather"
+import { weatherSettingsSchema } from "@/lib/widgets/catalog"
+import type { WidgetProps } from "@/lib/widgets/registry"
 
 const REFRESH_MS = 15 * 60 * 1000
 
@@ -32,16 +35,21 @@ const ICONS: Record<WeatherIcon, LucideIcon> = {
   "cloud-lightning": CloudLightningIcon,
 }
 
-async function loadWeather(): Promise<WeatherResult> {
+/** Query for the endpoint: the named place, or else where the Owner is. */
+async function weatherParams(place: string | undefined) {
+  if (place) return `?${new URLSearchParams({ place })}`
+  const coords = await locateOwner()
+  return coords
+    ? `?${new URLSearchParams({
+        lat: String(coords.latitude),
+        lon: String(coords.longitude),
+      })}`
+    : ""
+}
+
+async function loadWeather(place: string | undefined): Promise<WeatherResult> {
   try {
-    const coords = await locateOwner()
-    const params = coords
-      ? `?${new URLSearchParams({
-          lat: String(coords.latitude),
-          lon: String(coords.longitude),
-        })}`
-      : ""
-    const response = await fetch(`/api/weather${params}`)
+    const response = await fetch(`/api/weather${await weatherParams(place)}`)
     if (!response.ok) return { status: "failed" }
     return (await response.json()) as WeatherResult
   } catch {
@@ -51,21 +59,42 @@ async function loadWeather(): Promise<WeatherResult> {
 
 const degrees = (value: number) => `${Math.round(value)}°`
 
-export function WeatherWidget() {
-  const [result, setResult] = useState<WeatherResult | null>(null)
+/** Shows the Owner's location, or the place in its Widget Settings. */
+export function WeatherWidget({ settings, updateSettings }: WidgetProps) {
+  const parsed = weatherSettingsSchema.safeParse(settings)
+  const place = parsed.success ? parsed.data.place : undefined
+  /** The last load and which place it was for, so a new place shows loading. */
+  const [loaded, setLoaded] = useState<{
+    place: string | undefined
+    result: WeatherResult
+  } | null>(null)
 
   // A failed load stays on screen until the next refresh retries it.
   useEffect(() => {
     let active = true
     const refresh = () =>
-      void loadWeather().then((next) => active && setResult(next))
+      void loadWeather(place).then(
+        (result) => active && setLoaded({ place, result })
+      )
     refresh()
     const timer = setInterval(refresh, REFRESH_MS)
     return () => {
       active = false
       clearInterval(timer)
     }
-  }, [])
+  }, [place])
+
+  const result = loaded && loaded.place === place ? loaded.result : null
+  const backToOwner = place !== undefined && (
+    <Button
+      variant="outline"
+      size="xs"
+      className="mt-1 cursor-pointer self-start"
+      onClick={() => updateSettings({})}
+    >
+      📍 Mi ubicación
+    </Button>
+  )
 
   if (result === null) {
     return (
@@ -79,16 +108,21 @@ export function WeatherWidget() {
 
   if (result.status !== "ok") {
     return (
-      <p className="text-sm text-muted-foreground">No pude cargar el tiempo</p>
+      <div className="flex flex-col gap-1">
+        <p className="text-sm text-muted-foreground">
+          No pude cargar el tiempo
+        </p>
+        {backToOwner}
+      </div>
     )
   }
 
-  const { place, current, today } = result.weather
+  const { place: shown, current, today } = result.weather
   const Icon = ICONS[current.condition.icon]
   return (
     <div className="flex flex-col gap-1">
       <p className="truncate font-medium">
-        {place.country ? `${place.name}, ${place.country}` : place.name}
+        {shown.country ? `${shown.name}, ${shown.country}` : shown.name}
       </p>
       <div className="flex items-center gap-3">
         <Icon className="size-8 shrink-0" aria-hidden />
@@ -101,6 +135,7 @@ export function WeatherWidget() {
         Máx. {degrees(today.high)} · Mín. {degrees(today.low)} · Viento{" "}
         {Math.round(current.wind)} km/h
       </p>
+      {backToOwner}
     </div>
   )
 }

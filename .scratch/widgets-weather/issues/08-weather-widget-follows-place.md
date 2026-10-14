@@ -14,13 +14,25 @@ Use the vocabulary from CONTEXT.md (Widget Setting).
 
 **Blocked by:** 07
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "¿Qué tiempo hace en Londres?" answers and Shows the Weather Widget on London
-- [ ] "¿Y aquí?" switches it back to the Owner's location
-- [ ] "📍 Mi ubicación" is shown only for another place and switches it back
-- [ ] The switched place survives a reload
-- [ ] An unknown place leaves the Widget as it was
-- [ ] Widget Board tests cover Widget Settings: validation, invalid ones ignored, persisted, Show with settings
-- [ ] Tool tests cover `show_widget` with valid and invalid settings
-- [ ] Lint, typecheck and tests pass
+- [x] "¿Qué tiempo hace en Londres?" answers and Shows the Weather Widget on London
+- [x] "¿Y aquí?" switches it back to the Owner's location
+- [x] "📍 Mi ubicación" is shown only for another place and switches it back
+- [x] The switched place survives a reload
+- [x] An unknown place leaves the Widget as it was
+- [x] Widget Board tests cover Widget Settings: validation, invalid ones ignored, persisted, Show with settings
+- [x] Tool tests cover `show_widget` with valid and invalid settings
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+Checked by hand against `next dev -p 3108` (real model, real Open-Meteo) and headless Chromium. Geolocation is denied headless, so "the Owner's location" was the env fallback city (Madrid).
+
+- "¿Qué tiempo hace en Londres?" with the Widget Hidden: Jarvis answered for "Londres, Reino Unido" and the Widget was Shown on London with "📍 Mi ubicación".
+- After a reload it still showed London, and `{"place":"Londres"}` was saved.
+- "¿Qué tiempo hace en Zxqwvbn?": one-sentence "No encontré ese lugar", no Widget change; the Widget stayed on London.
+- "¿Y aquí?": switched back to the Owner's location; the button disappeared.
+- "📍 Mi ubicación" (after asking about Tokio): switched back, the button disappeared, and the Widget didn't move.
+- "Muéstrame el tiempo" without a place keeps the place it had (`show` without `settings`).
+- "¿Qué tiempo hará mañana en París?" answered with tomorrow's forecast and Shows today's conditions on the Widget for París.

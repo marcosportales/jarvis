@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest"
+import { z } from "zod"
 
 import {
   createWidgetBoard,
@@ -315,8 +316,20 @@ describe("Widget Board and Jarvis", () => {
     widgets.hide("clock")
 
     expect(widgets.describeLayout()).toEqual([
-      { id: "weather", name: "Tiempo", shown: true, spot: "right-top" },
-      { id: "clock", name: "Reloj", shown: false, spot: "left-bottom" },
+      {
+        id: "weather",
+        name: "Tiempo",
+        shown: true,
+        spot: "right-top",
+        settings: {},
+      },
+      {
+        id: "clock",
+        name: "Reloj",
+        shown: false,
+        spot: "left-bottom",
+        settings: {},
+      },
     ])
   })
 
@@ -419,5 +432,141 @@ describe("Widget Board Spots", () => {
     widgets.moveToSpot("stocks", "left-top")
 
     expect(widgets.getSnapshot()).toBe(before)
+  })
+})
+
+describe("Widget Board Widget Settings", () => {
+  const WEATHER_WITH_PLACE: BoardWidget = {
+    ...WEATHER,
+    settingsSchema: z.object({ place: z.string().optional() }),
+  }
+
+  function settingsOf(widgets: ReturnType<typeof board>, id = "weather") {
+    return widgets.getSnapshot().widgets.find((widget) => widget.id === id)!
+      .settings
+  }
+
+  it("starts every Widget with its default Widget Settings", () => {
+    const withDefaults: BoardWidget = {
+      id: "clock",
+      settingsSchema: z.object({ city: z.string().default("Madrid") }),
+    }
+
+    const widgets = board([WEATHER_WITH_PLACE, withDefaults, WEATHER])
+
+    expect(settingsOf(widgets)).toEqual({})
+    expect(settingsOf(widgets, "clock")).toEqual({ city: "Madrid" })
+  })
+
+  it("Shows a Widget with new Widget Settings", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+    widgets.hide("weather")
+
+    widgets.show("weather", { place: "Londres" })
+
+    expect(widgets.getSnapshot().widgets[0]!.shown).toBe(true)
+    expect(settingsOf(widgets)).toEqual({ place: "Londres" })
+  })
+
+  it("keeps the Widget Settings when Shown without any", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+    widgets.show("weather", { place: "Londres" })
+
+    widgets.hide("weather")
+    widgets.show("weather")
+
+    expect(settingsOf(widgets)).toEqual({ place: "Londres" })
+  })
+
+  it("replaces the Widget Settings, so empty ones go back to the defaults", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+    widgets.show("weather", { place: "Londres" })
+
+    widgets.updateSettings("weather", {})
+
+    expect(settingsOf(widgets)).toEqual({})
+  })
+
+  it("ignores invalid Widget Settings but still Shows the Widget", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+    widgets.show("weather", { place: "Londres" })
+    widgets.hide("weather")
+
+    widgets.show("weather", { place: 42 })
+    widgets.updateSettings("weather", { place: ["París"] })
+
+    expect(widgets.getSnapshot().widgets[0]!.shown).toBe(true)
+    expect(settingsOf(widgets)).toEqual({ place: "Londres" })
+  })
+
+  it("ignores Widget Settings for a Widget that has none", () => {
+    const widgets = board([WEATHER])
+
+    widgets.show("weather", { place: "Londres" })
+
+    expect(settingsOf(widgets)).toEqual({})
+  })
+
+  it("applies a Turn's show change with Widget Settings", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+
+    widgets.applyChanges([
+      { type: "show", id: "weather", settings: { place: "Londres" } },
+    ])
+
+    expect(settingsOf(widgets)).toEqual({ place: "Londres" })
+  })
+
+  it("remembers the Widget Settings on the next start", () => {
+    const { storage } = memoryStorage()
+    board([WEATHER_WITH_PLACE], storage).show("weather", { place: "Londres" })
+
+    expect(settingsOf(board([WEATHER_WITH_PLACE], storage))).toEqual({
+      place: "Londres",
+    })
+  })
+
+  it("loads a layout saved before Widget Settings existed, keeping its place", () => {
+    const { storage } = memoryStorage({
+      [WIDGET_BOARD_STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        widgets: { weather: { shown: false, position: { x: 0.1, y: 0.2 } } },
+      }),
+    })
+
+    const widget = board([WEATHER_WITH_PLACE], storage).getSnapshot()
+      .widgets[0]!
+
+    expect(widget.shown).toBe(false)
+    expect(widget.position).toEqual({ x: 0.1, y: 0.2 })
+    expect(widget.settings).toEqual({})
+  })
+
+  it("falls back to the defaults when saved Widget Settings are invalid", () => {
+    const { storage } = memoryStorage({
+      [WIDGET_BOARD_STORAGE_KEY]: JSON.stringify({
+        version: 1,
+        widgets: {
+          weather: {
+            shown: true,
+            position: { x: 0.1, y: 0.2 },
+            settings: { place: 42 },
+          },
+        },
+      }),
+    })
+
+    const widget = board([WEATHER_WITH_PLACE], storage).getSnapshot()
+      .widgets[0]!
+
+    expect(widget.position).toEqual({ x: 0.1, y: 0.2 })
+    expect(widget.settings).toEqual({})
+  })
+
+  it("tells Jarvis each Widget's Widget Settings", () => {
+    const widgets = board([WEATHER_WITH_PLACE])
+    widgets.show("weather", { place: "Londres" })
+
+    expect(widgets.describeLayout()[0]!.settings).toEqual({ place: "Londres" })
   })
 })
