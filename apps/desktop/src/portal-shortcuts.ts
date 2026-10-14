@@ -45,7 +45,11 @@ export function createPortalShortcuts({
   connect: () => Promise<DBus>
   log: PortalLog
 }): Shortcuts {
-  async function bind(listeners: { pressed(): void; released(): void }) {
+  /** Connects to the session bus, then binds Push-to-talk on the portal. */
+  async function connectAndBind(listeners: {
+    pressed(): void
+    released(): void
+  }) {
     const bus = await connect()
     // Request paths are built from our unique name: `:1.42` → `1_42`.
     const sender = (await bus.uniqueName()).slice(1).replaceAll(".", "_")
@@ -184,7 +188,7 @@ export function createPortalShortcuts({
 
   return {
     onPushToTalk(listeners) {
-      bind(listeners).catch((error: unknown) =>
+      connectAndBind(listeners).catch((error: unknown) =>
         log.warn(
           `Push-to-talk from any app is unavailable: ${error instanceof Error ? error.message : String(error)}`,
           error
