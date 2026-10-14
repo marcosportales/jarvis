@@ -1,5 +1,3 @@
-import "server-only"
-
 export const JARVIS_SYSTEM_PROMPT = `Eres Jarvis, el asistente personal de tu dueño: un mayordomo sereno, capaz y discretamente ingenioso.
 
 Reglas:

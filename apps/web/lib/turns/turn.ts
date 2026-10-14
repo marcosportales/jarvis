@@ -1,0 +1,159 @@
+import { generateText, stepCountIs, type LanguageModel } from "ai"
+
+import type { MemoryEvent } from "../memory/events"
+import type { MemoryStore } from "../memory/store"
+import { createMemoryTools, memoryNotice } from "../memory/tools"
+import type { Plugins, TurnTools } from "../plugins/plugins"
+import {
+  UnknownSessionError,
+  type SavedTurn,
+  type SessionStore,
+} from "../sessions/store"
+import { createWeatherTools } from "../weather/tool"
+import type { Coordinates, WeatherService } from "../weather/weather"
+import { WIDGET_CATALOG } from "../widgets/catalog"
+import type { WidgetChange, WidgetLayout } from "../widgets/changes"
+import { createWidgetTools, widgetLayoutNotice } from "../widgets/tools"
+import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
+
+/** Bounds how many tool-use rounds a single Reply may take. */
+export const MAX_REPLY_STEPS = 5
+
+/** Spoken when the step limit ends the Reply before the model said anything. */
+export const FALLBACK_REPLY =
+  "Lo siento, no he podido terminar de consultarlo. ¿Me lo preguntas de otra forma?"
+
+/** What the Owner said, with what the client knows at that moment. */
+export type TurnRequest = {
+  /** Left out to start a new Session. */
+  sessionId?: string
+  text: string
+  widgets: WidgetLayout
+  /** The Owner's coordinates, only when the browser already had permission. */
+  coords?: Coordinates
+}
+
+/** Jarvis's Reply, once the Turn is saved in `sessionId`. */
+export type TurnReply = {
+  sessionId: string
+  text: string
+  widgetChanges: WidgetChange[]
+  memoryEvents: MemoryEvent[]
+}
+
+export type TurnsDeps = {
+  model: LanguageModel
+  sessions: SessionStore
+  memories: MemoryStore
+  plugins: Pick<Plugins, "toolsForTurn">
+  weather: WeatherService
+  now: () => Date
+}
+
+/** The earlier Turns as the chat model sees them. */
+function toMessages(turns: SavedTurn[]) {
+  return turns.flatMap(({ owner, reply }) => [
+    { role: "user" as const, content: owner },
+    { role: "assistant" as const, content: reply },
+  ])
+}
+
+/** Lets the model resolve "hoy" or "esta semana" when searching a service. */
+function currentDateLine(now: Date) {
+  const formatted = now.toLocaleString("es-ES", {
+    dateStyle: "full",
+    timeStyle: "short",
+  })
+  return `Fecha y hora actuales: ${formatted}.`
+}
+
+/** Jarvis's Turns over the given model and stores. */
+export function createTurns({
+  model,
+  sessions,
+  memories,
+  plugins,
+  weather,
+  now,
+}: TurnsDeps) {
+  /** A Plugin problem must never fail the Turn, so fall back to no tools. */
+  async function loadPluginTools(): Promise<TurnTools> {
+    try {
+      return await plugins.toolsForTurn()
+    } catch (error) {
+      console.error("Loading Plugin tools failed", error)
+      return { tools: {}, notices: [], close: async () => {} }
+    }
+  }
+
+  return {
+    /**
+     * Produces Jarvis's Reply and saves the Turn, only once the Reply is
+     * ready. Throws `UnknownSessionError` if the Session doesn't exist, also
+     * when it is deleted while Jarvis is Thinking.
+     */
+    async take({
+      sessionId,
+      text,
+      widgets,
+      coords,
+    }: TurnRequest): Promise<TurnReply> {
+      let earlier: SavedTurn[] = []
+      if (sessionId) {
+        const found = await sessions.recentTurns(sessionId)
+        if (!found) throw new UnknownSessionError(sessionId)
+        earlier = found
+      }
+
+      const memoryTools = createMemoryTools(memories, { sessionId })
+      const pluginTools = await loadPluginTools()
+      const widgetTools = createWidgetTools(WIDGET_CATALOG)
+      const weatherTools = createWeatherTools({ weather, coords })
+      try {
+        const generated = await generateText({
+          model,
+          system: [
+            JARVIS_SYSTEM_PROMPT,
+            currentDateLine(now()),
+            widgetLayoutNotice(widgets),
+            await memoryNotice(memories),
+            ...pluginTools.notices,
+          ].join("\n\n"),
+          messages: [...toMessages(earlier), { role: "user", content: text }],
+          tools: {
+            ...pluginTools.tools,
+            ...widgetTools.tools,
+            ...weatherTools,
+            ...memoryTools.tools,
+          },
+          stopWhen: stepCountIs(MAX_REPLY_STEPS),
+        })
+
+        const reply = generated.text.trim() || FALLBACK_REPLY
+
+        // Saved only now that the Reply is ready, so a failed Turn saves nothing.
+        const memoryEvents = memoryTools.events()
+        const saved = { owner: text, reply, memoryEvents }
+        let savedIn: string
+        if (sessionId) {
+          await sessions.addTurn(sessionId, saved)
+          savedIn = sessionId
+        } else {
+          savedIn = await sessions.start(saved)
+          await memoryTools.adoptSession(savedIn)
+        }
+
+        return {
+          sessionId: savedIn,
+          text: reply,
+          widgetChanges: widgetTools.changes(),
+          memoryEvents,
+        }
+      } finally {
+        await pluginTools.close()
+      }
+    },
+  }
+}
+
+export type Turns = ReturnType<typeof createTurns>

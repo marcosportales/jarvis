@@ -24,14 +24,20 @@ Tests go only through the Turn module's operation:
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Turn without a Session starts a new one, saves the Turn in it, and back-fills Memories Remembered during it with the new Session's id
-- [ ] A Turn on an existing Session adds the Turn, and the earlier Turns reach the model as user/assistant messages before the new text
-- [ ] An unknown Session throws the unknown-Session error, and so does a Session deleted while the model is answering. Neither saves anything.
-- [ ] An empty Reply after the step limit becomes the fallback sentence, and that sentence is what gets saved
-- [ ] The system prompt holds, in order: the static Jarvis prompt, the date line from the injected clock, the Widget layout notice, then the core-Memory notice
-- [ ] Widget changes and Memory events made by the model's tool calls come back in the Reply
-- [ ] The Reply route keeps the same request and response on the wire, returns 400s for the same invalid inputs, and returns a 404 for an unknown Session
+- [x] A Turn without a Session starts a new one, saves the Turn in it, and back-fills Memories Remembered during it with the new Session's id
+- [x] A Turn on an existing Session adds the Turn, and the earlier Turns reach the model as user/assistant messages before the new text
+- [x] An unknown Session throws the unknown-Session error, and so does a Session deleted while the model is answering. Neither saves anything.
+- [x] An empty Reply after the step limit becomes the fallback sentence, and that sentence is what gets saved
+- [x] The system prompt holds, in order: the static Jarvis prompt, the date line from the injected clock, the Widget layout notice, then the core-Memory notice
+- [x] Widget changes and Memory events made by the model's tool calls come back in the Reply
+- [x] The Reply route keeps the same request and response on the wire, returns 400s for the same invalid inputs, and returns a 404 for an unknown Session
 - [ ] Jarvis answers a real question in the running app as before (manual check)
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
+
+## Comments
+
+- The Turn module lives in `apps/web/lib/turns/` (`turn.ts`, `server.ts`, `system-prompt.ts`). `system-prompt.ts` lost its `server-only` import so tests can load it; `server.ts` still guards the wiring.
+- "Neither saves anything" holds for the Turn. A Memory Remembered before a mid-Turn deletion stays, as it did before, with its Session link cleared; the test pins that.
+- The manual check is still open: the Reply route's 400s and 404s were checked on the running dev server, but no real question was asked.
