@@ -11,7 +11,7 @@ const dbFile =
 // The database is opened once and survives dev hot reloads.
 const globalForDb = globalThis as { jarvisDb?: JarvisDatabase }
 
-/** The shared Jarvis database, used by Plugins and Sessions. */
+/** The shared Jarvis database, used by Plugins, Sessions and Memories. */
 export function getDatabase() {
   if (!globalForDb.jarvisDb) {
     fs.mkdirSync(path.dirname(dbFile), { recursive: true })

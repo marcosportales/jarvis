@@ -6,6 +6,8 @@ import {
   text,
 } from "drizzle-orm/sqlite-core"
 
+import type { MemoryEvent } from "../memory/events"
+
 export const installedPlugins = sqliteTable("installed_plugins", {
   pluginId: text("plugin_id").primaryKey(),
   installedAt: integer("installed_at", { mode: "timestamp_ms" }).notNull(),
@@ -50,7 +52,31 @@ export const turns = sqliteTable(
     position: integer("position").notNull(),
     ownerText: text("owner_text").notNull(),
     replyText: text("reply_text").notNull(),
+    /** What Jarvis Remembered or Forgot during the Turn. */
+    memoryEvents: text("memory_events", { mode: "json" })
+      .$type<MemoryEvent[]>()
+      .notNull()
+      .default([]),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [primaryKey({ columns: [table.sessionId, table.position] })]
 )
+
+/**
+ * One Memory about the Owner, kept across all Sessions. An FTS5 index over its
+ * title and content (`memories_fts`, kept in sync by triggers) lives only in
+ * the migration, since Drizzle can't describe it.
+ */
+export const memories = sqliteTable("memories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** Reused to replace the Memory when the fact changes. */
+  topicKey: text("topic_key").notNull().unique(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  /** Where it was learned; cleared, not cascaded, when that Session goes. */
+  sourceSessionId: text("source_session_id").references(() => sessions.id, {
+    onDelete: "set null",
+  }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+})

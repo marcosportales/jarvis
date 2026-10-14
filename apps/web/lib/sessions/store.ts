@@ -1,6 +1,7 @@
 import { and, desc, eq, lt, max, or } from "drizzle-orm"
 
 import type { JarvisDatabase } from "../db"
+import type { MemoryEvent } from "../memory/events"
 import { sessions, turns } from "../db/schema"
 
 /** How many of the most recent Turns Jarvis is given. */
@@ -9,8 +10,15 @@ export const RECENT_TURNS = 20
 /** How many Sessions one page of the list holds. */
 export const SESSIONS_PAGE_SIZE = 20
 
-/** A saved Turn: what the Owner said and Jarvis's Reply. */
-export type SavedTurn = { owner: string; reply: string }
+/**
+ * A saved Turn: what the Owner said and Jarvis's Reply, with what Jarvis
+ * Remembered or Forgot during it (left out when nothing).
+ */
+export type SavedTurn = {
+  owner: string
+  reply: string
+  memoryEvents?: MemoryEvent[]
+}
 
 /** A Session as the list shows it. */
 export type SessionSummary = {
@@ -39,7 +47,10 @@ export type SessionStore = {
   start(turn: SavedTurn): Promise<string>
   /** Appends a Turn and bumps the Session's last activity. */
   addTurn(sessionId: string, turn: SavedTurn): Promise<void>
-  /** The last Turns of a Session, oldest first; null if it doesn't exist. */
+  /**
+   * The last Turns of a Session, oldest first, as the model sees them: without
+   * Memory events. Null if it doesn't exist.
+   */
   recentTurns(sessionId: string): Promise<SavedTurn[] | null>
   /** Every Turn of a Session, oldest first; null if it doesn't exist. */
   transcript(sessionId: string): Promise<SavedTurn[] | null>
@@ -89,14 +100,22 @@ export function createSessionStore(
     )
   }
 
-  function turnsOf(sessionId: string, limit?: number) {
+  function turnsOf(sessionId: string, limit?: number): SavedTurn[] {
     const query = db
-      .select({ owner: turns.ownerText, reply: turns.replyText })
+      .select({
+        owner: turns.ownerText,
+        reply: turns.replyText,
+        memoryEvents: turns.memoryEvents,
+      })
       .from(turns)
       .where(eq(turns.sessionId, sessionId))
       .orderBy(desc(turns.position))
     const newestFirst = limit ? query.limit(limit).all() : query.all()
-    return newestFirst.reverse()
+    return newestFirst
+      .reverse()
+      .map(({ memoryEvents, ...turn }) =>
+        memoryEvents.length > 0 ? { ...turn, memoryEvents } : turn
+      )
   }
 
   return {
@@ -113,6 +132,7 @@ export function createSessionStore(
             position: 0,
             ownerText: turn.owner,
             replyText: turn.reply,
+            memoryEvents: turn.memoryEvents ?? [],
             createdAt: at,
           })
           .run()
@@ -140,6 +160,7 @@ export function createSessionStore(
             position: (last?.position ?? -1) + 1,
             ownerText: turn.owner,
             replyText: turn.reply,
+            memoryEvents: turn.memoryEvents ?? [],
             createdAt: at,
           })
           .run()
@@ -148,7 +169,10 @@ export function createSessionStore(
 
     async recentTurns(sessionId) {
       if (!exists(sessionId)) return null
-      return turnsOf(sessionId, RECENT_TURNS)
+      return turnsOf(sessionId, RECENT_TURNS).map(({ owner, reply }) => ({
+        owner,
+        reply,
+      }))
     },
 
     async transcript(sessionId) {

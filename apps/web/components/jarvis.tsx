@@ -27,12 +27,18 @@ import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
 import { sessionPath } from "@/lib/navigation"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
+import type { MemoryEvent } from "@/lib/memory/events"
 
 const STATE_LABELS: Record<JarvisState, string> = {
   idle: "Mantén pulsado para hablar",
   listening: "Escuchando…",
   thinking: "Pensando…",
   speaking: "Hablando…",
+}
+
+const MEMORY_EVENT_LABELS: Record<MemoryEvent["kind"], string> = {
+  remembered: "Recordado",
+  forgotten: "Olvidado",
 }
 
 /** The Jarvis page for a saved Session, or for a new one when none is given. */
@@ -152,6 +158,11 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
                   from={entry.role === "owner" ? "user" : "assistant"}
                 >
                   <MessageContent>{entry.text}</MessageContent>
+                  {entry.memoryEvents?.map(({ kind, title }, index) => (
+                    <p key={index} className="text-xs text-muted-foreground">
+                      {MEMORY_EVENT_LABELS[kind]}: {title}
+                    </p>
+                  ))}
                 </Message>
               )
             )

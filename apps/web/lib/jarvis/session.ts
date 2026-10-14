@@ -1,3 +1,4 @@
+import type { MemoryEvent } from "../memory/events"
 import type { SavedTurn } from "../sessions/store"
 import type { WidgetChange } from "../widgets/changes"
 
@@ -8,6 +9,8 @@ export type TranscriptEntry = {
   /** `error` entries are shown inline but never sent or saved. */
   role: "owner" | "jarvis" | "error"
   text: string
+  /** On a Reply: what Jarvis Remembered or Forgot. Shown, never spoken. */
+  memoryEvents?: MemoryEvent[]
 }
 
 export type JarvisSnapshot = {
@@ -62,12 +65,13 @@ export type ReplyRequest = { sessionId?: string; text: string }
 
 /**
  * What the Brain says, the Session the Turn was saved in, and what it did to
- * the Widgets while deciding.
+ * the Widgets and to its Memory while deciding.
  */
 export type Reply = {
   sessionId: string
   text: string
   widgetChanges: WidgetChange[]
+  memoryEvents: MemoryEvent[]
 }
 
 /** Thrown by the Brain when the server doesn't know the Session. */
@@ -106,10 +110,12 @@ export function createJarvisSession(
   let nextId = 0
   let snapshot: JarvisSnapshot = {
     state: "idle",
-    transcript: (saved?.turns ?? []).flatMap(({ owner, reply }) => [
-      { id: nextId++, role: "owner" as const, text: owner },
-      { id: nextId++, role: "jarvis" as const, text: reply },
-    ]),
+    transcript: (saved?.turns ?? []).flatMap(
+      ({ owner, reply, memoryEvents }): TranscriptEntry[] => [
+        { id: nextId++, role: "owner", text: owner },
+        { id: nextId++, role: "jarvis", text: reply, memoryEvents },
+      ]
+    ),
     hint: null,
     sessionId: saved?.sessionId ?? null,
     gone: false,
@@ -129,10 +135,14 @@ export function createJarvisSession(
     update({ state })
   }
 
-  function append(role: TranscriptEntry["role"], text: string) {
-    update({
-      transcript: [...snapshot.transcript, { id: nextId++, role, text }],
-    })
+  function append(
+    role: TranscriptEntry["role"],
+    text: string,
+    memoryEvents?: MemoryEvent[]
+  ) {
+    const entry: TranscriptEntry = { id: nextId++, role, text }
+    if (memoryEvents?.length) entry.memoryEvents = memoryEvents
+    update({ transcript: [...snapshot.transcript, entry] })
   }
 
   /** Stops a Turn whose Jarvis State now belongs to a newer Turn or none. */
@@ -142,7 +152,7 @@ export function createJarvisSession(
 
   async function reply(message: string, turnGeneration: number) {
     const { sessionId } = snapshot
-    const { text, widgetChanges, ...saved } = await orFail(
+    const { text, widgetChanges, memoryEvents, ...saved } = await orFail(
       brain.reply(sessionId ? { sessionId, text: message } : { text: message }),
       ERRORS.reply
     )
@@ -151,7 +161,7 @@ export function createJarvisSession(
     update({ sessionId: saved.sessionId })
     // Before Speaking, so the screen matches what Jarvis is about to say.
     widgets.apply(widgetChanges)
-    append("jarvis", text)
+    append("jarvis", text, memoryEvents)
     setState("speaking")
     const played = await voice.speak(text).then(
       () => true,

@@ -234,4 +234,31 @@ describe("Sessions store", () => {
       UnknownSessionError
     )
   })
+
+  it("gives back the Memory events saved with a Turn in the Transcript", async () => {
+    const { store } = setup()
+    const remembered = {
+      ...turn(1),
+      memoryEvents: [{ kind: "remembered" as const, title: "Su hermana" }],
+    }
+    const id = await store.start(remembered)
+    const forgotten = {
+      ...turn(2),
+      memoryEvents: [{ kind: "forgotten" as const, title: "Su trabajo" }],
+    }
+    await store.addTurn(id, forgotten)
+    await store.addTurn(id, turn(3))
+
+    expect(await store.transcript(id)).toEqual([remembered, forgotten, turn(3)])
+  })
+
+  it("gives Jarvis the recent Turns without their Memory events", async () => {
+    const { store } = setup()
+    const id = await store.start({
+      ...turn(1),
+      memoryEvents: [{ kind: "remembered", title: "Su hermana" }],
+    })
+
+    expect(await store.recentTurns(id)).toEqual([turn(1)])
+  })
 })

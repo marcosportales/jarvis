@@ -2,6 +2,8 @@ import { generateText, stepCountIs } from "ai"
 
 import { nan, nanConfig } from "@/lib/jarvis/server/nan"
 import { JARVIS_SYSTEM_PROMPT } from "@/lib/jarvis/server/system-prompt"
+import { getMemories } from "@/lib/memory/server"
+import { createMemoryTools, memoryNotice } from "@/lib/memory/tools"
 import type { TurnTools } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
 import { getSessions } from "@/lib/sessions/server"
@@ -77,6 +79,8 @@ export async function POST(request: Request) {
   const earlier = sessionId ? await sessions.recentTurns(sessionId) : []
   if (!earlier) return unknownSession()
 
+  const memories = getMemories()
+  const memoryTools = createMemoryTools(memories, { sessionId })
   const turn = await loadTurnTools()
   const widgetTools = createWidgetTools(WIDGET_CATALOG)
   const weatherTools = createWeatherTools({
@@ -90,29 +94,38 @@ export async function POST(request: Request) {
         JARVIS_SYSTEM_PROMPT,
         currentDateLine(),
         widgetLayoutNotice(layout.data),
+        await memoryNotice(memories),
         ...turn.notices,
       ].join("\n\n"),
       messages: [...toMessages(earlier), { role: "user", content: text }],
-      tools: { ...turn.tools, ...widgetTools.tools, ...weatherTools },
+      tools: {
+        ...turn.tools,
+        ...widgetTools.tools,
+        ...weatherTools,
+        ...memoryTools.tools,
+      },
       stopWhen: stepCountIs(MAX_REPLY_STEPS),
     })
 
     const reply = generated.text.trim() || FALLBACK_REPLY
 
     // Saved only now that the Reply is ready, so a failed Turn saves nothing.
-    const saved = { owner: text, reply }
+    const memoryEvents = memoryTools.events()
+    const saved = { owner: text, reply, memoryEvents }
     let savedIn: string
     if (sessionId) {
       await sessions.addTurn(sessionId, saved)
       savedIn = sessionId
     } else {
       savedIn = await sessions.start(saved)
+      await memoryTools.adoptSession(savedIn)
     }
 
     return Response.json({
       sessionId: savedIn,
       text: reply,
       widgetChanges: widgetTools.changes(),
+      memoryEvents,
     })
   } catch (error) {
     // Deleted while Jarvis was Thinking.

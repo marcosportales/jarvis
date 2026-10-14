@@ -10,6 +10,7 @@ import {
   type Voice,
   type WidgetChanges,
 } from "./session"
+import type { MemoryEvent } from "../memory/events"
 import type { WidgetChange } from "../widgets/changes"
 
 type Deferred<T> = {
@@ -79,8 +80,10 @@ function fakeBrain() {
     answer: (
       text: string,
       widgetChanges: WidgetChange[] = [],
-      sessionId = "session-1"
-    ) => pending.shift()!.resolve({ sessionId, text, widgetChanges }),
+      sessionId = "session-1",
+      memoryEvents: MemoryEvent[] = []
+    ) =>
+      pending.shift()!.resolve({ sessionId, text, widgetChanges, memoryEvents }),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }
@@ -494,6 +497,55 @@ describe("Jarvis Session", () => {
     session.sendTypedMessage("Hola")
 
     expect(session.getSnapshot().hint).toBeNull()
+  })
+
+  it("shows the Reply's Memory events on its entry, without speaking them", async () => {
+    const { session, brain, voice } = setup()
+    const memoryEvents: MemoryEvent[] = [
+      { kind: "remembered", title: "Su hermana" },
+    ]
+
+    session.sendTypedMessage("Recuerda que mi hermana se llama Lucía")
+    await flush()
+    brain.answer("Lo recordaré, señor.", [], "family", memoryEvents)
+    await flush()
+    voice.finish()
+    await flush()
+
+    expect(session.getSnapshot().transcript).toMatchObject([
+      { role: "owner", text: "Recuerda que mi hermana se llama Lucía" },
+      { role: "jarvis", text: "Lo recordaré, señor.", memoryEvents },
+    ])
+    expect(session.getSnapshot().transcript).toHaveLength(2)
+    expect(voice.spoken).toEqual(["Lo recordaré, señor."])
+  })
+
+  it("shows a saved Turn's Memory events when resuming, and never sends them", async () => {
+    const memoryEvents: MemoryEvent[] = [
+      { kind: "forgotten", title: "Su trabajo" },
+    ]
+    const { session, brain } = setup({
+      saved: {
+        sessionId: "work",
+        turns: [
+          {
+            owner: "Olvida lo de mi trabajo",
+            reply: "Hecho, señor.",
+            memoryEvents,
+          },
+        ],
+      },
+    })
+
+    expect(session.getSnapshot().transcript).toMatchObject([
+      { role: "owner" },
+      { role: "jarvis", text: "Hecho, señor.", memoryEvents },
+    ])
+
+    session.sendTypedMessage("Gracias")
+    await flush()
+
+    expect(brain.calls).toEqual([{ sessionId: "work", text: "Gracias" }])
   })
 
   it("applies the Reply's Widget changes before Speaking", async () => {
