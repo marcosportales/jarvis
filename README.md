@@ -97,7 +97,7 @@ Launching `jarvis` again shows the window; `jarvis --quit` quits Jarvis and its 
 
 ### Push-to-talk from any app
 
-In the Jarvis App, holding `SUPER + J` while any other app is focused works like holding Space on the Jarvis page: hold to speak, release to send. The Jarvis window stays hidden or behind, and your app keeps focus. The key goes through the desktop portal's Global Shortcuts (`xdg-desktop-portal-hyprland` on Hyprland), which knows Jarvis by its app id `Jarvis`. The portal only accepts it with `~/.local/share/applications/Jarvis.desktop` installed (as above; in dev mode too, where any `Exec` line will do).
+In the Jarvis App, holding `SUPER + J` while any other app is focused works like holding Space on the Jarvis page: hold to speak, release to send. The Jarvis window stays hidden or behind, and your app keeps focus. The key goes through the desktop portal's Global Shortcuts (`xdg-desktop-portal-hyprland` on Hyprland), which knows Jarvis by its app id `Jarvis`. The portal only accepts it with `~/.local/share/applications/Jarvis.desktop` installed (as above; in dev mode too, where any `Exec` line will do). Where none is installed, the Jarvis App writes one on start; if the portal still says it didn't register the app id `Jarvis` on that first start, start the Jarvis App again.
 
 Then bind the key to Jarvis's `push-to-talk` shortcut. In `hyprland.conf`:
 
