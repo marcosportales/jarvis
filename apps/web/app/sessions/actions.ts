@@ -18,3 +18,8 @@ export async function titleSession(sessionId: string) {
     generate: generateSessionTitle,
   })
 }
+
+/** Permanently deletes a Session and its Turns. */
+export async function deleteSession(sessionId: string) {
+  await getSessions().delete(sessionId)
+}

@@ -48,6 +48,8 @@ export type SessionStore = {
   /** One Session as the list shows it; null if it doesn't exist. */
   get(sessionId: string): Promise<SessionSummary | null>
   setTitle(sessionId: string, title: string): Promise<void>
+  /** Permanently deletes a Session and its Turns. */
+  delete(sessionId: string): Promise<void>
 }
 
 // The cursor is the last listed Session's position in the order: its last
@@ -194,6 +196,11 @@ export function createSessionStore(
 
     async setTitle(sessionId, title) {
       db.update(sessions).set({ title }).where(eq(sessions.id, sessionId)).run()
+    },
+
+    async delete(sessionId) {
+      // Its Turns go with it (ON DELETE CASCADE).
+      db.delete(sessions).where(eq(sessions.id, sessionId)).run()
     },
   }
 }

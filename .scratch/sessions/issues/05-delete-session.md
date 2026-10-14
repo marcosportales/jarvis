@@ -6,10 +6,10 @@ See `.scratch/sessions/spec.md` → "Deleting".
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "⋯" → "Eliminar" → confirm deletes the Session; cancelling keeps it
-- [ ] Deleting the current Session lands on a new Session
-- [ ] The deleted Session's URL shows the "ya no existe" state
-- [ ] Store test: delete cascades its Turns and the Session leaves the list
-- [ ] Lint, typecheck and tests pass
+- [x] "⋯" → "Eliminar" → confirm deletes the Session; cancelling keeps it
+- [x] Deleting the current Session lands on a new Session
+- [x] The deleted Session's URL shows the "ya no existe" state
+- [x] Store test: delete cascades its Turns and the Session leaves the list
+- [x] Lint, typecheck and tests pass

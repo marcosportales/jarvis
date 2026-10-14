@@ -1,32 +1,56 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { PlusIcon } from "lucide-react"
+import { usePathname, useRouter } from "next/navigation"
+import { MoreHorizontalIcon, PlusIcon } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@workspace/ui/components/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import {
   SidebarGroup,
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
   useSidebar,
 } from "@workspace/ui/components/sidebar"
 
-import { listSessions } from "@/app/sessions/actions"
+import { deleteSession, listSessions } from "@/app/sessions/actions"
 import { sessionPath } from "@/lib/navigation"
-import { onSessionsChanged } from "@/lib/sessions/browser-events"
+import {
+  notifySessionsChanged,
+  onSessionsChanged,
+} from "@/lib/sessions/browser-events"
 import { relativeDate, sessionLabel } from "@/lib/sessions/labels"
-import type { SessionPage } from "@/lib/sessions/store"
+import type { SessionPage, SessionSummary } from "@/lib/sessions/store"
 
 /** The "Sesiones" group: every saved Session, newest activity first. */
 export function SessionsList() {
   const pathname = usePathname()
+  const router = useRouter()
   const { isMobile, setOpenMobile } = useSidebar()
+  // The Session waiting for the Owner to confirm its deletion.
+  const [toDelete, setToDelete] = useState<SessionSummary | null>(null)
+  const [deleting, setDeleting] = useState(false)
   // Null until the first page arrives.
   const [list, setList] = useState<SessionPage | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -65,6 +89,26 @@ export function SessionsList() {
     observer.observe(target)
     return () => observer.disconnect()
   }, [cursor, loadingMore])
+
+  async function confirmDelete(session: SessionSummary) {
+    setDeleting(true)
+    try {
+      await deleteSession(session.id)
+    } finally {
+      setDeleting(false)
+      setToDelete(null)
+    }
+    setList(
+      (current) =>
+        current && {
+          ...current,
+          sessions: current.sessions.filter(({ id }) => id !== session.id),
+        }
+    )
+    notifySessionsChanged()
+    // Never leave the Owner on a deleted Session.
+    if (pathname === sessionPath(session.id)) router.push("/")
+  }
 
   const now = new Date()
 
@@ -120,6 +164,24 @@ export function SessionsList() {
                     {relativeDate(session.lastActivityAt, now)}
                   </span>
                 </SidebarMenuButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={<SidebarMenuAction showOnHover />}
+                  >
+                    <MoreHorizontalIcon />
+                    <span className="sr-only">
+                      Más opciones de {sessionLabel(session)}
+                    </span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start">
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setToDelete(session)}
+                    >
+                      Eliminar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </SidebarMenuItem>
             )
           })}
@@ -130,6 +192,30 @@ export function SessionsList() {
           )}
         </SidebarMenu>
       </SidebarGroupContent>
+      <AlertDialog
+        open={toDelete !== null}
+        onOpenChange={(open) => !open && !deleting && setToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar esta sesión?</AlertDialogTitle>
+            <AlertDialogDescription>
+              «{toDelete && sessionLabel(toDelete)}» y toda su conversación se
+              borrarán para siempre.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => toDelete && void confirmDelete(toDelete)}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SidebarGroup>
   )
 }

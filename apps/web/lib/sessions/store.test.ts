@@ -194,4 +194,44 @@ describe("Sessions store", () => {
     const listed = (await store.list()).sessions.map(({ id }) => id)
     expect(listed).toEqual([work, trip])
   })
+
+  it("deletes a Session with all its Turns", async () => {
+    const { store } = setup()
+    const trip = await store.start(turn(1))
+    await store.addTurn(trip, turn(2))
+    const work = await store.start(turn(10))
+
+    await store.delete(trip)
+
+    expect(await store.transcript(trip)).toBeNull()
+    expect(await store.recentTurns(trip)).toBeNull()
+    expect(await store.get(trip)).toBeNull()
+    expect((await store.list()).sessions.map(({ id }) => id)).toEqual([work])
+    expect(await store.transcript(work)).toEqual([turn(10)])
+  })
+
+  it("starts a deleted Session's id afresh, without its old Turns", async () => {
+    const ids = ["reused", "reused"]
+    const store = createSessionStore(openDatabase(":memory:"), {
+      newId: () => ids.shift()!,
+    })
+    await store.start(turn(1))
+    await store.addTurn("reused", turn(2))
+
+    await store.delete("reused")
+    await store.start(turn(3))
+
+    expect(await store.transcript("reused")).toEqual([turn(3)])
+  })
+
+  it("can't add a Turn to a deleted Session", async () => {
+    const { store } = setup()
+    const id = await store.start(turn(1))
+
+    await store.delete(id)
+
+    await expect(store.addTurn(id, turn(2))).rejects.toBeInstanceOf(
+      UnknownSessionError
+    )
+  })
 })
