@@ -26,3 +26,12 @@ linux:
   # The .desktop file is named after package.json's desktopName, which Electron
   # also uses as the Wayland app_id: "Jarvis", in dev mode as well.
   syncDesktopName: true
+  # "Salir de Jarvis" in the launcher's menu for Jarvis: quits it and its
+  # server. Installed as in the README, the AppImage is `jarvis` on PATH.
+  desktop:
+    entry:
+      Actions: Quit;
+    desktopActions:
+      Quit:
+        Name: Salir de Jarvis
+        Exec: jarvis --quit

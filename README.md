@@ -67,8 +67,15 @@ Terminal=false
 Type=Application
 Categories=Utility;
 StartupWMClass=Jarvis
+Actions=Quit;
+
+[Desktop Action Quit]
+Name=Salir de Jarvis
+Exec=$HOME/.local/bin/jarvis --quit
 EOF
 ```
+
+Launchers that show a desktop entry's actions (e.g. on right-click) then offer "Salir de Jarvis", which quits Jarvis and its server.
 
 Its keys live in `~/.config/Jarvis/jarvis.env`, with the same lines as `apps/web/.env.local` (`NAN_API_KEY`, `COMPOSIO_API_KEY`, the optional overrides). `#` comments, blank lines and quoted values are fine:
 
