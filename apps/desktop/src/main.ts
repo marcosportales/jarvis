@@ -179,7 +179,7 @@ function electronWindows(controller: () => AppController): Windows {
         autoHideMenuBar: true,
         backgroundColor: "#000000",
         webPreferences: {
-          // Recording and Speaking go on while the window is hidden.
+          // Listening and Speaking go on while the window is hidden.
           backgroundThrottling: false,
           contextIsolation: true,
           sandbox: true,
@@ -200,7 +200,6 @@ function electronWindows(controller: () => AppController): Windows {
     showJarvis: () => jarvis?.show(),
     hideJarvis: () => jarvis?.hide(),
     focusJarvis: () => jarvis?.focus(),
-    isJarvisVisible: () => jarvis?.isVisible() ?? false,
     sendToJarvis: (message: JarvisPageMessage) =>
       jarvis?.webContents.send(PAGE_CHANNEL, message),
 

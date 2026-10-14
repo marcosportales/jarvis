@@ -77,7 +77,6 @@ function fakeApp({
         if (!state.jarvisUrl) throw new Error("No Jarvis window yet")
         state.jarvisFocused = true
       },
-      isJarvisVisible: () => state.jarvisVisible,
       sendToJarvis: (message) => state.pageMessages.push(message),
       openFloatingOrb: async (url) => {
         state.floatingOrbUrl = url

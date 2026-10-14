@@ -36,7 +36,6 @@ export type Windows = {
   showJarvis(): void
   hideJarvis(): void
   focusJarvis(): void
-  isJarvisVisible(): boolean
   sendToJarvis(message: JarvisPageMessage): void
   /** Opens the Floating Orb on `url`, hidden; resolves once it's loaded. */
   openFloatingOrb(url: string): Promise<void>

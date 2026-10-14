@@ -12,6 +12,8 @@
 
 import { BrowserWindow, screen } from "electron"
 
+import type { Verdict } from "./controller.js"
+
 export const FLOATING_ORB_TITLE = "Jarvis Floating Orb"
 
 /** Its width and height, in pixels: room for the Orb and nothing else. */
@@ -26,7 +28,7 @@ export function createFloatingOrbWindow({
 }: {
   preload: string
   /** Whether to let it close: it stays while Jarvis runs. */
-  onClose: () => "allow" | "deny"
+  onClose: () => Verdict
 }): BrowserWindow {
   // Bottom right of the main screen; Hyprland's window rule moves it anyway.
   const { workArea } = screen.getPrimaryDisplay()

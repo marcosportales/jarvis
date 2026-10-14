@@ -113,7 +113,7 @@ Only the Owner's Arch Linux machine (Hyprland, Wayland) is supported for now. No
 The Jarvis App's decisions live in one plain module, the **App controller**. It is built from ports, so it never touches Electron directly:
 
 - **Server**: start, wait until it's ready, stop, plus an "exited" event.
-- **Windows**: the Jarvis window (show, hide, focus, is it visible, send to its page) and the Floating Orb window (show, send to its page).
+- **Windows**: the Jarvis window (show, hide, focus, send to its page) and the Floating Orb window (show, send to its page).
 - **Shortcuts**: register Push-to-talk, emitting `pressed` and `released`.
 - **Tray**: optional. Shows "Mostrar Jarvis" and "Salir" when the desktop has a tray.
 - **Shell**: open a URL in the Owner's browser.
@@ -136,7 +136,7 @@ A thin Electron adapter wires the real Electron APIs to these ports. It also:
 
 - keeps a single instance with Electron's lock
 - grants the microphone and location (for the Weather Widget) permissions only to Jarvis's own origin, and refuses every other permission
-- turns off background throttling on the Jarvis window, so recording and Speaking work while it's hidden
+- turns off background throttling on the Jarvis window, so Listening and Speaking work while it's hidden
 - remembers the Jarvis window's bounds
 
 ### Push-to-talk from any app (Wayland portal)
