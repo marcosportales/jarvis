@@ -7,7 +7,10 @@ import { createPortalShortcuts, PUSH_TO_TALK_ID } from "./portal-shortcuts.js"
 const PORTAL = "org.freedesktop.portal.Desktop"
 const DESKTOP = "/org/freedesktop/portal/desktop"
 const SHORTCUTS = "org.freedesktop.portal.GlobalShortcuts"
+const REQUEST = "org.freedesktop.portal.Request"
 const UNIQUE_NAME = ":1.42"
+/** The unique name of the connection that owns the portal's name. */
+const PORTAL_OWNER = ":1.17"
 const SESSION = `${DESKTOP}/session/1_42/jarvis`
 
 /** Lets pending promise callbacks run. */
@@ -22,6 +25,7 @@ function fakeSessionBus({
   portal = true,
   createSessionResponse = 0,
   boundShortcuts = [PUSH_TO_TALK_ID],
+  aroundResponse = () => {},
 }: {
   /** Whether a desktop portal runs at all. */
   portal?: boolean
@@ -29,6 +33,8 @@ function fakeSessionBus({
   createSessionResponse?: number
   /** The shortcut ids the portal says it bound. */
   boundShortcuts?: string[]
+  /** Runs just before and just after the portal answers on `path`. */
+  aroundResponse?: (path: string) => void
 } = {}) {
   const listeners: {
     match: { interface: string; member: string }
@@ -36,13 +42,13 @@ function fakeSessionBus({
   }[] = []
   const calls: DBusCall[] = []
 
-  function emit(signal: Omit<DBusSignal, "sender">) {
+  function emit(signal: Omit<DBusSignal, "sender">, sender = PORTAL_OWNER) {
     for (const { match, listener } of listeners) {
       if (
         match.interface === signal.interface &&
         match.member === signal.member
       ) {
-        listener({ sender: ":1.17", ...signal })
+        listener({ sender, ...signal })
       }
     }
   }
@@ -55,12 +61,14 @@ function fakeSessionBus({
   ) {
     const token = options.handle_token!.value as string
     const path = `${DESKTOP}/request/1_42/${token}`
+    aroundResponse(path)
     emit({
       path,
       interface: "org.freedesktop.portal.Request",
       member: "Response",
       body: [code, results],
     })
+    aroundResponse(path)
     return [path]
   }
 
@@ -68,6 +76,13 @@ function fakeSessionBus({
     uniqueName: async () => UNIQUE_NAME,
     async call(message) {
       calls.push(message)
+      if (
+        message.destination === "org.freedesktop.DBus" &&
+        message.member === "GetNameOwner"
+      ) {
+        if (portal && message.body?.[0] === PORTAL) return [PORTAL_OWNER]
+        throw new Error(`The name ${String(message.body?.[0])} has no owner`)
+      }
       if (!portal || message.destination !== PORTAL) {
         throw new Error(
           `The name ${message.destination} was not provided by any .service files`
@@ -105,18 +120,22 @@ function fakeSessionBus({
   return {
     bus,
     calls,
+    emit,
     /** The Owner presses or lets go of a bound shortcut. */
     shortcut(
       member: "Activated" | "Deactivated",
       id: string,
-      session = SESSION
+      { session = SESSION, sender = PORTAL_OWNER } = {}
     ) {
-      emit({
-        path: DESKTOP,
-        interface: SHORTCUTS,
-        member,
-        body: [session, id, BigInt(1234), {}],
-      })
+      emit(
+        {
+          path: DESKTOP,
+          interface: SHORTCUTS,
+          member,
+          body: [session, id, BigInt(1234), {}],
+        },
+        sender
+      )
     },
   }
 }
@@ -177,9 +196,46 @@ describe("Push-to-talk through the desktop portal", () => {
 
     bus.shortcut("Activated", "screenshot")
     bus.shortcut("Deactivated", "screenshot")
-    bus.shortcut("Activated", PUSH_TO_TALK_ID, `${DESKTOP}/session/1_7/other`)
+    bus.shortcut("Activated", PUSH_TO_TALK_ID, {
+      session: `${DESKTOP}/session/1_7/other`,
+    })
 
     expect(events).toEqual([])
+  })
+
+  it("ignores our shortcut's signals sent by anyone but the portal", async () => {
+    const bus = fakeSessionBus()
+    const { events } = await bindPushToTalk(bus)
+
+    bus.shortcut("Activated", PUSH_TO_TALK_ID, { sender: ":1.99" })
+    bus.shortcut("Deactivated", PUSH_TO_TALK_ID, { sender: ":1.99" })
+
+    expect(events).toEqual([])
+  })
+
+  it("waits only for its own requests' Responses, from the portal", async () => {
+    const bus = fakeSessionBus({
+      aroundResponse(path) {
+        // Another app's request is answered, and someone else forges a
+        // refusal of ours: neither is the portal answering us.
+        bus.emit({
+          path: `${DESKTOP}/request/1_7/theirs`,
+          interface: REQUEST,
+          member: "Response",
+          body: [2, {}],
+        })
+        bus.emit(
+          { path, interface: REQUEST, member: "Response", body: [2, {}] },
+          ":1.99"
+        )
+      },
+    })
+    const { events, logs } = await bindPushToTalk(bus)
+
+    bus.shortcut("Activated", PUSH_TO_TALK_ID)
+
+    expect(logs.warn).toEqual([])
+    expect(events).toEqual(["pressed"])
   })
 
   it("logs it and goes on when there is no desktop portal", async () => {

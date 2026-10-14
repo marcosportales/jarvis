@@ -49,29 +49,29 @@ export function createPortalShortcuts({
     const bus = await connect()
     // Request paths are built from our unique name: `:1.42` → `1_42`.
     const sender = (await bus.uniqueName()).slice(1).replaceAll(".", "_")
+    // Signals carry their sender's unique name, never the portal's
+    // well-known one, so only signals from that name's owner are the portal.
+    const [portal] = (await bus.call({
+      destination: "org.freedesktop.DBus",
+      path: "/org/freedesktop/DBus",
+      interface: "org.freedesktop.DBus",
+      member: "GetNameOwner",
+      signature: "s",
+      body: [PORTAL],
+    })) as [string]
     let session: string | undefined
     let tokens = 0
 
-    // A Response can arrive before the call that asked for it returns, so
-    // every Response is kept until it's claimed.
-    const responses = new Map<string, [code: number, results: Results]>()
+    // Every app's portal Responses reach us; only those on the paths of our
+    // own requests in flight are heard, and only from the portal.
     const waiting = new Map<string, (response: [number, Results]) => void>()
     await bus.onSignal({ interface: REQUEST, member: "Response" }, (signal) => {
-      const response = signal.body as [number, Results]
       const claim = waiting.get(signal.path)
-      if (claim) {
-        waiting.delete(signal.path)
-        claim(response)
-      } else {
-        responses.set(signal.path, response)
-      }
+      if (!claim || signal.sender !== portal) return
+      waiting.delete(signal.path)
+      claim(signal.body as [number, Results])
     })
     function responseOn(path: string) {
-      const response = responses.get(path)
-      if (response) {
-        responses.delete(path)
-        return Promise.resolve(response)
-      }
       return new Promise<[number, Results]>((resolve) =>
         waiting.set(path, resolve)
       )
@@ -84,6 +84,10 @@ export function createPortalShortcuts({
       body: (options: { handle_token: Variant<string> }) => unknown[]
     ) {
       const token = `jarvis${++tokens}_${Math.random().toString(36).slice(2)}`
+      // The portal answers on a path known in advance, possibly before the
+      // call returns, so the wait starts first.
+      const expected = `${DESKTOP}/request/${sender}/${token}`
+      let response = responseOn(expected)
       const [handle] = (await bus.call({
         destination: PORTAL,
         path: DESKTOP,
@@ -92,7 +96,12 @@ export function createPortalShortcuts({
         signature,
         body: body({ handle_token: new Variant("s", token) }),
       })) as [string]
-      const [code, results] = await responseOn(handle)
+      if (handle !== expected) {
+        // An older portal, which picks its own request path.
+        waiting.delete(expected)
+        response = responseOn(handle)
+      }
+      const [code, results] = await response
       if (code !== 0) {
         throw new Error(
           `${member} was ${code === 1 ? "cancelled" : "refused"} by the portal`
@@ -107,8 +116,14 @@ export function createPortalShortcuts({
     ] as const) {
       await bus.onSignal({ interface: GLOBAL_SHORTCUTS, member }, (signal) => {
         const [from, id] = signal.body as [string, string]
-        if (session !== undefined && from === session && id === PUSH_TO_TALK_ID)
+        if (
+          session !== undefined &&
+          signal.sender === portal &&
+          from === session &&
+          id === PUSH_TO_TALK_ID
+        ) {
           report()
+        }
       })
     }
 
