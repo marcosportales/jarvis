@@ -1,3 +1,5 @@
+import type { WidgetChange } from "../widgets/changes"
+
 export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
 
 /** One line of the Transcript as the Brain sees it. */
@@ -50,8 +52,16 @@ export interface Transcriber {
   transcribe(audio: Blob): Promise<string>
 }
 
+/** What the Brain says, and what it did to the Widgets while deciding. */
+export type Reply = { text: string; widgetChanges: WidgetChange[] }
+
 export interface Brain {
-  reply(lines: TranscriptLine[]): Promise<string>
+  reply(lines: TranscriptLine[]): Promise<Reply>
+}
+
+/** The Widget Board, as far as the Session needs it. */
+export interface WidgetChanges {
+  apply(changes: readonly WidgetChange[]): void
 }
 
 export interface Voice {
@@ -65,6 +75,7 @@ export type JarvisAdapters = {
   transcriber: Transcriber
   brain: Brain
   voice: Voice
+  widgets: WidgetChanges
 }
 
 export function createJarvisSession({
@@ -72,6 +83,7 @@ export function createJarvisSession({
   transcriber,
   brain,
   voice,
+  widgets,
 }: JarvisAdapters) {
   let snapshot: JarvisSnapshot = {
     state: "idle",
@@ -95,14 +107,21 @@ export function createJarvisSession({
   }
 
   function append(role: TranscriptEntry["role"], text: string) {
-    update({ transcript: [...snapshot.transcript, { id: nextId++, role, text }] })
+    update({
+      transcript: [...snapshot.transcript, { id: nextId++, role, text }],
+    })
   }
 
   async function reply() {
     const lines = snapshot.transcript.flatMap(({ role, text }) =>
       role === "error" ? [] : [{ role, text }]
     )
-    const text = await orFail(brain.reply(lines), ERRORS.reply)
+    const { text, widgetChanges } = await orFail(
+      brain.reply(lines),
+      ERRORS.reply
+    )
+    // Before Speaking, so the screen matches what Jarvis is about to say.
+    widgets.apply(widgetChanges)
     append("jarvis", text)
     setState("speaking")
     const current = generation

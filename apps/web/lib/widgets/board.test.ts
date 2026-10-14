@@ -146,3 +146,50 @@ describe("Widget Board", () => {
     expect(restored.find((widget) => widget.id === "clock")!.shown).toBe(true)
   })
 })
+
+describe("Widget Board and Jarvis", () => {
+  const NAMED = [
+    { ...WEATHER, name: "Tiempo" },
+    { ...CLOCK, name: "Reloj" },
+  ]
+
+  it("applies a Turn's Widget changes in order and saves them", () => {
+    const { storage } = memoryStorage()
+    const widgets = board(NAMED, storage)
+
+    widgets.applyChanges([
+      { type: "hide", id: "weather" },
+      { type: "hide", id: "clock" },
+      { type: "show", id: "clock" },
+    ])
+
+    const shown = (b: ReturnType<typeof board>) =>
+      b.getSnapshot().widgets.map(({ id, shown }) => [id, shown])
+    expect(shown(widgets)).toEqual([
+      ["weather", false],
+      ["clock", true],
+    ])
+    expect(shown(board(NAMED, storage))).toEqual(shown(widgets))
+  })
+
+  it("skips Widget changes for Widgets it doesn't know", () => {
+    const widgets = board(NAMED)
+
+    widgets.applyChanges([
+      { type: "hide", id: "stocks" },
+      { type: "hide", id: "weather" },
+    ])
+
+    expect(widgets.getSnapshot().widgets[0]!.shown).toBe(false)
+  })
+
+  it("describes the layout for Jarvis: id, name and whether it is Shown", () => {
+    const widgets = board(NAMED)
+    widgets.hide("clock")
+
+    expect(widgets.describeLayout()).toEqual([
+      { id: "weather", name: "Tiempo", shown: true },
+      { id: "clock", name: "Reloj", shown: false },
+    ])
+  })
+})

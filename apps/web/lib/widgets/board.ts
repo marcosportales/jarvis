@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import type { WidgetChange, WidgetLayout } from "./changes"
+
 /**
  * The Widget Board owns the Widget layout: for each Widget in the registry,
  * whether it is Shown and where it sits. Framework-free, so the Jarvis page,
@@ -19,7 +21,12 @@ export const SPOTS = [
 export type Spot = (typeof SPOTS)[number]
 
 /** What the Board needs to know about a registry entry. */
-export type BoardWidget = { id: string; startingSpot?: Spot }
+export type BoardWidget = {
+  id: string
+  /** Spanish; tells Jarvis which Widget is which. Defaults to the id. */
+  name?: string
+  startingSpot?: Spot
+}
 
 export type Size = { width: number; height: number }
 
@@ -171,6 +178,27 @@ export function createWidgetBoard(options: WidgetBoardOptions) {
     },
     show: (id: string) => update(id, { shown: true }),
     hide: (id: string) => update(id, { shown: false }),
+    /** A Turn's Widget changes, in order; unknown ids are skipped. */
+    applyChanges(changes: readonly WidgetChange[]) {
+      for (const change of changes) {
+        switch (change.type) {
+          case "show":
+            update(change.id, { shown: true })
+            break
+          case "hide":
+            update(change.id, { shown: false })
+            break
+        }
+      }
+    },
+    /** What Jarvis is told about the layout each Turn. */
+    describeLayout(): WidgetLayout {
+      return snapshot.widgets.map(({ id, shown }) => ({
+        id,
+        name: registry.find((widget) => widget.id === id)?.name ?? id,
+        shown,
+      }))
+    },
   }
 }
 

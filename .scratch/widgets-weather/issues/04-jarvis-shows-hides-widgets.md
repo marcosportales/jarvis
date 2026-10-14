@@ -9,12 +9,16 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] "Oculta el tiempo" (spoken or typed) Hides the Weather Widget, and Jarvis confirms in one sentence
-- [ ] "Muéstrame el tiempo" Shows it again
-- [ ] "Ya lo tienes" style answers: Jarvis knows whether the Widget is already Shown
-- [ ] Asking for a Widget that doesn't exist gets a one-sentence "no tengo ese widget" style Reply and no change
-- [ ] Tool tests: each Widget tool records the right change; an unknown id gives an error and no change; tool descriptions list the registry's Widgets
-- [ ] Session tests (extending the existing ones): Widget changes from the Brain are applied before Speaking, and not applied when the Turn fails
-- [ ] Lint, typecheck and tests pass
+- [x] "Oculta el tiempo" (spoken or typed) Hides the Weather Widget, and Jarvis confirms in one sentence
+- [x] "Muéstrame el tiempo" Shows it again
+- [x] "Ya lo tienes" style answers: Jarvis knows whether the Widget is already Shown
+- [x] Asking for a Widget that doesn't exist gets a one-sentence "no tengo ese widget" style Reply and no change
+- [x] Tool tests: each Widget tool records the right change; an unknown id gives an error and no change; tool descriptions list the registry's Widgets
+- [x] Session tests (extending the existing ones): Widget changes from the Brain are applied before Speaking, and not applied when the Turn fails
+- [x] Lint, typecheck and tests pass
+
+## Comments
+
+- Checked typed Turns end to end in headless Chrome against the real model: "Oculta el tiempo" Hid the Widget (and it was saved), "Muéstrame el tiempo" Showed it again. The spoken path wasn't exercised (no microphone headless); it goes through the same Reply code. "Ya lo tienes" and the unknown-Widget Reply were checked by posting to `/api/reply`.

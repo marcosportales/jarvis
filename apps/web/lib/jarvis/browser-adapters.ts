@@ -1,10 +1,13 @@
+import { getWidgetBoard } from "../widgets/browser-board"
 import type {
   Brain,
   JarvisAdapters,
   Recorder,
+  Reply,
   Transcriber,
   Utterance,
   Voice,
+  WidgetChanges,
 } from "./session"
 
 async function post(url: string, body: Blob | object): Promise<Response> {
@@ -69,12 +72,19 @@ const httpTranscriber: Transcriber = {
   },
 }
 
+/** Sends the Widget layout with every Turn so Jarvis knows what is Shown. */
 const httpBrain: Brain = {
   async reply(lines) {
-    const response = await post("/api/reply", { lines })
-    const { text } = (await response.json()) as { text: string }
-    return text
+    const response = await post("/api/reply", {
+      lines,
+      widgets: getWidgetBoard().describeLayout(),
+    })
+    return (await response.json()) as Reply
   },
+}
+
+const boardWidgetChanges: WidgetChanges = {
+  apply: (changes) => getWidgetBoard().applyChanges(changes),
 }
 
 function createAudioVoice(): Voice {
@@ -133,5 +143,6 @@ export function createBrowserAdapters(): JarvisAdapters {
     transcriber: httpTranscriber,
     brain: httpBrain,
     voice: createAudioVoice(),
+    widgets: boardWidgetChanges,
   }
 }
