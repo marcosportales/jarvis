@@ -126,3 +126,146 @@ export function mapPage(data: unknown, { url }: { url: string }) {
     answer: page.text.trim().slice(0, MAX_PAGE_TEXT),
   } satisfies SearchOutcome
 }
+
+/** "60 €", "60 US$"; whole units, as prices are quoted. */
+function money(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("es-ES", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    })
+      .format(amount)
+      .replace(/\u00a0/g, " ")
+  } catch {
+    return `${Math.round(amount)} ${currency}`
+  }
+}
+
+/** "2 h 30 min", "24 h", "45 min". */
+function duration(minutes: number) {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  if (hours === 0) return `${rest} min`
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
+}
+
+/** `2026-10-16` → "vie 16 oct". */
+function shortDay(date: string) {
+  const parsed = new Date(`${date}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return parsed
+    .toLocaleDateString("es-ES", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      timeZone: "UTC",
+    })
+    .replace(/[.,]/g, "")
+}
+
+const airportTimeSchema = z.object({
+  id: z.string(),
+  /** `YYYY-MM-DD HH:mm`, local to the airport. */
+  time: z.string(),
+})
+
+const flightSchema = z.object({
+  price: z.number().nullish(),
+  total_duration: z.number().nullish(),
+  flights: z
+    .array(
+      z.object({
+        airline: z.string().nullish(),
+        departure_airport: airportTimeSchema,
+        arrival_airport: airportTimeSchema,
+      })
+    )
+    .min(1),
+  layovers: z.array(z.object({ id: z.string() })).nullish(),
+})
+
+const flightsSchema = z.object({
+  results: z.object({
+    best_flights: z.array(z.unknown()).nullish(),
+    other_flights: z.array(z.unknown()).nullish(),
+    search_metadata: z
+      .object({ google_flights_url: z.string().nullish() })
+      .nullish(),
+  }),
+})
+
+export type FlightsSearch = {
+  /** IATA codes, as the provider needs them. */
+  from: string
+  to: string
+  /** `YYYY-MM-DD`. */
+  outboundDate: string
+  returnDate?: string
+  currency: string
+}
+
+/**
+ * Best flights first, then the others. A round trip lists its outbound
+ * flights, priced for the whole trip. No flight has a link of its own, so
+ * each links to the whole search on Google Flights.
+ */
+export function mapFlights(
+  data: unknown,
+  { from, to, outboundDate, returnDate, currency }: FlightsSearch
+) {
+  const { best_flights, other_flights, search_metadata } =
+    flightsSchema.parse(data).results
+  const url = search_metadata?.google_flights_url
+  const flights = [...(best_flights ?? []), ...(other_flights ?? [])].flatMap(
+    (raw) => {
+      const parsed = flightSchema.safeParse(raw)
+      return parsed.success ? [parsed.data] : []
+    }
+  )
+
+  const results = flights.slice(0, MAX_RESULTS).map((flight) => {
+    const first = flight.flights[0]!
+    const last = flight.flights.at(-1)!
+    const [departDay, departTime] = first.departure_airport.time.split(" ")
+    const [arriveDay, arriveTime] = last.arrival_airport.time.split(" ")
+    const nextDay = arriveDay !== departDay ? " (+1)" : ""
+    const airlines = [
+      ...new Set(flight.flights.flatMap(({ airline }) => airline ?? [])),
+    ]
+    const stops = flight.layovers ?? []
+    return result({
+      title: airlines.join(" + ") || "Vuelo",
+      subtitle: `${first.departure_airport.id} ${departTime} → ${last.arrival_airport.id} ${arriveTime}${nextDay}`,
+      facts: [
+        flight.price != null
+          ? {
+              label: returnDate ? "Precio ida y vuelta" : "Precio",
+              value: money(flight.price, currency),
+            }
+          : null,
+        flight.total_duration != null
+          ? { label: "Duración", value: duration(flight.total_duration) }
+          : null,
+        {
+          label: "Escalas",
+          value:
+            stops.length === 0
+              ? "Directo"
+              : `${stops.length} ${stops.length === 1 ? "escala" : "escalas"} (${stops.map(({ id }) => id).join(", ")})`,
+        },
+      ],
+      url,
+      source: "Google Flights",
+    })
+  })
+
+  const dates = returnDate
+    ? `${shortDay(outboundDate)} – ${shortDay(returnDate)}`
+    : shortDay(outboundDate)
+  return {
+    kind: "flights",
+    heading: `Vuelos ${from} ${returnDate ? "⇄" : "→"} ${to} · ${dates}`,
+    results,
+  } satisfies SearchOutcome
+}

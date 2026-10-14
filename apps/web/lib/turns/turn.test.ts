@@ -591,6 +591,95 @@ describe("Taking a Turn", () => {
       expect(prompt(firstCall()).system).not.toMatch(/en pantalla ahora mismo/)
     })
 
+    it("searches flights with Spanish, Spain and euro defaults, and shows them", async () => {
+      const search = fakeSearch()
+      const { turns } = setup(
+        [
+          call("search_flights", {
+            from: "mad",
+            to: "FCO",
+            outboundDate: "2026-10-16",
+          }),
+          answer(
+            "El más barato es Wizz Air, 60 euros; te dejo el resto en pantalla."
+          ),
+        ],
+        { search }
+      )
+
+      const reply = await turns.take({
+        text: "Vuelos de Madrid a Roma el viernes",
+        widgets: LAYOUT,
+      })
+
+      expect(search.calls).toEqual([
+        {
+          slug: "COMPOSIO_SEARCH_FLIGHTS",
+          args: {
+            departure_id: "MAD",
+            arrival_id: "FCO",
+            outbound_date: "2026-10-16",
+            adults: 1,
+            children: 0,
+            infants: 0,
+            currency: "EUR",
+            hl: "es",
+            gl: "es",
+          },
+        },
+      ])
+      expect(reply.search).toMatchObject({
+        kind: "flights",
+        heading: "Vuelos MAD → FCO · vie 16 oct",
+        results: expect.arrayContaining([
+          expect.objectContaining({ title: "Wizz Air" }),
+        ]),
+      })
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
+    })
+
+    it("searches a round trip for several passengers in the cabin and currency named", async () => {
+      const search = fakeSearch()
+      const { turns } = setup(
+        [
+          call("search_flights", {
+            from: "MAD",
+            to: "LIS",
+            outboundDate: "2026-11-03",
+            returnDate: "2026-11-07",
+            adults: 2,
+            children: 1,
+            cabinClass: "business",
+            currency: "USD",
+          }),
+          answer("Desde 172 dólares."),
+        ],
+        { search }
+      )
+
+      const reply = await turns.take({
+        text: "Ida y vuelta a Lisboa del 3 al 7 de noviembre, en business y en dólares",
+        widgets: LAYOUT,
+      })
+
+      expect(search.calls[0]?.args).toEqual({
+        departure_id: "MAD",
+        arrival_id: "LIS",
+        outbound_date: "2026-11-03",
+        return_date: "2026-11-07",
+        adults: 2,
+        children: 1,
+        infants: 0,
+        travel_class: 3,
+        currency: "USD",
+        hl: "es",
+        gl: "es",
+      })
+      expect(reply.search?.heading).toBe(
+        "Vuelos MAD ⇄ LIS · mar 3 nov – sáb 7 nov"
+      )
+    })
+
     it("returns no Search Outcome when the Turn didn't search", async () => {
       const { turns } = setup([answer("Hola.")])
 

@@ -1,12 +1,52 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
-import { mapPage, mapWeb } from "./mappers"
+import { mapFlights, mapPage, mapWeb } from "./mappers"
 import type { ResultsOnScreen, SearchOutcome, SearchResult } from "./outcome"
 import type { SearchPort, SearchSlug } from "./port"
 
 /** How much of a page `read_page` asks Composio for. */
 const PAGE_CHARACTERS = 6_000
+
+/** Results in Spanish, for Spain, unless the Owner names another country. */
+function region(country: string | undefined) {
+  return { hl: "es", gl: country?.toLowerCase() ?? "es" }
+}
+
+const currencyInput = z
+  .string()
+  .regex(/^[A-Za-z]{3}$/)
+  .default("EUR")
+  .transform((currency) => currency.toUpperCase())
+  .describe(
+    "Moneda, en código ISO de tres letras. EUR salvo que el dueño pida otra («en dólares» es USD)."
+  )
+
+const countryInput = z
+  .string()
+  .regex(/^[A-Za-z]{2}$/)
+  .optional()
+  .describe(
+    "País de los resultados, en código ISO de dos letras, solo si el dueño pide otro; por defecto, España."
+  )
+
+const dayInput = z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+
+const iataInput = z
+  .string()
+  .regex(/^[A-Za-z]{3}$/)
+  .transform((code) => code.toUpperCase())
+
+/** Composio's `travel_class` numbers. */
+const CABIN_CLASSES = {
+  turista: 1,
+  "turista-premium": 2,
+  business: 3,
+  primera: 4,
+} as const
+
+const passengersInput = (who: string, fallback: number) =>
+  z.number().int().min(0).max(9).default(fallback).describe(who)
 
 /** Spoken by the model when Search fails; it then answers from what it knows. */
 export const SEARCH_FAILED =
@@ -152,6 +192,62 @@ export function createSearchTools({
             "COMPOSIO_SEARCH_FETCH_URL_CONTENT",
             { urls: [url], max_characters: PAGE_CHARACTERS },
             (data) => mapPage(data, { url })
+          ),
+      }),
+      search_flights: tool({
+        description:
+          "Busca vuelos entre dos aeropuertos en una fecha, de ida o de ida y vuelta, con precios, horarios, duración y escalas. Los lugares van como códigos IATA de aeropuerto o de ciudad (Madrid MAD, Roma FCO o ROM, Londres LON, Lisboa LIS); tradúcelos tú a partir de lo que diga el dueño.",
+        inputSchema: z.object({
+          from: iataInput.describe(
+            "Código IATA del origen, por ejemplo MAD. Si el dueño no lo dice, usa el que sepas de sus memorias."
+          ),
+          to: iataInput.describe("Código IATA del destino, por ejemplo FCO."),
+          outboundDate: dayInput.describe(
+            "Fecha de ida, AAAA-MM-DD, resuelta con la fecha actual."
+          ),
+          returnDate: dayInput
+            .optional()
+            .describe("Fecha de vuelta, AAAA-MM-DD; omítela si es solo ida."),
+          adults: passengersInput("Adultos (18 años o más).", 1),
+          children: passengersInput("Niños de 2 a 11 años.", 0),
+          infants: passengersInput("Bebés de menos de 2 años.", 0),
+          cabinClass: z
+            .enum(Object.keys(CABIN_CLASSES) as [keyof typeof CABIN_CLASSES])
+            .optional()
+            .describe("Clase, solo si el dueño la pide."),
+          currency: currencyInput,
+          country: countryInput,
+        }),
+        execute: ({
+          from,
+          to,
+          outboundDate,
+          returnDate,
+          adults,
+          children,
+          infants,
+          cabinClass,
+          currency,
+          country,
+        }) =>
+          run(
+            "COMPOSIO_SEARCH_FLIGHTS",
+            {
+              departure_id: from,
+              arrival_id: to,
+              outbound_date: outboundDate,
+              ...(returnDate ? { return_date: returnDate } : {}),
+              adults,
+              children,
+              infants,
+              ...(cabinClass
+                ? { travel_class: CABIN_CLASSES[cabinClass] }
+                : {}),
+              currency,
+              ...region(country),
+            },
+            (data) =>
+              mapFlights(data, { from, to, outboundDate, returnDate, currency })
           ),
       }),
     },

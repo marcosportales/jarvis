@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest"
 
-import { PAGE, PAGE_FAILED, WEB } from "./fixtures"
-import { MAX_RESULTS, mapPage, mapWeb } from "./mappers"
+import {
+  FLIGHTS,
+  FLIGHTS_ROUND_TRIP,
+  FLIGHTS_WITH_LAYOVER,
+  PAGE,
+  PAGE_FAILED,
+  WEB,
+} from "./fixtures"
+import { MAX_RESULTS, mapFlights, mapPage, mapWeb } from "./mappers"
 
 describe("Mapping a web Search", () => {
   it("turns citations into Results, with their site as the source", () => {
@@ -118,5 +125,108 @@ describe("Mapping a page read", () => {
 
     expect(outcome.answer!.length).toBeLessThan(6_000)
     expect(outcome.results[0]?.title).toBe("a.es")
+  })
+})
+
+describe("Mapping a flights Search", () => {
+  const madridRome = {
+    from: "MAD",
+    to: "FCO",
+    outboundDate: "2026-10-16",
+    currency: "EUR",
+  }
+
+  it("lists the best flights first, with airline, times, duration, stops and price", () => {
+    const outcome = mapFlights(FLIGHTS, madridRome)
+
+    expect(outcome.kind).toBe("flights")
+    expect(outcome.heading).toBe("Vuelos MAD → FCO · vie 16 oct")
+    expect(outcome.results.map(({ title }) => title)).toEqual([
+      "Wizz Air",
+      "Ryanair",
+      "Ryanair",
+      "ITA",
+    ])
+    expect(outcome.results[0]).toEqual({
+      title: "Wizz Air",
+      subtitle: "MAD 22:55 → FCO 01:25 (+1)",
+      facts: [
+        { label: "Precio", value: "60 €" },
+        { label: "Duración", value: "2 h 30 min" },
+        { label: "Escalas", value: "Directo" },
+      ],
+      url: expect.stringMatching(
+        /^https:\/\/www\.google\.com\/travel\/flights/
+      ),
+      source: "Google Flights",
+    })
+    expect(outcome.results[2]?.subtitle).toBe("MAD 05:55 → FCO 08:20")
+  })
+
+  it("drops booking tokens and everything else the Owner doesn't need", () => {
+    const outcome = mapFlights(FLIGHTS, madridRome)
+
+    expect(JSON.stringify(outcome)).not.toMatch(
+      /booking_token|carbon|airline_logo|W4 6016/
+    )
+  })
+
+  it("names a flight's layovers", () => {
+    const outcome = mapFlights(FLIGHTS_WITH_LAYOVER, {
+      from: "MAD",
+      to: "HND",
+      outboundDate: "2026-11-10",
+      currency: "EUR",
+    })
+
+    expect(outcome.results[0]).toMatchObject({
+      title: "China Eastern",
+      subtitle: "MAD 10:30 → HND 18:30 (+1)",
+      facts: [
+        { label: "Precio", value: "447 €" },
+        { label: "Duración", value: "24 h" },
+        { label: "Escalas", value: "1 escala (PVG)" },
+      ],
+    })
+  })
+
+  it("prices a round trip as such and gives both dates", () => {
+    const outcome = mapFlights(FLIGHTS_ROUND_TRIP, {
+      from: "MAD",
+      to: "LIS",
+      outboundDate: "2026-11-03",
+      returnDate: "2026-11-07",
+      currency: "EUR",
+    })
+
+    expect(outcome.heading).toBe("Vuelos MAD ⇄ LIS · mar 3 nov – sáb 7 nov")
+    expect(outcome.results[0]?.facts[0]).toEqual({
+      label: "Precio ida y vuelta",
+      value: "172 €",
+    })
+  })
+
+  it("prices in the currency asked for", () => {
+    const outcome = mapFlights(FLIGHTS, { ...madridRome, currency: "USD" })
+
+    expect(outcome.results[0]?.facts[0]?.value).toBe("60 US$")
+  })
+
+  it("caps the flights", () => {
+    const many = {
+      results: {
+        ...FLIGHTS.results,
+        other_flights: Array.from(
+          { length: 12 },
+          () => FLIGHTS.results.other_flights[0]
+        ),
+      },
+    }
+
+    expect(mapFlights(many, madridRome).results).toHaveLength(MAX_RESULTS)
+  })
+
+  it("finds nothing when there are no flights", () => {
+    expect(mapFlights({ results: {} }, madridRome).results).toEqual([])
   })
 })
