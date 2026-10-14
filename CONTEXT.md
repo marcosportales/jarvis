@@ -80,7 +80,7 @@ The fixed catalog of Plugins the Owner can choose from. The Owner cannot add arb
 _Avoid_: Store, app directory, integrations page
 
 **Plugin**:
-A unit the Owner installs from the Marketplace to give Jarvis access to one outside service, e.g. the Gmail Plugin. It bundles one or more Connectors and, eventually, Skills and Widgets.
+A unit the Owner installs from the Marketplace to give Jarvis access to one outside service, e.g. the Gmail Plugin. It bundles one or more Connectors, may bring Widgets (e.g. the Google Calendar Plugin brings the Calendar Widget) and, eventually, Skills.
 _Avoid_: Integration, app, extension
 
 **Connector**:
@@ -101,7 +101,7 @@ _Avoid_: Enabled, active, linked
 ### Widgets
 
 **Widget**:
-A floating panel on the Jarvis page showing one thing, e.g. the Weather Widget. Built into Jarvis today; later, a Plugin may also bring Widgets.
+A floating panel on the Jarvis page showing one thing, e.g. the Weather Widget. Either built into Jarvis, or brought by a Plugin, in which case it exists only while that Plugin is Connected.
 _Avoid_: Panel, card, overlay, gadget
 
 **Shown** / **Hidden**:
@@ -113,14 +113,14 @@ How a Shown Widget is on screen. Collapsed is its usual small form at its place;
 _Avoid_: Dialog, modal, fullscreen, maximized, popup, open
 
 **Expandable**:
-A Widget that can be Expanded, e.g. the Results Widget and the Browser Widget, but not the Weather Widget.
+A Widget that can be Expanded, e.g. the Results, Browser, Calendar and Map Widgets, but not the Weather or Today Widgets.
 
 **Spot**:
 One of six named places in the side margins of the Jarvis page — left or right, each top, middle or bottom — where Jarvis can move a Widget. The Owner can instead drag a Widget anywhere on screen.
 _Avoid_: Slot, zone, corner
 
 **Starting Spot**:
-Where a Widget first appears before it has ever been moved, e.g. top-right for the Weather Widget. A Widget without one first appears at a random free place in the side margins.
+Where a Widget first appears before it has ever been moved, e.g. top-right for the Today Widget. A Widget without one first appears at a random free place in the side margins.
 _Avoid_: Default position
 
 **Widget Setting**:
@@ -148,3 +148,37 @@ _Avoid_: Job, run, session
 **Browser Widget**:
 The Widget where the Owner watches the current Browse Task live, can stop it, and finds its outcome once it is done. Hiding it does not stop the Browse Task.
 _Avoid_: Browser, viewer, live view
+
+### Today
+
+**Today Widget**:
+The Widget showing today's date with its weekday and the time of day in 24-hour form, always for where the Owner is. Built into Jarvis.
+_Avoid_: Clock, date widget, today's info
+
+### Calendar
+
+**Agenda**:
+Everything on the Owner's plate for a given day, made of Agenda Items.
+_Avoid_: Schedule, planner, to-do list
+
+**Agenda Item**:
+One thing on the Owner's Agenda, e.g. a meeting, the shopping or delivering a product, with a time or for the whole day. It comes from somewhere the Owner keeps such things; today only events from the Owner's Google Calendar.
+_Avoid_: Task, event, to-do, reminder (as the general term)
+
+**Calendar Widget**:
+The Widget showing the Agenda: one day's Agenda Items when Collapsed, a week or a month when Expanded. Brought by the Google Calendar Plugin, so it exists only while that Plugin is Connected. Jarvis Shows it on its own, at the day asked about, when a Reply is about the Owner's Agenda. Every page load starts it back on today.
+_Avoid_: Calendar (alone), agenda panel
+
+### Maps
+
+**Map Widget**:
+The Widget with a live map the Owner and Jarvis both work on: finding places, putting Markers and planning Routes. Built into Jarvis. Finding places is the Map's job, not Search's: what it finds becomes Markers. Jarvis Shows it on its own when a Reply is about a place or a way to get somewhere. Its Markers, Route and view are kept until replaced or cleared.
+_Avoid_: Google Maps, maps plugin
+
+**Marker**:
+A pin on the Map Widget for one place. Not a place saved in the Owner's Google account.
+_Avoid_: Pin, saved place, favourite
+
+**Route**:
+The way from one place to another by car, on foot, by public transport or by bike, with how long it takes and how far it is, drawn on the Map Widget. Without a starting place it starts where the Owner is. At most one at a time; a new one replaces it.
+_Avoid_: Directions, itinerary, navigation
