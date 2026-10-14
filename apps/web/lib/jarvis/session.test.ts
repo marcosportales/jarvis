@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   createJarvisSession,
+  SessionGoneError,
   type Brain,
   type JarvisState,
   type Recorder,
@@ -65,8 +66,8 @@ function fakeBrain() {
   const calls: Parameters<Brain["reply"]>[0][] = []
   const pending: Deferred<Awaited<ReturnType<Brain["reply"]>>>[] = []
   const brain: Brain = {
-    reply(turns) {
-      calls.push(turns)
+    reply(request) {
+      calls.push(request)
       const d = deferred<Awaited<ReturnType<Brain["reply"]>>>()
       pending.push(d)
       return d.promise
@@ -75,8 +76,11 @@ function fakeBrain() {
   return {
     brain,
     calls,
-    answer: (text: string, widgetChanges: WidgetChange[] = []) =>
-      pending.shift()!.resolve({ text, widgetChanges }),
+    answer: (
+      text: string,
+      widgetChanges: WidgetChange[] = [],
+      sessionId = "session-1"
+    ) => pending.shift()!.resolve({ sessionId, text, widgetChanges }),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }
@@ -125,6 +129,7 @@ function setup(
   options: {
     recorder?: ReturnType<typeof fakeRecorder>
     transcriber?: ReturnType<typeof fakeTranscriber>
+    saved?: Parameters<typeof createJarvisSession>[1]
   } = {}
 ) {
   const recorder = options.recorder ?? fakeRecorder()
@@ -133,13 +138,16 @@ function setup(
   const brain = fakeBrain()
   const voice = fakeVoice(events)
   const widgets = fakeWidgets(events)
-  const session = createJarvisSession({
-    recorder: recorder.recorder,
-    transcriber: transcriber.transcriber,
-    brain: brain.brain,
-    voice: voice.voice,
-    widgets: widgets.widgets,
-  })
+  const session = createJarvisSession(
+    {
+      recorder: recorder.recorder,
+      transcriber: transcriber.transcriber,
+      brain: brain.brain,
+      voice: voice.voice,
+      widgets: widgets.widgets,
+    },
+    options.saved
+  )
   const states: JarvisState[] = [session.getSnapshot().state]
   session.subscribe(() => {
     const { state } = session.getSnapshot()
@@ -172,7 +180,7 @@ describe("Jarvis Session", () => {
 
     expect(recorder.calls).toEqual(["start", "stop"])
     expect(transcriber.calls).toHaveLength(1)
-    expect(brain.calls).toEqual([[{ role: "owner", text: "Hola Jarvis" }]])
+    expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
 
     brain.answer("Buenas tardes, señor.")
     await flush()
@@ -207,7 +215,7 @@ describe("Jarvis Session", () => {
     await flush()
 
     expect(recorder.calls).toEqual([])
-    expect(brain.calls).toEqual([[{ role: "owner", text: "¿Qué hora es?" }]])
+    expect(brain.calls).toEqual([{ text: "¿Qué hora es?" }])
     expect(voice.spoken).toEqual(["Son las cinco, señor."])
     expect(states).toEqual(["idle", "thinking", "speaking", "idle"])
     expect(transcript()).toEqual([
@@ -292,11 +300,10 @@ describe("Jarvis Session", () => {
 
     expect(voice.stopped()).toBe(1)
     expect(session.getSnapshot().state).toBe("thinking")
-    expect(brain.calls.at(-1)).toEqual([
-      { role: "owner", text: "Cuéntame algo" },
-      { role: "jarvis", text: "Había una vez un mayordomo muy paciente." },
-      { role: "owner", text: "Basta" },
-    ])
+    expect(brain.calls.at(-1)).toEqual({
+      sessionId: "session-1",
+      text: "Basta",
+    })
   })
 
   it("ignores push-to-talk and typed messages while Thinking", async () => {
@@ -349,7 +356,7 @@ describe("Jarvis Session", () => {
     voice.finish()
     await flush()
 
-    expect(brain.calls).toEqual([[{ role: "owner", text: "¿Me oyes?" }]])
+    expect(brain.calls).toEqual([{ text: "¿Me oyes?" }])
     expect(transcript().at(-1)).toEqual({
       role: "jarvis",
       text: "Le leo, señor.",
@@ -407,32 +414,74 @@ describe("Jarvis Session", () => {
     ])
   })
 
-  it("passes every earlier Turn to the Brain in order, without inline errors", async () => {
+  it("adopts the Session id of the first Turn and sends it with later Turns", async () => {
     const { session, brain, voice } = setup()
+    expect(session.getSnapshot().sessionId).toBeNull()
 
-    session.pressPushToTalk()
+    session.sendTypedMessage("Hola")
     await flush()
-    session.releasePushToTalk()
-    await flush()
-    brain.answer("Buenas tardes, señor.")
+    brain.answer("Buenas tardes, señor.", [], "trip")
     await flush()
     voice.finish()
     await flush()
+    session.sendTypedMessage("¿Llueve en Madrid?")
+    await flush()
+
+    expect(session.getSnapshot().sessionId).toBe("trip")
+    expect(brain.calls).toEqual([
+      { text: "Hola" },
+      { sessionId: "trip", text: "¿Llueve en Madrid?" },
+    ])
+  })
+
+  it("sends only the new message, never inline errors", async () => {
+    const { session, brain } = setup()
 
     session.sendTypedMessage("¿Llueve?")
     await flush()
     brain.fail(new Error("Nan 500"))
     await flush()
-
     session.sendTypedMessage("¿Llueve hoy?")
     await flush()
 
-    expect(brain.calls.at(-1)).toEqual([
-      { role: "owner", text: "Hola Jarvis" },
-      { role: "jarvis", text: "Buenas tardes, señor." },
-      { role: "owner", text: "¿Llueve?" },
-      { role: "owner", text: "¿Llueve hoy?" },
+    expect(session.getSnapshot().sessionId).toBeNull()
+    expect(brain.calls.at(-1)).toEqual({ text: "¿Llueve hoy?" })
+  })
+
+  it("starts from a saved Transcript and continues that Session", async () => {
+    const { session, brain, transcript } = setup({
+      saved: {
+        sessionId: "trip",
+        turns: [{ owner: "Voy a Lisboa", reply: "Buen viaje, señor." }],
+      },
+    })
+
+    expect(session.getSnapshot().state).toBe("idle")
+    expect(session.getSnapshot().sessionId).toBe("trip")
+    expect(transcript()).toEqual([
+      { role: "owner", text: "Voy a Lisboa" },
+      { role: "jarvis", text: "Buen viaje, señor." },
     ])
+
+    session.sendTypedMessage("¿Y mañana?")
+    await flush()
+
+    expect(brain.calls).toEqual([{ sessionId: "trip", text: "¿Y mañana?" }])
+  })
+
+  it("marks the Session gone when the server no longer has it", async () => {
+    const { session, brain, voice } = setup({
+      saved: { sessionId: "deleted", turns: [] },
+    })
+
+    session.sendTypedMessage("Hola")
+    await flush()
+    brain.fail(new SessionGoneError())
+    await flush()
+
+    expect(session.getSnapshot().gone).toBe(true)
+    expect(session.getSnapshot().state).toBe("idle")
+    expect(voice.spoken).toEqual([])
   })
 
   it("clears the hint when the Owner sends a typed message", async () => {

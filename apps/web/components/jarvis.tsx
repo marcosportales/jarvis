@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect } from "react"
+import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 
 import {
   Conversation,
@@ -21,9 +22,10 @@ import {
   PromptInputTextarea,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
-import type { JarvisState } from "@/lib/jarvis/session"
+import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 
 const STATE_LABELS: Record<JarvisState, string> = {
   idle: "Mantén pulsado para hablar",
@@ -32,8 +34,33 @@ const STATE_LABELS: Record<JarvisState, string> = {
   speaking: "Hablando…",
 }
 
-export function Jarvis() {
-  const { session, state, transcript, hint } = useJarvisSession()
+export const sessionPath = (sessionId: string) => `/sessions/${sessionId}`
+
+/** The Jarvis page for a saved Session, or for a new one when none is given. */
+export function Jarvis({ saved }: { saved?: SavedSession }) {
+  // A new Session's URL becomes its Session URL without a navigation, so
+  // coming back to "/" would keep it; start a new Session instead.
+  const pathname = usePathname()
+  const [lastPathname, setLastPathname] = useState(pathname)
+  const [newSessions, setNewSessions] = useState(0)
+  if (pathname !== lastPathname) {
+    setLastPathname(pathname)
+    if (pathname === "/") setNewSessions(newSessions + 1)
+  }
+  return <JarvisSession key={newSessions} saved={saved} />
+}
+
+function JarvisSession({ saved }: { saved?: SavedSession }) {
+  const { session, state, transcript, hint, sessionId, gone } =
+    useJarvisSession(saved)
+
+  // Once the first Turn is saved, reloading should stay in this Session.
+  // Replacing the URL doesn't remount the page, so Speaking carries on.
+  useEffect(() => {
+    if (sessionId && window.location.pathname !== sessionPath(sessionId)) {
+      window.history.replaceState(null, "", sessionPath(sessionId))
+    }
+  }, [sessionId])
 
   // Holding Space is push-to-talk, except while typing in a text field.
   useEffect(() => {
@@ -63,6 +90,8 @@ export function Jarvis() {
   }, [session])
 
   const busy = state === "listening" || state === "thinking"
+
+  if (gone) return <SessionGone />
 
   return (
     <div className="mx-auto flex h-svh w-full max-w-2xl flex-col gap-4 p-4">

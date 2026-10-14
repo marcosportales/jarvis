@@ -3,12 +3,12 @@
 import { useState, useSyncExternalStore } from "react"
 
 import { createBrowserAdapters } from "@/lib/jarvis/browser-adapters"
-import { createJarvisSession } from "@/lib/jarvis/session"
+import { createJarvisSession, type SavedSession } from "@/lib/jarvis/session"
 
-/** One Jarvis Session per page load; reloading starts fresh. */
-export function useJarvisSession() {
+/** The live view of one Session: a saved one to resume, or a new one. */
+export function useJarvisSession(saved?: SavedSession) {
   const [session] = useState(() =>
-    createJarvisSession(createBrowserAdapters())
+    createJarvisSession(createBrowserAdapters(), saved)
   )
   const snapshot = useSyncExternalStore(
     session.subscribe,

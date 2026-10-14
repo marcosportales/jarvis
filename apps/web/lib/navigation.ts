@@ -12,8 +12,8 @@ export const PAGES: readonly Page[] = [
   { href: "/plugins", label: "Plugins", icon: BlocksIcon },
 ]
 
-// Home matches only itself; any other page also owns the paths below it.
+// Jarvis owns home and every Session; any other page owns the paths below it.
 export function isCurrentPage(pathname: string, href: string) {
-  if (href === "/") return pathname === "/"
+  if (href === "/") return pathname === "/" || pathname.startsWith("/sessions/")
   return pathname === href || pathname.startsWith(`${href}/`)
 }

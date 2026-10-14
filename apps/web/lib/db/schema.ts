@@ -1,4 +1,10 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+} from "drizzle-orm/sqlite-core"
 
 export const installedPlugins = sqliteTable("installed_plugins", {
   pluginId: text("plugin_id").primaryKey(),
@@ -16,3 +22,35 @@ export const pluginTokens = sqliteTable("plugin_tokens", {
   refreshToken: text("refresh_token"),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
 })
+
+/** A saved Session; it exists only once its first Turn is done. */
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    /** Empty until Jarvis gives the Session its Session Title. */
+    title: text("title"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    lastActivityAt: integer("last_activity_at", {
+      mode: "timestamp_ms",
+    }).notNull(),
+  },
+  (table) => [
+    index("sessions_last_activity").on(table.lastActivityAt, table.id),
+  ]
+)
+
+/** One Turn of a Session: the Owner's text and Jarvis's Reply. */
+export const turns = sqliteTable(
+  "turns",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    position: integer("position").notNull(),
+    ownerText: text("owner_text").notNull(),
+    replyText: text("reply_text").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.position] })]
+)

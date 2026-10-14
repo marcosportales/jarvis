@@ -1,15 +1,25 @@
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
-import type {
-  Brain,
-  JarvisAdapters,
-  Recorder,
-  Reply,
-  Transcriber,
-  Utterance,
-  Voice,
-  WidgetChanges,
+import {
+  SessionGoneError,
+  type Brain,
+  type JarvisAdapters,
+  type Recorder,
+  type Reply,
+  type Transcriber,
+  type Utterance,
+  type Voice,
+  type WidgetChanges,
 } from "./session"
+
+class HttpError extends Error {
+  constructor(
+    url: string,
+    readonly status: number
+  ) {
+    super(`${url} failed: ${status}`)
+  }
+}
 
 async function post(url: string, body: Blob | object): Promise<Response> {
   const response = await fetch(
@@ -22,7 +32,7 @@ async function post(url: string, body: Blob | object): Promise<Response> {
           body: JSON.stringify(body),
         }
   )
-  if (!response.ok) throw new Error(`${url} failed: ${response.status}`)
+  if (!response.ok) throw new HttpError(url, response.status)
   return response
 }
 
@@ -74,15 +84,23 @@ const httpTranscriber: Transcriber = {
 }
 
 /**
- * Sends the Widget layout with every Turn so Jarvis knows what is Shown, and
+ * Sends only the Owner's new message: the server owns the Transcript. Also
+ * sends the Widget layout with every Turn so Jarvis knows what is Shown, and
  * the Owner's coordinates when the browser already allows it.
  */
 const httpBrain: Brain = {
-  async reply(lines) {
+  async reply({ sessionId, text }) {
     const response = await post("/api/reply", {
-      lines,
+      sessionId,
+      text,
       widgets: getWidgetBoard().describeLayout(),
       coords: await ownerLocationIfGranted(),
+    }).catch((error: unknown) => {
+      // The server doesn't know this Session, e.g. it was deleted.
+      if (error instanceof HttpError && error.status === 404) {
+        throw new SessionGoneError()
+      }
+      throw error
     })
     return (await response.json()) as Reply
   },

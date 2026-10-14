@@ -1,10 +1,11 @@
 import { generateText, stepCountIs } from "ai"
 
-import type { TranscriptLine } from "@/lib/jarvis/session"
 import { nan, nanConfig } from "@/lib/jarvis/server/nan"
 import { JARVIS_SYSTEM_PROMPT } from "@/lib/jarvis/server/system-prompt"
 import type { TurnTools } from "@/lib/plugins/plugins"
 import { getPlugins } from "@/lib/plugins/server"
+import { getSessions } from "@/lib/sessions/server"
+import { UnknownSessionError, type SavedTurn } from "@/lib/sessions/store"
 import { getWeather } from "@/lib/weather/server"
 import { createWeatherTools } from "@/lib/weather/tool"
 import { coordinatesSchema } from "@/lib/weather/weather"
@@ -29,10 +30,15 @@ async function loadTurnTools(): Promise<TurnTools> {
   }
 }
 
-function isTranscriptLine(value: unknown): value is TranscriptLine {
-  if (typeof value !== "object" || value === null) return false
-  const { role, text } = value as Record<string, unknown>
-  return (role === "owner" || role === "jarvis") && typeof text === "string"
+const unknownSession = () =>
+  Response.json({ error: "Unknown session" }, { status: 404 })
+
+/** The earlier Turns as the chat model sees them. */
+function toMessages(turns: SavedTurn[]) {
+  return turns.flatMap(({ owner, reply }) => [
+    { role: "user" as const, content: owner },
+    { role: "assistant" as const, content: reply },
+  ])
 }
 
 /** Lets the model resolve "hoy" or "esta semana" when searching a service. */
@@ -45,13 +51,17 @@ function currentDateLine() {
 }
 
 export async function POST(request: Request) {
-  const { lines, widgets, coords } = (await request.json()) as {
-    lines?: unknown
+  const { sessionId, text, widgets, coords } = (await request.json()) as {
+    sessionId?: unknown
+    text?: unknown
     widgets?: unknown
     coords?: unknown
   }
-  if (!Array.isArray(lines) || !lines.every(isTranscriptLine)) {
-    return Response.json({ error: "Invalid lines" }, { status: 400 })
+  if (typeof text !== "string" || !text.trim()) {
+    return Response.json({ error: "Invalid text" }, { status: 400 })
+  }
+  if (sessionId !== undefined && typeof sessionId !== "string") {
+    return Response.json({ error: "Invalid sessionId" }, { status: 400 })
   }
   const layout = widgetLayoutSchema.safeParse(widgets)
   if (!layout.success) {
@@ -63,6 +73,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid coords" }, { status: 400 })
   }
 
+  const sessions = getSessions()
+  const earlier = sessionId ? await sessions.recentTurns(sessionId) : []
+  if (!earlier) return unknownSession()
+
   const turn = await loadTurnTools()
   const widgetTools = createWidgetTools(WIDGET_CATALOG)
   const weatherTools = createWeatherTools({
@@ -70,7 +84,7 @@ export async function POST(request: Request) {
     coords: owner.data,
   })
   try {
-    const { text } = await generateText({
+    const generated = await generateText({
       model: nan.chat(nanConfig.chatModel),
       system: [
         JARVIS_SYSTEM_PROMPT,
@@ -78,18 +92,32 @@ export async function POST(request: Request) {
         widgetLayoutNotice(layout.data),
         ...turn.notices,
       ].join("\n\n"),
-      messages: lines.map(({ role, text }) => ({
-        role: role === "owner" ? ("user" as const) : ("assistant" as const),
-        content: text,
-      })),
+      messages: [...toMessages(earlier), { role: "user", content: text }],
       tools: { ...turn.tools, ...widgetTools.tools, ...weatherTools },
       stopWhen: stepCountIs(MAX_REPLY_STEPS),
     })
 
+    const reply = generated.text.trim() || FALLBACK_REPLY
+
+    // Saved only now that the Reply is ready, so a failed Turn saves nothing.
+    const saved = { owner: text, reply }
+    let savedIn: string
+    if (sessionId) {
+      await sessions.addTurn(sessionId, saved)
+      savedIn = sessionId
+    } else {
+      savedIn = await sessions.start(saved)
+    }
+
     return Response.json({
-      text: text.trim() || FALLBACK_REPLY,
+      sessionId: savedIn,
+      text: reply,
       widgetChanges: widgetTools.changes(),
     })
+  } catch (error) {
+    // Deleted while Jarvis was Thinking.
+    if (error instanceof UnknownSessionError) return unknownSession()
+    throw error
   } finally {
     await turn.close()
   }

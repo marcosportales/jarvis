@@ -3,9 +3,14 @@ import { describe, expect, it } from "vitest"
 import { isCurrentPage, PAGES } from "./navigation"
 
 describe("isCurrentPage", () => {
-  it("marks Jarvis current only on the home page", () => {
+  it("marks Jarvis current on the home page and in any Session", () => {
     expect(isCurrentPage("/", "/")).toBe(true)
+    expect(isCurrentPage("/sessions/abc", "/")).toBe(true)
     expect(isCurrentPage("/plugins", "/")).toBe(false)
+  })
+
+  it("does not mark Plugins current in a Session", () => {
+    expect(isCurrentPage("/sessions/abc", "/plugins")).toBe(false)
   })
 
   it("marks a page current on its own path and any path below it", () => {

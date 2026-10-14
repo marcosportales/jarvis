@@ -1,14 +1,12 @@
+import type { SavedTurn } from "../sessions/store"
 import type { WidgetChange } from "../widgets/changes"
 
 export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
 
-/** One line of the Transcript as the Brain sees it. */
-export type TranscriptLine = { role: "owner" | "jarvis"; text: string }
-
 export type TranscriptEntry = {
   id: number
-  /** `error` entries are shown inline but never sent to the Brain. */
-  role: TranscriptLine["role"] | "error"
+  /** `error` entries are shown inline but never sent or saved. */
+  role: "owner" | "jarvis" | "error"
   text: string
 }
 
@@ -17,6 +15,10 @@ export type JarvisSnapshot = {
   transcript: TranscriptEntry[]
   /** A transient nudge, e.g. when an Utterance is discarded. */
   hint: string | null
+  /** Null until the server saves this Session's first Turn. */
+  sessionId: string | null
+  /** The server no longer has this Session, e.g. it was deleted. */
+  gone: boolean
 }
 
 export const MIN_UTTERANCE_MS = 500
@@ -52,11 +54,24 @@ export interface Transcriber {
   transcribe(audio: Blob): Promise<string>
 }
 
-/** What the Brain says, and what it did to the Widgets while deciding. */
-export type Reply = { text: string; widgetChanges: WidgetChange[] }
+/** The Owner's new message, in the Session it belongs to (none yet if new). */
+export type ReplyRequest = { sessionId?: string; text: string }
+
+/**
+ * What the Brain says, the Session the Turn was saved in, and what it did to
+ * the Widgets while deciding.
+ */
+export type Reply = {
+  sessionId: string
+  text: string
+  widgetChanges: WidgetChange[]
+}
+
+/** Thrown by the Brain when the server doesn't know the Session. */
+export class SessionGoneError extends Error {}
 
 export interface Brain {
-  reply(lines: TranscriptLine[]): Promise<Reply>
+  reply(request: ReplyRequest): Promise<Reply>
 }
 
 /** The Widget Board, as far as the Session needs it. */
@@ -78,19 +93,24 @@ export type JarvisAdapters = {
   widgets: WidgetChanges
 }
 
-export function createJarvisSession({
-  recorder,
-  transcriber,
-  brain,
-  voice,
-  widgets,
-}: JarvisAdapters) {
+/** A Session saved earlier, to resume where it was left. */
+export type SavedSession = { sessionId: string; turns: SavedTurn[] }
+
+export function createJarvisSession(
+  { recorder, transcriber, brain, voice, widgets }: JarvisAdapters,
+  saved?: SavedSession
+) {
+  let nextId = 0
   let snapshot: JarvisSnapshot = {
     state: "idle",
-    transcript: [],
+    transcript: (saved?.turns ?? []).flatMap(({ owner, reply }) => [
+      { id: nextId++, role: "owner" as const, text: owner },
+      { id: nextId++, role: "jarvis" as const, text: reply },
+    ]),
     hint: null,
+    sessionId: saved?.sessionId ?? null,
+    gone: false,
   }
-  let nextId = 0
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
   // Resolves to whether the Recorder actually started capturing the Utterance.
@@ -112,14 +132,13 @@ export function createJarvisSession({
     })
   }
 
-  async function reply() {
-    const lines = snapshot.transcript.flatMap(({ role, text }) =>
-      role === "error" ? [] : [{ role, text }]
-    )
-    const { text, widgetChanges } = await orFail(
-      brain.reply(lines),
+  async function reply(message: string) {
+    const { sessionId } = snapshot
+    const { text, widgetChanges, ...saved } = await orFail(
+      brain.reply(sessionId ? { sessionId, text: message } : { text: message }),
       ERRORS.reply
     )
+    update({ sessionId: saved.sessionId })
     // Before Speaking, so the screen matches what Jarvis is about to say.
     widgets.apply(widgetChanges)
     append("jarvis", text)
@@ -143,6 +162,12 @@ export function createJarvisSession({
     try {
       await work()
     } catch (error) {
+      if (
+        error instanceof TurnFailed &&
+        error.cause instanceof SessionGoneError
+      ) {
+        return update({ state: "idle", gone: true })
+      }
       if (!(error instanceof TurnFailed)) throw error
       append("error", error.message)
       setState("idle")
@@ -200,7 +225,7 @@ export function createJarvisSession({
           return discardUtterance()
         }
         append("owner", text)
-        await reply()
+        await reply(text)
       })
     },
     async sendTypedMessage(text: string) {
@@ -209,7 +234,7 @@ export function createJarvisSession({
       update({ hint: null })
       append("owner", text)
       setState("thinking")
-      await runTurn(reply)
+      await runTurn(() => reply(text))
     },
   }
 }

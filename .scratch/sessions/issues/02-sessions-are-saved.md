@@ -11,15 +11,15 @@ See `.scratch/sessions/spec.md`.
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Talk, reload: same Transcript, URL is `/sessions/<id>`
-- [ ] A follow-up after a reload uses the earlier Turns
-- [ ] `/` starts an empty Session; nothing is saved until its first Turn is done
-- [ ] Errors don't appear after a reload
-- [ ] An unknown Session URL shows the "ya no existe" state
-- [ ] Store tests: start, add, last-20 window, full Transcript order, unknown ids
-- [ ] Session tests: first Turn adopts the id and later Turns send it; errors never sent; starting from a saved Transcript
-- [ ] Navigation test: `/sessions/abc` is the Jarvis page
-- [ ] Plugins, Widgets and weather still work in a Session
-- [ ] Lint, typecheck and tests pass
+- [x] Talk, reload: same Transcript, URL is `/sessions/<id>`
+- [x] A follow-up after a reload uses the earlier Turns
+- [x] `/` starts an empty Session; nothing is saved until its first Turn is done
+- [x] Errors don't appear after a reload
+- [x] An unknown Session URL shows the "ya no existe" state
+- [x] Store tests: start, add, last-20 window, full Transcript order, unknown ids
+- [x] Session tests: first Turn adopts the id and later Turns send it; errors never sent; starting from a saved Transcript
+- [x] Navigation test: `/sessions/abc` is the Jarvis page
+- [x] Plugins, Widgets and weather still work in a Session
+- [x] Lint, typecheck and tests pass
