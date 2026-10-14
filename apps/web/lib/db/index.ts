@@ -6,9 +6,9 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 
 import * as schema from "./schema"
 
-const migrationsFolder = path.join(process.cwd(), "lib/plugins/db/migrations")
+const migrationsFolder = path.join(process.cwd(), "lib/db/migrations")
 
-/** Opens (creating if needed) the SQLite database and applies migrations. */
+/** Opens (creating if needed) the shared SQLite database and applies migrations. */
 export function openDatabase(file: string) {
   const sqlite = new Database(file)
   sqlite.pragma("journal_mode = WAL")
@@ -18,4 +18,4 @@ export function openDatabase(file: string) {
   return db
 }
 
-export type PluginsDatabase = ReturnType<typeof openDatabase>
+export type JarvisDatabase = ReturnType<typeof openDatabase>

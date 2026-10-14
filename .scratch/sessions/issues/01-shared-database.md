@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] One shared database module and schema; Plugins imports from it
-- [ ] An existing `.data/jarvis.db` opens and migrates without losing Installed Plugins
-- [ ] drizzle-kit config points at the shared schema and migrations
-- [ ] Plugins tests pass unchanged (apart from imports)
-- [ ] Lint, typecheck and tests pass
+- [x] One shared database module and schema; Plugins imports from it
+- [x] An existing `.data/jarvis.db` opens and migrates without losing Installed Plugins
+- [x] drizzle-kit config points at the shared schema and migrations
+- [x] Plugins tests pass unchanged (apart from imports)
+- [x] Lint, typecheck and tests pass

@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm"
 
-import type { PluginsDatabase } from "./db"
-import { installedPlugins, pluginTokens } from "./db/schema"
+import type { JarvisDatabase } from "../db"
+import { installedPlugins, pluginTokens } from "../db/schema"
 import type { OAuthTokens } from "./oauth"
 
 export type InstalledPlugin = {
@@ -22,7 +22,7 @@ export type PluginStore = {
   remove(pluginId: string): Promise<void>
 }
 
-export function createSqliteStore(db: PluginsDatabase): PluginStore {
+export function createSqliteStore(db: JarvisDatabase): PluginStore {
   return {
     async listInstalled() {
       return db

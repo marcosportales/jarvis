@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 import { z } from "zod"
 
 import { ConnectorAuthError, type Connector } from "./connector"
-import { openDatabase } from "./db"
+import { openDatabase } from "../db"
 import { OAuthAuthError, type OAuthClient, type OAuthTokens } from "./oauth"
 import { createPlugins } from "./plugins"
 import { createSqliteStore } from "./store"

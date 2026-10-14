@@ -1,33 +1,16 @@
 import "server-only"
 
-import fs from "node:fs"
-import path from "node:path"
-
+import { getDatabase } from "../db/server"
 import { createMcpConnector } from "./connector"
-import { openDatabase, type PluginsDatabase } from "./db"
 import { createOAuthClient } from "./oauth"
 import { createPlugins, type Plugins } from "./plugins"
 import { createSqliteStore } from "./store"
-
-const dbFile =
-  process.env.JARVIS_DB_PATH ?? path.join(process.cwd(), ".data/jarvis.db")
-
-// The database is opened once and survives dev hot reloads.
-const globalForPlugins = globalThis as { pluginsDb?: PluginsDatabase }
-
-function database() {
-  if (!globalForPlugins.pluginsDb) {
-    fs.mkdirSync(path.dirname(dbFile), { recursive: true })
-    globalForPlugins.pluginsDb = openDatabase(dbFile)
-  }
-  return globalForPlugins.pluginsDb
-}
 
 /** The Plugins module wired to real storage, OAuth and Connectors. */
 export function getPlugins(): Plugins {
   return createPlugins({
     env: process.env,
-    store: createSqliteStore(database()),
+    store: createSqliteStore(getDatabase()),
     oauth: createOAuthClient(),
     connector: createMcpConnector(),
   })
