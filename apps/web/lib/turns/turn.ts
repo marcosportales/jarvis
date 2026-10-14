@@ -4,9 +4,9 @@ import type { MemoryEvent } from "../memory/events"
 import type { MemoryStore } from "../memory/store"
 import { createMemoryTools, memoryNotice } from "../memory/tools"
 import type { Plugins, TurnTools } from "../plugins/plugins"
-import type { SearchOutcome } from "../search/outcome"
+import type { ResultsOnScreen, SearchOutcome } from "../search/outcome"
 import type { SearchPort } from "../search/port"
-import { createSearchTools } from "../search/tools"
+import { createSearchTools, resultsOnScreenNotice } from "../search/tools"
 import {
   UnknownSessionError,
   type SavedTurn,
@@ -34,6 +34,8 @@ export type TurnRequest = {
   widgets: WidgetLayout
   /** The Owner's coordinates, only when the browser already had permission. */
   coords?: Coordinates
+  /** What the Results Widget shows, only while it is Shown. */
+  results?: ResultsOnScreen
 }
 
 /** Jarvis's Reply, once the Turn is saved in `sessionId`. */
@@ -155,6 +157,7 @@ export function createTurns({
       text,
       widgets,
       coords,
+      results,
     }: TurnRequest): Promise<TurnReply> {
       let earlier: SavedTurn[] = []
       if (sessionId) {
@@ -175,9 +178,12 @@ export function createTurns({
             JARVIS_SYSTEM_PROMPT,
             currentDateLine(now()),
             widgetLayoutNotice(widgets),
+            resultsOnScreenNotice(results),
             await memoryNotice(memories),
             ...pluginTools.notices,
-          ].join("\n\n"),
+          ]
+            .filter((part) => part !== null)
+            .join("\n\n"),
           messages: [...toMessages(earlier), { role: "user", content: text }],
           tools: mergeTools({
             builtIn: [

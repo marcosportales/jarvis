@@ -641,6 +641,20 @@ describe("Jarvis Session", () => {
       expect(jarvis.session.getSnapshot().search).toEqual(flights)
     })
 
+    it("goes with the next Turn, so the Results on screen can be sent", async () => {
+      const jarvis = setup()
+      await turn(jarvis, { text: "Hay dos vuelos.", search: flights })
+
+      jarvis.session.sendTypedMessage("¿Y el segundo?")
+      await flush()
+
+      expect(jarvis.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "¿Y el segundo?",
+        search: flights,
+      })
+    })
+
     it("is in place before Speaking, with the Widget changes", async () => {
       const { session, brain } = setup()
       session.sendTypedMessage("Vuelos a Roma")

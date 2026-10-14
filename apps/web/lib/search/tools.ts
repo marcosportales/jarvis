@@ -2,7 +2,7 @@ import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
 import { mapPage, mapWeb } from "./mappers"
-import type { SearchOutcome, SearchResult } from "./outcome"
+import type { ResultsOnScreen, SearchOutcome, SearchResult } from "./outcome"
 import type { SearchPort, SearchSlug } from "./port"
 
 /** How much of a page `read_page` asks Composio for. */
@@ -28,7 +28,13 @@ export type SearchTurnTools = {
   outcome(): SearchOutcome | undefined
 }
 
-function resultLine({ title, subtitle, facts, source, url }: SearchResult) {
+function resultLine({
+  title,
+  subtitle,
+  facts,
+  source,
+  url,
+}: Omit<SearchResult, "url"> & { url?: string }) {
   return [
     subtitle ? `${title} — ${subtitle}.` : `${title}.`,
     ...facts.map(({ label, value }) => `${label}: ${value}.`),
@@ -63,6 +69,22 @@ export function describeOutcome(outcome: SearchOutcome) {
           answer,
         ]
       : []),
+  ].join("\n")
+}
+
+/**
+ * Tells the model what the Results Widget shows, numbered as on screen, so
+ * "¿y el segundo?" needs no new Search. Nothing on screen, no notice.
+ */
+export function resultsOnScreenNotice(results: ResultsOnScreen | undefined) {
+  if (!results) return null
+  const lines = results.results.map(
+    (result, i) => `${i + 1}. ${resultLine(result)}`
+  )
+  return [
+    `Resultados en pantalla ahora mismo, en el widget Resultados: «${results.heading}».`,
+    ...(lines.length > 0 ? lines : ["La búsqueda no encontró nada."]),
+    "Si el dueño pregunta por ellos («¿y el segundo?», «¿cuál es el más barato?»), responde con estos datos sin volver a buscar.",
   ].join("\n")
 }
 

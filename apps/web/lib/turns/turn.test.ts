@@ -550,6 +550,47 @@ describe("Taking a Turn", () => {
       ])
     })
 
+    it("tells the model the Results on screen, numbered as shown", async () => {
+      const { turns, firstCall } = setup([answer("Ryanair, 104 euros.")])
+
+      await turns.take({
+        text: "¿Y el segundo?",
+        widgets: LAYOUT,
+        results: {
+          heading: "Vuelos MAD → FCO · vie 16 oct",
+          results: [
+            {
+              title: "Wizz Air",
+              subtitle: "MAD 22:55 → FCO 01:25 (+1)",
+              facts: [{ label: "Precio", value: "60 €" }],
+            },
+            {
+              title: "Ryanair",
+              facts: [{ label: "Precio", value: "104 €" }],
+              source: "Google Flights",
+            },
+          ],
+        },
+      })
+
+      const { system } = prompt(firstCall())
+      expect(system).toContain("Vuelos MAD → FCO · vie 16 oct")
+      expect(system).toContain(
+        "1. Wizz Air — MAD 22:55 → FCO 01:25 (+1). Precio: 60 €."
+      )
+      expect(system).toContain(
+        "2. Ryanair. Precio: 104 €. Fuente: Google Flights."
+      )
+    })
+
+    it("tells the model nothing about Results when none are on screen", async () => {
+      const { turns, firstCall } = setup([answer("Hola.")])
+
+      await turns.take({ text: "Hola", widgets: LAYOUT })
+
+      expect(prompt(firstCall()).system).not.toMatch(/en pantalla ahora mismo/)
+    })
+
     it("returns no Search Outcome when the Turn didn't search", async () => {
       const { turns } = setup([answer("Hola.")])
 

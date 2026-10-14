@@ -1,6 +1,6 @@
 import { titleSession } from "@/app/sessions/actions"
 
-import { searchOutcomeSchema } from "../search/outcome"
+import { searchOutcomeSchema, toResultsOnScreen } from "../search/outcome"
 import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
 import { getWidgetBoard } from "../widgets/browser-board"
@@ -89,16 +89,22 @@ const httpTranscriber: Transcriber = {
 
 /**
  * Sends only the Owner's new message: the server owns the Transcript. Also
- * sends the Widget layout with every Turn so Jarvis knows what is Shown, and
- * the Owner's coordinates when the browser already allows it.
+ * sends the Widget layout with every Turn so Jarvis knows what is Shown, the
+ * Results the Results Widget shows while it is Shown, and the Owner's
+ * coordinates when the browser already allows it.
  */
 const httpBrain: Brain = {
-  async reply({ sessionId, text }) {
+  async reply({ sessionId, text, search: latest }) {
+    const widgets = getWidgetBoard().describeLayout()
+    const resultsShown = widgets.some(
+      ({ id, shown }) => id === "results" && shown
+    )
     const response = await post("/api/reply", {
       sessionId,
       text,
-      widgets: getWidgetBoard().describeLayout(),
+      widgets,
       coords: await ownerLocationIfGranted(),
+      results: latest && resultsShown ? toResultsOnScreen(latest) : undefined,
     }).catch((error: unknown) => {
       // The server doesn't know this Session, e.g. it was deleted.
       if (error instanceof HttpError && error.status === 404) {
@@ -109,8 +115,9 @@ const httpBrain: Brain = {
     const { search, ...reply } = (await response.json()) as Reply
     // A Search Outcome the client can't read is left out, never shown.
     const parsed = searchOutcomeSchema.optional().safeParse(search)
-    if (!parsed.success)
+    if (!parsed.success) {
       console.error("Unreadable Search Outcome", parsed.error)
+    }
     // The Turn is saved: the Session is new or moved to the top of the list.
     notifySessionsChanged()
     if (!sessionId) {

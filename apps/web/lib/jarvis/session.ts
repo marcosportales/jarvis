@@ -67,8 +67,15 @@ export interface Transcriber {
   transcribe(audio: Blob): Promise<string>
 }
 
-/** The Owner's new message, in the Session it belongs to (none yet if new). */
-export type ReplyRequest = { sessionId?: string; text: string }
+/**
+ * The Owner's new message, in the Session it belongs to (none yet if new),
+ * with the latest Search Outcome if there is one, for Jarvis to talk about.
+ */
+export type ReplyRequest = {
+  sessionId?: string
+  text: string
+  search?: SearchOutcome
+}
 
 /**
  * What the Brain says, the Session the Turn was saved in, and what it did to
@@ -161,12 +168,14 @@ export function createJarvisSession(
   }
 
   async function reply(message: string, turnGeneration: number) {
-    const { sessionId } = snapshot
+    const { sessionId, search: latest } = snapshot
     const { text, widgetChanges, memoryEvents, search, ...saved } =
       await orFail(
-        brain.reply(
-          sessionId ? { sessionId, text: message } : { text: message }
-        ),
+        brain.reply({
+          ...(sessionId ? { sessionId } : {}),
+          text: message,
+          ...(latest ? { search: latest } : {}),
+        }),
         ERRORS.reply
       )
     // The server saved the Turn in its Session anyway; just don't show it.

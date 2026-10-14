@@ -57,3 +57,31 @@ export const searchOutcomeSchema = z.object({
   ),
   answer: z.string().optional(),
 }) satisfies z.ZodType<SearchOutcome>
+
+/**
+ * What the Results Widget shows, as the client sends it back with each Turn
+ * so Jarvis can talk about it: no URLs and no answer. The server keeps none.
+ */
+export type ResultsOnScreen = {
+  heading: string
+  results: Omit<SearchResult, "url">[]
+}
+
+export const resultsOnScreenSchema = z.object({
+  heading: z.string(),
+  results: z.array(
+    z.object({
+      title: z.string(),
+      subtitle: z.string().optional(),
+      facts: z.array(z.object({ label: z.string(), value: z.string() })),
+      source: z.string().optional(),
+    })
+  ),
+}) satisfies z.ZodType<ResultsOnScreen>
+
+export function toResultsOnScreen({
+  heading,
+  results,
+}: SearchOutcome): ResultsOnScreen {
+  return { heading, results: results.map(({ url: _url, ...result }) => result) }
+}
