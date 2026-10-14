@@ -167,12 +167,56 @@ describe("The App Bridge", () => {
     const { session, jarvisApp, disconnect } = setupInApp()
 
     disconnect()
+    jarvisApp.published.length = 0
     jarvisApp.press()
     void session.sendTypedMessage("¿Qué hora es?")
     await flush()
 
     expect(jarvisApp.listening).toBe(false)
-    expect(jarvisApp.published).toEqual(["idle"])
+    expect(jarvisApp.published).toEqual([])
+  })
+
+  it("publishes Idle on disconnecting, since the page's Session is gone", async () => {
+    // e.g. the Owner opens the Marketplace while Jarvis is Speaking: the
+    // Session is silenced, and the Floating Orb must not stay on Speaking.
+    const { session, jarvisApp, brain, disconnect } = setupInApp()
+    void session.sendTypedMessage("Cuéntame algo")
+    await flush()
+    brain.answer("Había una vez un mayordomo muy paciente.")
+    await flush()
+    expect(jarvisApp.published.at(-1)).toBe("speaking")
+
+    disconnect()
+
+    expect(jarvisApp.published.at(-1)).toBe("idle")
+  })
+
+  it("starts Listening at once when connected during a Jarvis App hold", async () => {
+    // The Jarvis App replays a hold still going on to a page that starts
+    // listening mid-hold, e.g. after leaving the Marketplace for it.
+    const { session, brain } = setup()
+    const jarvisApp = fakeJarvisApp()
+    jarvisApp.press()
+    connectAppBridge({
+      session,
+      pushToTalk: createPushToTalk(session),
+      app: {
+        ...jarvisApp.app,
+        onPushToTalk(listener) {
+          const stop = jarvisApp.app.onPushToTalk(listener)
+          listener("press")
+          return stop
+        },
+      },
+    })
+    await flush()
+    expect(session.getSnapshot().state).toBe("listening")
+    expect(jarvisApp.published).toEqual(["idle", "listening"])
+
+    jarvisApp.release()
+    await flush()
+
+    expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
   })
 })
 

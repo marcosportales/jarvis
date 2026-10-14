@@ -41,7 +41,7 @@ declare global {
  * when the page runs inside it. Push-to-talk from the Jarvis App holds the
  * Session's Push-to-talk, and every change of its Jarvis State is published.
  * Without the Jarvis App nothing is wired. Returns a function that
- * disconnects.
+ * disconnects, publishing Idle.
  */
 export function connectAppBridge({
   session,
@@ -71,5 +71,8 @@ export function connectAppBridge({
   return () => {
     unsubscribe()
     stopListening()
+    // The page is leaving its Session, which is silenced with it: until
+    // another one connects, Jarvis is doing nothing.
+    app.publishJarvisState("idle")
   }
 }
