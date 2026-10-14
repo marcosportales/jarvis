@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
+import { BatteryChargingIcon } from "lucide-react"
 
 import { Skeleton } from "@workspace/ui/components/skeleton"
 import { cn } from "@workspace/ui/lib/utils"
@@ -85,6 +86,28 @@ export function SystemWidget() {
               100
             }
           />
+          {status.machine.battery && (
+            <Meter
+              label="Batería"
+              value={formatPercent(status.machine.battery.percent)}
+              percent={status.machine.battery.percent}
+              barClassName={
+                status.machine.battery.charging
+                  ? "bg-emerald-500"
+                  : status.machine.battery.percent <= 20
+                    ? "bg-red-500"
+                    : undefined
+              }
+              badge={
+                status.machine.battery.charging && (
+                  <BatteryChargingIcon
+                    className="size-4 text-emerald-600 dark:text-emerald-400"
+                    aria-label="Cargando"
+                  />
+                )
+              }
+            />
+          )}
         </>
       )}
     </div>
@@ -97,17 +120,23 @@ function Meter({
   value,
   percent,
   barClassName,
+  badge,
 }: {
   label: string
   value: string
   percent: number
   barClassName?: string
+  /** Shown before the value, e.g. that the battery is charging. */
+  badge?: ReactNode
 }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="text-muted-foreground">{label}</span>
-        <span className="font-medium tabular-nums">{value}</span>
+        <span className="flex items-center gap-1 font-medium tabular-nums">
+          {badge}
+          {value}
+        </span>
       </div>
       <div
         role="meter"

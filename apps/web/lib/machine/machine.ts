@@ -52,11 +52,51 @@ export function parseMemory(meminfo: string): Memory {
   }
 }
 
+export type Battery = { percent: number; charging: boolean }
+
+/** A power-supply `uevent` file as `POWER_SUPPLY_*` keys without the prefix. */
+function parseUevent(uevent: string) {
+  const fields = new Map<string, string>()
+  for (const line of uevent.split("\n")) {
+    const match = line.match(/^POWER_SUPPLY_([A-Z_]+)=(.*)$/)
+    if (match) fields.set(match[1]!, match[2]!.trim())
+  }
+  return fields
+}
+
+/**
+ * The computer's battery from the kernel's power-supply `uevent` files, or
+ * null without one. Mains adapters and USB ports aren't batteries, and a
+ * battery scoped to a device (a wireless mouse) isn't the computer's. With
+ * several, their average charge, charging if any is.
+ */
+export function parseBattery(uevents: string[]): Battery | null {
+  const batteries = uevents
+    .map(parseUevent)
+    .filter(
+      (fields) =>
+        fields.get("TYPE") === "Battery" &&
+        fields.get("SCOPE") !== "Device" &&
+        fields.get("PRESENT") !== "0" &&
+        fields.has("CAPACITY")
+    )
+  if (batteries.length === 0) return null
+  const percents = batteries.map((fields) => Number(fields.get("CAPACITY")))
+  return {
+    percent: Math.round(
+      percents.reduce((sum, percent) => sum + percent, 0) / percents.length
+    ),
+    charging: batteries.some((fields) => fields.get("STATUS") === "Charging"),
+  }
+}
+
 /** How the computer is doing right now. */
 export type MachineReading = {
   /** Busy since the previous reading, 0–100. */
   cpu: { percent: number }
   memory: Memory
+  /** Null on a computer without one. */
+  battery: Battery | null
   /** ISO time it was read. */
   at: string
 }
@@ -65,6 +105,7 @@ export type MachineReading = {
 export type MachineSources = {
   cpuTimes(): Promise<CpuTimes>
   memory(): Promise<Memory>
+  battery(): Promise<Battery | null>
 }
 
 export type MachineDeps = {
@@ -100,8 +141,12 @@ export function createMachine({ sources, now, wait }: MachineDeps) {
   return {
     /** Throws when the OS can't be read. */
     async read(): Promise<MachineReading> {
-      const [percent, memory] = await Promise.all([readCpu(), sources.memory()])
-      return { cpu: { percent }, memory, at: now().toISOString() }
+      const [percent, memory, battery] = await Promise.all([
+        readCpu(),
+        sources.memory(),
+        sources.battery(),
+      ])
+      return { cpu: { percent }, memory, battery, at: now().toISOString() }
     },
   }
 }
