@@ -902,6 +902,42 @@ describe("Taking a Turn", () => {
       expect(sentInStep(model, 1)).toMatch(/Navegación iniciada/)
     })
 
+    it("shows the Browser Widget when a Browse Task starts", async () => {
+      const { turns } = setup([
+        call("start_browse", PRADO),
+        answer("Me pongo con ello."),
+      ])
+
+      const reply = await turns.take({ text: "Sí, míralo", widgets: LAYOUT })
+
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "browser" }])
+    })
+
+    it("changes no Widget when the Browse Task can't start", async () => {
+      const browser = fakeBrowserPort()
+      browser.failures.start = true
+      const { turns } = setup(
+        [call("start_browse", PRADO), answer("No he podido mirarlo.")],
+        { browser }
+      )
+
+      const reply = await turns.take({ text: "Sí", widgets: LAYOUT })
+
+      expect(reply.widgetChanges).toEqual([])
+    })
+
+    it("doesn't show the Browser Widget twice when the model already showed it", async () => {
+      const { turns } = setup([
+        call("start_browse", PRADO),
+        call("show_widget", { id: "browser" }),
+        answer("Me pongo con ello."),
+      ])
+
+      const reply = await turns.take({ text: "Sí, míralo", widgets: LAYOUT })
+
+      expect(reply.widgetChanges).toEqual([{ type: "show", id: "browser" }])
+    })
+
     it("tells the model when starting stopped the Browse Task before it", async () => {
       const { turns, browse, model } = setup([
         call("start_browse", {

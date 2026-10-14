@@ -79,11 +79,18 @@ function goalOf(step: { memory?: string | null; nextGoal?: string | null }) {
 /** Reads a raw `BROWSER_TOOL_WATCH_TASK` response; throws if it can't. */
 export function toBrowserWatch(data: unknown): BrowserWatch {
   const raw = watchSchema.parse(data)
-  const latest = raw.steps?.at(-1)
+  const steps = raw.steps ?? []
+  const latest = steps.at(-1)
+  // Some steps come with an empty memory; the newest one with a goal says most.
+  const goal =
+    steps
+      .map(goalOf)
+      .filter((found) => found !== null)
+      .at(-1) ?? null
   return {
     status: raw.status,
     step: raw.current_step ?? latest?.number ?? 0,
-    currentGoal: raw.current_goal || (latest ? goalOf(latest) : null),
+    currentGoal: raw.current_goal || goal,
     currentUrl: raw.current_url || null,
     screenshotUrl: latest?.screenshotUrl ?? null,
     // Composio escapes the output's line breaks.

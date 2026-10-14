@@ -28,6 +28,19 @@ describe("Reading a watch response", () => {
     })
   })
 
+  it("takes the goal from the newest step that has one, as some come empty", () => {
+    const [first, second] = WATCH_RUNNING.steps
+    const empty = { ...second!, number: 8, memory: "" }
+
+    expect(
+      toBrowserWatch({ ...WATCH_RUNNING, steps: [first, second, empty] })
+    ).toMatchObject({
+      currentGoal:
+        'I will accept the cookies to clear the view and then search for the "Visit" or "Opening hours" section, preferably in Spanish as requested.',
+      screenshotUrl: empty.screenshotUrl,
+    })
+  })
+
   it("prefers the current goal when Composio gives one", () => {
     expect(
       toBrowserWatch({ ...WATCH_RUNNING, current_goal: "Open the menu" })

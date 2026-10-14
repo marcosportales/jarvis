@@ -52,9 +52,22 @@ export const WIDGET_CATALOG = [
     // Larger than the Weather Widget so a list fits; it scrolls inside.
     size: { width: 336, height: 440 },
   },
+  {
+    id: "browser",
+    name: "Navegador",
+    description:
+      "La navegación actual en directo: la pantalla del navegador remoto, qué se pidió, qué hace ahora, un botón para pararla y, al terminar, lo que encontró.",
+    startingSpot: "left-middle",
+    source: "built-in",
+    // A 16:10 screen across the card, plus what was asked and a status line.
+    size: { width: 400, height: 420 },
+  },
 ] as const satisfies readonly WidgetInfo[]
 
 export type WidgetId = (typeof WIDGET_CATALOG)[number]["id"]
 
 /** The Results Widget, which the Turn Shows on its own after a list Search. */
 export const RESULTS_WIDGET_ID = "results" satisfies WidgetId
+
+/** The Browser Widget, which the Turn Shows on its own when a Browse Task starts. */
+export const BROWSER_WIDGET_ID = "browser" satisfies WidgetId

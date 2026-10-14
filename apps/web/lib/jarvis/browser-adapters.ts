@@ -1,5 +1,6 @@
 import { titleSession } from "@/app/sessions/actions"
 
+import { browseViewSchema } from "../browse/view"
 import { searchOutcomeSchema, toResultsOnScreen } from "../search/outcome"
 import { notifySessionsChanged } from "../sessions/browser-events"
 import { ownerLocationIfGranted } from "../weather/owner-location"
@@ -8,6 +9,7 @@ import { RESULTS_WIDGET_ID } from "../widgets/catalog"
 import {
   SessionGoneError,
   type Brain,
+  type BrowseSource,
   type JarvisAdapters,
   type Recorder,
   type Reply,
@@ -133,6 +135,19 @@ const httpBrain: Brain = {
   },
 }
 
+/** The Browse routes; a view the client can't read counts as a failed load. */
+const httpBrowse: BrowseSource = {
+  async view() {
+    const response = await fetch("/api/browse", { cache: "no-store" })
+    if (!response.ok) throw new HttpError("/api/browse", response.status)
+    return browseViewSchema.nullable().parse(await response.json())
+  },
+  async stop() {
+    const response = await post("/api/browse/stop", {})
+    return browseViewSchema.nullable().parse(await response.json())
+  },
+}
+
 const boardWidgetChanges: WidgetChanges = {
   apply: (changes) => getWidgetBoard().applyChanges(changes),
 }
@@ -194,5 +209,6 @@ export function createBrowserAdapters(): JarvisAdapters {
     brain: httpBrain,
     voice: createAudioVoice(),
     widgets: boardWidgetChanges,
+    browse: httpBrowse,
   }
 }

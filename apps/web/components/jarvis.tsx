@@ -26,6 +26,7 @@ import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
 import { isTypingTarget } from "@/lib/is-typing-target"
 import { sessionPath } from "@/lib/navigation"
+import { shownBrowse } from "@/lib/browse/browser-view"
 import { shownResults } from "@/lib/search/browser-results"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 import type { MemoryEvent } from "@/lib/memory/events"
@@ -67,11 +68,31 @@ export function Jarvis({ saved }: { saved?: SavedSession }) {
 }
 
 function JarvisSession({ saved }: { saved?: SavedSession }) {
-  const { session, state, transcript, hint, sessionId, gone, search } =
-    useJarvisSession(saved)
+  const {
+    session,
+    state,
+    transcript,
+    hint,
+    sessionId,
+    gone,
+    search,
+    browse,
+    browseJustEnded,
+  } = useJarvisSession(saved)
 
   // The Results Widget lives outside this page, so hand it the latest Search.
   useEffect(() => shownResults.set(search), [search])
+
+  // The Browser Widget too, with the Browse Task and its stop button.
+  useEffect(
+    () =>
+      shownBrowse.set({
+        view: browse,
+        justEnded: browseJustEnded,
+        stop: session.stopBrowse,
+      }),
+    [browse, browseJustEnded, session]
+  )
 
   // Once the first Turn is saved, reloading should stay in this Session.
   // Replacing the URL doesn't remount the page, so Speaking carries on.

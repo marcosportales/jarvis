@@ -20,7 +20,11 @@ import {
 } from "../sessions/store"
 import { createWeatherTools } from "../weather/tool"
 import type { Coordinates, WeatherService } from "../weather/weather"
-import { RESULTS_WIDGET_ID, WIDGET_CATALOG } from "../widgets/catalog"
+import {
+  BROWSER_WIDGET_ID,
+  RESULTS_WIDGET_ID,
+  WIDGET_CATALOG,
+} from "../widgets/catalog"
 import type { WidgetChange, WidgetLayout } from "../widgets/changes"
 import { createWidgetTools, widgetLayoutNotice } from "../widgets/tools"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
@@ -91,6 +95,17 @@ function resultsForReply(
     widgetChanges: [...changes, { type: "show", id: RESULTS_WIDGET_ID }],
     search: outcome,
   }
+}
+
+/**
+ * A Browse Task that started Shows the Browser Widget, unless the model
+ * already did something with it this Turn.
+ */
+function withBrowserShown(changes: WidgetChange[], started: boolean) {
+  if (!started || changes.some(({ id }) => id === BROWSER_WIDGET_ID)) {
+    return changes
+  }
+  return [...changes, { type: "show" as const, id: BROWSER_WIDGET_ID }]
 }
 
 /** The earlier Turns as the chat model sees them. */
@@ -247,7 +262,10 @@ export function createTurns({
           sessionId: savedIn,
           text: reply,
           memoryEvents,
-          ...resultsForReply(widgetTools.changes(), searchTools.outcome()),
+          ...resultsForReply(
+            withBrowserShown(widgetTools.changes(), browseTools.started()),
+            searchTools.outcome()
+          ),
         }
       } finally {
         await pluginTools.close()

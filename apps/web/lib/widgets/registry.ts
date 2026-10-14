@@ -2,6 +2,7 @@ import type { ComponentType } from "react"
 
 import type { WidgetSettings } from "./board"
 
+import { BrowserWidget } from "@/components/widgets/browser-widget"
 import { ResultsWidget } from "@/components/widgets/results-widget"
 import { WeatherWidget } from "@/components/widgets/weather-widget"
 
@@ -22,6 +23,7 @@ export type WidgetDefinition = WidgetInfo & {
 const COMPONENTS: Record<WidgetId, ComponentType<WidgetProps>> = {
   weather: WeatherWidget,
   results: ResultsWidget,
+  browser: BrowserWidget,
 }
 
 /**

@@ -41,7 +41,7 @@ export function createBrowseTools({
             .trim()
             .min(10)
             .describe(
-              "Qué buscar, completo y sin depender de la conversación: el sitio, las fechas, los lugares y los datos que hay que traer. Nunca contraseñas ni datos del dueño."
+              "Qué buscar, completo y sin depender de la conversación: el sitio, las fechas, los lugares y los datos que hay que traer. Solo leer: nunca le pidas iniciar sesión, reservar, comprar ni simular una reserva o una compra, ni le des contraseñas ni datos del dueño."
             ),
           startUrl: z
             .url()

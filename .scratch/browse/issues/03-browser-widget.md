@@ -9,9 +9,19 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] A Turn test: a successful `start_browse` → `show browser` change; a failed one → no change
-- [ ] Client Session tests: polling starts on a running view, stops on an ended one, and an ended view Shows a Hidden Browser Widget
-- [ ] In the running app: starting a Browse Task shows the Widget live, the stop button stops it, a task that ends while the Widget is Hidden brings it back with the outcome, and a reload mid-task picks it up again
-- [ ] Typecheck, lint and the full test suite pass
+- [x] A Turn test: a successful `start_browse` → `show browser` change; a failed one → no change
+- [x] Client Session tests: polling starts on a running view, stops on an ended one, and an ended view Shows a Hidden Browser Widget
+- [x] In the running app: starting a Browse Task shows the Widget live, the stop button stops it, a task that ends while the Widget is Hidden brings it back with the outcome, and a reload mid-task picks it up again
+- [x] Typecheck, lint and the full test suite pass
+
+## Comments
+
+Done on 2026-10-14. Checked in the running app (headless Chrome):
+
+- Starting a Browse Task Showed the Browser Widget with the live view streaming in the iframe, what was asked, the status line with the domain, "Parar" and "Ver en directo".
+- A fresh page load in the middle of a task picked it up again live, which is the reload case.
+- With the Widget Hidden, a task that ended came back Shown with the outcome, the last screenshot, a link to the final page and a ring highlight that faded after 3 s.
+- "Parar" stopped a running Renfe task, and the Widget showed "Parada".
+- The Browser Widget, like every Widget, starts Shown the first time (the Board's existing rule). At left-middle it overlaps the Results Widget on screens under about 900 px tall.

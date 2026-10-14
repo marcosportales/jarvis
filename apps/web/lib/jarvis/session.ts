@@ -1,6 +1,8 @@
+import { isRunning, type BrowseView } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
 import type { SearchOutcome } from "../search/outcome"
 import type { SavedTurn } from "../sessions/store"
+import { BROWSER_WIDGET_ID } from "../widgets/catalog"
 import type { WidgetChange } from "../widgets/changes"
 
 export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
@@ -29,9 +31,19 @@ export type JarvisSnapshot = {
    * reload.
    */
   search: SearchOutcome | null
+  /**
+   * The current Browse Task, for the Browser Widget; null with none. It lives
+   * on the server, so every Session shows the same one.
+   */
+  browse: BrowseView | null
+  /** This page saw the Browse Task end, so the Browser Widget highlights it. */
+  browseJustEnded: boolean
 }
 
 export const MIN_UTTERANCE_MS = 500
+
+/** How often a running Browse Task is checked on. */
+export const BROWSE_POLL_MS = 4_000
 export const DISCARDED_UTTERANCE_HINT = "No te entendí"
 
 export const ERRORS = {
@@ -108,19 +120,28 @@ export interface Voice {
   stop(): void
 }
 
+/** The server's current Browse Task. */
+export interface BrowseSource {
+  /** Null with no Browse Task; throws when it can't be loaded. */
+  view(): Promise<BrowseView | null>
+  /** Stops it and gives the view afterwards; throws when it won't stop. */
+  stop(): Promise<BrowseView | null>
+}
+
 export type JarvisAdapters = {
   recorder: Recorder
   transcriber: Transcriber
   brain: Brain
   voice: Voice
   widgets: WidgetChanges
+  browse: BrowseSource
 }
 
 /** A Session saved earlier, to resume where it was left. */
 export type SavedSession = { sessionId: string; turns: SavedTurn[] }
 
 export function createJarvisSession(
-  { recorder, transcriber, brain, voice, widgets }: JarvisAdapters,
+  { recorder, transcriber, brain, voice, widgets, browse }: JarvisAdapters,
   saved?: SavedSession
 ) {
   let nextId = 0
@@ -136,12 +157,19 @@ export function createJarvisSession(
     sessionId: saved?.sessionId ?? null,
     gone: false,
     search: null,
+    browse: null,
+    browseJustEnded: false,
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
   // Resolves to whether the Recorder actually started capturing the Utterance.
   let micStarted: Promise<boolean> = Promise.resolve(false)
   const listeners = new Set<() => void>()
+  // Polling the Browse Task: on while watching, one load at a time.
+  let watchingBrowse = false
+  let browseTimer: ReturnType<typeof setTimeout> | undefined
+  // Bumped by every load and by teardown, so a late load changes nothing.
+  let browseLoad = 0
 
   function update(patch: Partial<JarvisSnapshot>) {
     snapshot = { ...snapshot, ...patch }
@@ -186,6 +214,8 @@ export function createJarvisSession(
     })
     // Before Speaking, so the screen matches what Jarvis is about to say.
     widgets.apply(widgetChanges)
+    // The Turn may have started or stopped a Browse Task.
+    void loadBrowse()
     append("jarvis", text, memoryEvents)
     setState("speaking")
     const played = await voice.speak(text).then(
@@ -196,6 +226,48 @@ export function createJarvisSession(
     if (turnGeneration !== generation) return
     if (!played) throw new TurnFailed(ERRORS.voice)
     setState("idle")
+  }
+
+  /**
+   * Shows a new Browse Task view. One that just ended Shows the Browser
+   * Widget, Hidden or not, and highlights it; that is the only cue.
+   */
+  function showBrowse(view: BrowseView | null) {
+    const ended = isRunning(snapshot.browse) && !isRunning(view)
+    if (ended) widgets.apply([{ type: "show", id: BROWSER_WIDGET_ID }])
+    update({
+      browse: view,
+      browseJustEnded: ended || (!isRunning(view) && snapshot.browseJustEnded),
+    })
+  }
+
+  /** Loads the Browse Task view, then again later while it's running. */
+  async function loadBrowse() {
+    if (!watchingBrowse) return
+    clearTimeout(browseTimer)
+    const load = ++browseLoad
+    try {
+      const view = await browse.view()
+      if (load !== browseLoad) return
+      showBrowse(view)
+    } catch (error) {
+      if (load !== browseLoad) return
+      // Offline for a moment: keep the last view and try again.
+      console.error("Loading the Browse Task failed", error)
+    }
+    pollBrowseLater()
+  }
+
+  function pollBrowseLater() {
+    if (isRunning(snapshot.browse)) {
+      browseTimer = setTimeout(() => void loadBrowse(), BROWSE_POLL_MS)
+    }
+  }
+
+  function stopWatchingBrowse() {
+    watchingBrowse = false
+    browseLoad++
+    clearTimeout(browseTimer)
   }
 
   function discardUtterance() {
@@ -287,12 +359,41 @@ export function createJarvisSession(
       await runTurn(turnGeneration, () => reply(text, turnGeneration))
     },
     /**
+     * Follows the server's Browse Task: loads it now, and keeps it up to
+     * date while it runs, whether or not the Browser Widget is Shown.
+     */
+    watchBrowse() {
+      watchingBrowse = true
+      void loadBrowse()
+    },
+    /**
+     * The Owner pressed stop in the Browser Widget. Not a cue: they ended it
+     * themselves. Resolves to whether it stopped.
+     */
+    async stopBrowse() {
+      const load = ++browseLoad
+      clearTimeout(browseTimer)
+      try {
+        const view = await browse.stop()
+        if (load === browseLoad)
+          update({ browse: view, browseJustEnded: false })
+        return true
+      } catch (error) {
+        console.error("Stopping the Browse Task failed", error)
+        return false
+      } finally {
+        // Still running if it wouldn't stop.
+        if (load === browseLoad && watchingBrowse) pollBrowseLater()
+      }
+    },
+    /**
      * Leaves this Session, e.g. when the Owner opens another one: the Voice
      * stops at once and any late callback of the current Turn changes nothing.
      */
     teardown() {
       const { state } = snapshot
       generation++
+      stopWatchingBrowse()
       if (state === "speaking") voice.stop()
       if (state === "listening") {
         // Releases the microphone; the Utterance is never sent.

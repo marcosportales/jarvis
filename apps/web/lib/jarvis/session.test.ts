@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
+  BROWSE_POLL_MS,
   createJarvisSession,
   SessionGoneError,
   type Brain,
+  type BrowseSource,
   type JarvisState,
   type Recorder,
   type Reply,
@@ -11,6 +13,7 @@ import {
   type Voice,
   type WidgetChanges,
 } from "./session"
+import type { BrowseView } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
 import type { SearchOutcome } from "../search/outcome"
 import type { WidgetChange } from "../widgets/changes"
@@ -100,6 +103,34 @@ function fakeBrain() {
   }
 }
 
+/**
+ * Serves Browse Task views in order, the last one repeating; an Error in
+ * the list fails that load.
+ */
+function fakeBrowse(views: (BrowseView | null | Error)[] = [null]) {
+  let loads = 0
+  const stops: number[] = []
+  let stopped: BrowseView | null = null
+  const browse: BrowseSource = {
+    async view() {
+      const next = views[Math.min(loads++, views.length - 1)]
+      if (next instanceof Error) throw next
+      return next ?? null
+    },
+    async stop() {
+      stops.push(loads)
+      return stopped
+    },
+  }
+  return {
+    browse,
+    loads: () => loads,
+    stops,
+    /** What `stop()` answers. */
+    stopsWith: (view: BrowseView) => (stopped = view),
+  }
+}
+
 /** Shared by the fakes so tests can check what happened in which order. */
 type Events = string[]
 
@@ -145,6 +176,7 @@ function setup(
     recorder?: ReturnType<typeof fakeRecorder>
     transcriber?: ReturnType<typeof fakeTranscriber>
     saved?: Parameters<typeof createJarvisSession>[1]
+    browse?: ReturnType<typeof fakeBrowse>
   } = {}
 ) {
   const recorder = options.recorder ?? fakeRecorder()
@@ -153,6 +185,7 @@ function setup(
   const brain = fakeBrain()
   const voice = fakeVoice(events)
   const widgets = fakeWidgets(events)
+  const browse = options.browse ?? fakeBrowse()
   const session = createJarvisSession(
     {
       recorder: recorder.recorder,
@@ -160,6 +193,7 @@ function setup(
       brain: brain.brain,
       voice: voice.voice,
       widgets: widgets.widgets,
+      browse: browse.browse,
     },
     options.saved
   )
@@ -177,6 +211,7 @@ function setup(
     brain,
     voice,
     widgets,
+    browse,
     events,
     states,
     transcript,
@@ -665,6 +700,154 @@ describe("Jarvis Session", () => {
 
       expect(session.getSnapshot().state).toBe("speaking")
       expect(session.getSnapshot().search).toEqual(flights)
+    })
+  })
+
+  describe("Browse Task", () => {
+    const view = (overrides: Partial<BrowseView> = {}): BrowseView => ({
+      task: "Mira el horario del Prado",
+      startUrl: "https://www.museodelprado.es",
+      status: "running",
+      currentGoal: "I will open the visit page.",
+      currentUrl: "https://www.museodelprado.es/visita",
+      liveViewUrl: "https://live.browser-use.com?wss=x",
+      screenshotUrl: null,
+      outcome: null,
+      success: null,
+      startedAt: new Date("2026-10-14T12:00:00Z"),
+      endedAt: null,
+      ...overrides,
+    })
+    const running = view()
+    const finished = view({
+      status: "finished",
+      outcome: "Abre de 10:00 a 20:00.",
+      success: true,
+      liveViewUrl: null,
+      endedAt: new Date("2026-10-14T12:02:00Z"),
+    })
+    const showBrowser: WidgetChange = { type: "show", id: "browser" }
+
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    /** Lets due timers fire and pending promises settle. */
+    const tick = (ms = 0) => vi.advanceTimersByTimeAsync(ms)
+
+    it("loads the view once when the Session starts watching, and doesn't poll with no Browse Task", async () => {
+      const jarvis = setup()
+
+      jarvis.session.watchBrowse()
+      await tick(BROWSE_POLL_MS * 3)
+
+      expect(jarvis.browse.loads()).toBe(1)
+      expect(jarvis.session.getSnapshot().browse).toBeNull()
+    })
+
+    it("polls while the Browse Task runs, and stops once it has ended", async () => {
+      const browse = fakeBrowse([running, running, finished])
+      const jarvis = setup({ browse })
+
+      jarvis.session.watchBrowse()
+      await tick()
+      expect(jarvis.session.getSnapshot().browse).toEqual(running)
+
+      await tick(BROWSE_POLL_MS)
+      expect(browse.loads()).toBe(2)
+      await tick(BROWSE_POLL_MS)
+      expect(browse.loads()).toBe(3)
+      expect(jarvis.session.getSnapshot().browse).toEqual(finished)
+
+      await tick(BROWSE_POLL_MS * 5)
+      expect(browse.loads()).toBe(3)
+    })
+
+    it("Shows the Browser Widget and highlights it when it sees the Browse Task end", async () => {
+      const jarvis = setup({ browse: fakeBrowse([running, finished]) })
+      jarvis.session.watchBrowse()
+      await tick()
+      expect(jarvis.widgets.applied).toEqual([])
+      expect(jarvis.session.getSnapshot().browseJustEnded).toBe(false)
+
+      await tick(BROWSE_POLL_MS)
+
+      expect(jarvis.widgets.applied).toEqual([[showBrowser]])
+      expect(jarvis.session.getSnapshot().browseJustEnded).toBe(true)
+    })
+
+    it("leaves the Browser Widget alone for a Browse Task that had already ended", async () => {
+      const jarvis = setup({ browse: fakeBrowse([finished]) })
+
+      jarvis.session.watchBrowse()
+      await tick(BROWSE_POLL_MS)
+
+      expect(jarvis.session.getSnapshot().browse).toEqual(finished)
+      expect(jarvis.session.getSnapshot().browseJustEnded).toBe(false)
+      expect(jarvis.widgets.applied).toEqual([])
+    })
+
+    it("starts polling once a Reply starts a Browse Task", async () => {
+      const browse = fakeBrowse([null, running])
+      const jarvis = setup({ browse })
+      jarvis.session.watchBrowse()
+      await tick()
+
+      jarvis.session.sendTypedMessage("Sí, míralo")
+      await tick()
+      jarvis.brain.answer("Me pongo con ello.", [showBrowser])
+      await tick()
+
+      expect(browse.loads()).toBe(2)
+      expect(jarvis.session.getSnapshot().browse).toEqual(running)
+      await tick(BROWSE_POLL_MS)
+      expect(browse.loads()).toBe(3)
+    })
+
+    it("keeps the last view and keeps polling when a load fails", async () => {
+      const browse = fakeBrowse([running, new Error("offline"), running])
+      const jarvis = setup({ browse })
+      jarvis.session.watchBrowse()
+      await tick()
+
+      await tick(BROWSE_POLL_MS)
+      expect(jarvis.session.getSnapshot().browse).toEqual(running)
+
+      await tick(BROWSE_POLL_MS)
+      expect(browse.loads()).toBe(3)
+    })
+
+    it("stops polling when the Owner leaves the Session", async () => {
+      const browse = fakeBrowse([running])
+      const jarvis = setup({ browse })
+      jarvis.session.watchBrowse()
+      await tick()
+
+      jarvis.session.teardown()
+      await tick(BROWSE_POLL_MS * 3)
+
+      expect(browse.loads()).toBe(1)
+    })
+
+    it("stops the Browse Task from the Widget, without Showing or highlighting it", async () => {
+      const browse = fakeBrowse([running])
+      const stopped = view({ status: "stopped", liveViewUrl: null })
+      browse.stopsWith(stopped)
+      const jarvis = setup({ browse })
+      jarvis.session.watchBrowse()
+      await tick()
+
+      await jarvis.session.stopBrowse()
+      await tick(BROWSE_POLL_MS * 3)
+
+      expect(browse.stops).toHaveLength(1)
+      expect(jarvis.session.getSnapshot().browse).toEqual(stopped)
+      expect(jarvis.session.getSnapshot().browseJustEnded).toBe(false)
+      expect(jarvis.widgets.applied).toEqual([])
+      expect(browse.loads()).toBe(1)
     })
   })
 

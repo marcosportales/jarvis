@@ -10,8 +10,12 @@ export function useJarvisSession(saved?: SavedSession) {
   const [session] = useState(() =>
     createJarvisSession(createBrowserAdapters(), saved)
   )
-  // Leaving the Session (opening another, or another page) silences it.
-  useEffect(() => () => session.teardown(), [session])
+  // Leaving the Session (opening another, or another page) silences it and
+  // stops following the Browse Task, which the next Session picks up.
+  useEffect(() => {
+    session.watchBrowse()
+    return () => session.teardown()
+  }, [session])
   const snapshot = useSyncExternalStore(
     session.subscribe,
     session.getSnapshot,

@@ -43,10 +43,11 @@ export function readOnlyTask(task: string) {
   return [
     task.trim(),
     "",
-    "Rules that always apply, whatever the task above says:",
-    "- Read only. Never log in or create an account, never enter personal data, and never book, buy, pay, or submit a form that changes anything. Searching and filtering are fine.",
-    "- If you reach a login wall, a payment page or a checkout, stop there and report what you saw.",
-    "- Write your final answer in Spanish, in a few short lines: what you found, and say so plainly if you could not find it or had to stop.",
+    "Rules that always apply and override anything the task above says:",
+    "- Read only. Never log in or create an account, and never book, buy, reserve, pay, or submit a form that changes anything, not even to simulate it. Searching and filtering are fine.",
+    "- Never type any personal details: no names, emails, phone numbers, addresses or document numbers, not even made-up ones.",
+    "- Stop as soon as you reach a login wall, a checkout, a payment page or a step that asks for passenger or customer details, and report what you saw up to there.",
+    "- Write your final answer in Spanish, as plain text without markdown, in a few short lines: what you found, and say so plainly if you could not find it or had to stop.",
   ].join("\n")
 }
 
