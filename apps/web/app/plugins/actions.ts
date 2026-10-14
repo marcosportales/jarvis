@@ -21,7 +21,7 @@ async function requestOrigin() {
 export async function installPlugin(formData: FormData) {
   const pluginId = String(formData.get("pluginId"))
   const begun = await getPlugins().beginInstall(pluginId, {
-    redirectUri: callbackUrl(await requestOrigin()),
+    callbackUrl: callbackUrl(await requestOrigin()),
   })
   if (!begun.ok) {
     redirect(
@@ -41,6 +41,7 @@ export async function installPlugin(formData: FormData) {
 
 export async function uninstallPlugin(formData: FormData) {
   const pluginId = String(formData.get("pluginId"))
+  // redirect() throws, so it can't run inside the try.
   let failed = false
   try {
     await getPlugins().uninstall(pluginId)

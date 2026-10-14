@@ -87,6 +87,9 @@ const reconnectNotice = (name: string) =>
 const unavailableNotice = (name: string) =>
   `${name} no responde ahora mismo. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que lo intente más tarde.`
 
+const PLUGINS_UNAVAILABLE_NOTICE =
+  "Ahora mismo no puedes acceder a ningún servicio de los Plugins. Si te preguntan por uno, explica en una frase que no pudiste acceder y que lo intente más tarde."
+
 export type PluginsDeps = {
   /** `null` when the Composio API key is missing: every Plugin is not configured. */
   composio: ComposioPort | null
@@ -139,19 +142,19 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
     /** Install (and Reconnect) starts at the consent screen Composio returns. */
     async beginInstall(
       pluginId: string,
-      { redirectUri }: { redirectUri: string }
+      { callbackUrl }: { callbackUrl: string }
     ): Promise<BeginInstallResult> {
       const entry = findEntry(pluginId)
       if (!entry) return { ok: false, reason: "unknown-plugin" }
       if (!composio) return { ok: false, reason: "not-configured" }
 
       const state = randomBytes(32).toString("base64url")
-      const callbackUrl = new URL(redirectUri)
-      callbackUrl.searchParams.set("state", state)
+      const callbackWithState = new URL(callbackUrl)
+      callbackWithState.searchParams.set("state", state)
       try {
         const { connectedAccountId, redirectUrl } = await composio.authorize({
           toolkit: entry.toolkit,
-          callbackUrl: callbackUrl.toString(),
+          callbackUrl: callbackWithState.toString(),
         })
         return {
           ok: true,
@@ -167,7 +170,8 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
     /**
      * Finishes Install when Composio redirects back. Install and connect are
      * one action: unless the account is ACTIVE, nothing is Installed, and the
-     * attempt's account is deleted. A success leaves only the new account.
+     * attempt's account is deleted. A success deletes the toolkit's accounts
+     * that don't work, so one working connection remains.
      */
     async completeInstall({
       pending,
@@ -189,6 +193,9 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
 
       try {
         const account = await composio.getAccount(connectedAccountId)
+        if (account.toolkit !== entry.toolkit) {
+          return { ok: false, pluginId, reason: "failed" }
+        }
         if (account.status !== "ACTIVE") {
           await deleteQuietly(composio, [connectedAccountId])
           const cancelled = PENDING_STATUSES.has(account.status)
@@ -202,7 +209,7 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
         await deleteQuietly(
           composio,
           others
-            .filter((other) => other.id !== connectedAccountId)
+            .filter((other) => other.status !== "ACTIVE")
             .map((other) => other.id)
         )
       } catch (error) {
@@ -227,7 +234,7 @@ export function createPlugins({ composio, connector }: PluginsDeps) {
         plugins = await accountsByPlugin(composio)
       } catch (error) {
         console.error("Composio failed at the start of a Turn", error)
-        return { tools: {}, notices: [unavailableNotice("Plugins")], close: none }
+        return { tools: {}, notices: [PLUGINS_UNAVAILABLE_NOTICE], close: none }
       }
 
       const notices: string[] = []

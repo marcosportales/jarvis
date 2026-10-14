@@ -1,6 +1,9 @@
 import { Composio } from "@composio/core"
 
-/** One of the Owner's authorizations with a service, held by Composio. */
+/**
+ * One of the Owner's authorizations with a service, held by Composio. Named
+ * after Composio's "connected account"; it may be broken (not Connected).
+ */
 export type ConnectedAccount = {
   id: string
   /** The Composio toolkit slug, e.g. `gmail`. */

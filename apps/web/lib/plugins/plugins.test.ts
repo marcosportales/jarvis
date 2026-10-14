@@ -6,7 +6,7 @@ import type { ComposioPort, ConnectedAccount } from "./composio"
 import type { Connector } from "./connector"
 import { createPlugins } from "./plugins"
 
-const redirectUri = "http://localhost:3000/api/plugins/callback"
+const callbackUrl = "http://localhost:3000/api/plugins/callback"
 
 const GMAIL_TOOLS = [
   "GMAIL_FETCH_EMAILS",
@@ -178,7 +178,7 @@ async function installGmail(
     callback?: (state: string) => Record<string, string>
   } = {}
 ) {
-  const begun = await plugins.beginInstall("gmail", { redirectUri })
+  const begun = await plugins.beginInstall("gmail", { callbackUrl })
   if (!begun.ok) throw new Error(begun.reason)
   composio.finishConsent(begun.pending.connectedAccountId, status)
   const state = begun.pending.state
@@ -275,7 +275,7 @@ describe("Plugins", () => {
     it("sends the Owner to Composio's consent URL with a state in the callback", async () => {
       const { plugins, composio } = setup()
 
-      const begun = await plugins.beginInstall("gmail", { redirectUri })
+      const begun = await plugins.beginInstall("gmail", { callbackUrl })
 
       if (!begun.ok) throw new Error("expected Install to begin")
       expect(begun.authorizationUrl).toBe(
@@ -284,15 +284,15 @@ describe("Plugins", () => {
       expect(begun.pending.pluginId).toBe("gmail")
       expect(begun.pending.state.length).toBeGreaterThanOrEqual(32)
       const callback = new URL(composio.callbackUrls[0]!)
-      expect(callback.origin + callback.pathname).toBe(redirectUri)
+      expect(callback.origin + callback.pathname).toBe(callbackUrl)
       expect(callback.searchParams.get("state")).toBe(begun.pending.state)
     })
 
     it("uses a fresh state for every Install", async () => {
       const { plugins } = setup()
 
-      const first = await plugins.beginInstall("gmail", { redirectUri })
-      const second = await plugins.beginInstall("gmail", { redirectUri })
+      const first = await plugins.beginInstall("gmail", { callbackUrl })
+      const second = await plugins.beginInstall("gmail", { callbackUrl })
 
       if (!first.ok || !second.ok) throw new Error("expected Install to begin")
       expect(first.pending.state).not.toBe(second.pending.state)
@@ -301,7 +301,7 @@ describe("Plugins", () => {
     it("an Install opened but never finished doesn't count as Installed", async () => {
       const { plugins } = setup()
 
-      await plugins.beginInstall("gmail", { redirectUri })
+      await plugins.beginInstall("gmail", { callbackUrl })
 
       expect(await gmailState(plugins)).toBe("installable")
     })
@@ -309,7 +309,7 @@ describe("Plugins", () => {
     it("refuses to begin Install when Composio is not configured", async () => {
       const { plugins } = setup({ composio: null })
 
-      expect(await plugins.beginInstall("gmail", { redirectUri })).toEqual({
+      expect(await plugins.beginInstall("gmail", { callbackUrl })).toEqual({
         ok: false,
         reason: "not-configured",
       })
@@ -318,7 +318,7 @@ describe("Plugins", () => {
     it("refuses to begin Install for a Plugin not in the Marketplace", async () => {
       const { plugins } = setup()
 
-      expect(await plugins.beginInstall("slack", { redirectUri })).toEqual({
+      expect(await plugins.beginInstall("slack", { callbackUrl })).toEqual({
         ok: false,
         reason: "unknown-plugin",
       })
@@ -329,7 +329,7 @@ describe("Plugins", () => {
         composio: fakeComposio({ unreachable: true }),
       })
 
-      expect(await plugins.beginInstall("gmail", { redirectUri })).toEqual({
+      expect(await plugins.beginInstall("gmail", { callbackUrl })).toEqual({
         ok: false,
         reason: "failed",
       })
@@ -415,9 +415,7 @@ describe("Plugins", () => {
 
     it("fails when Composio can't be reached on the way back", async () => {
       const harness = setup()
-      const begun = await harness.plugins.beginInstall("gmail", {
-        redirectUri,
-      })
+      const begun = await harness.plugins.beginInstall("gmail", { callbackUrl })
       if (!begun.ok) throw new Error("expected Install to begin")
       const broken = setup({ composio: fakeComposio({ unreachable: true }) })
 
@@ -625,6 +623,7 @@ describe("Plugins", () => {
       expect(turn.tools).toEqual({})
       expect(turn.notices).toHaveLength(1)
       expect(turn.notices[0]).toMatch(/Plugins/)
+      expect(turn.notices[0]).toMatch(/más tarde/)
     })
 
     it("a tool call failing returns an explanation for the model instead of throwing", async () => {
