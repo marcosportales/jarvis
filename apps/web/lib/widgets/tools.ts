@@ -58,6 +58,8 @@ export function createWidgetTools(
   const changes: WidgetChange[] = []
   const widgets = catalogLines(catalog)
   const ids = catalog.map(({ id }) => id).join(", ")
+  const expandable = catalog.filter((widget) => widget.expandable)
+  const expandableIds = expandable.map(({ id }) => id).join(", ") || "ninguno"
   const idInput = z.object({
     id: z.string().describe(`El id del widget: ${ids}.`),
   })
@@ -111,13 +113,13 @@ export function createWidgetTools(
         },
       }),
       hide_widget: tool({
-        description: `Oculta un widget de la pantalla del dueño.\nWidgets disponibles:\n${widgets}`,
+        description: `Oculta un widget de la pantalla del dueño. Si está ampliado y piden cerrarlo, usa collapse_widget en su lugar.\nWidgets disponibles:\n${widgets}`,
         inputSchema: idInput,
         execute: async ({ id }) =>
           record({ type: "hide", id }, (name) => `Widget ${name} ocultado.`),
       }),
       move_widget: tool({
-        description: `Mueve un widget a un sitio de la pantalla del dueño; si estaba oculto, también lo muestra. Si el sitio ya tiene otro widget, se coloca junto a él.\nSitios:\n${spotLines}\nWidgets disponibles:\n${widgets}`,
+        description: `Mueve un widget a un sitio de la pantalla del dueño; si estaba oculto, también lo muestra. Si el sitio ya tiene otro widget, se coloca junto a él. Si es el widget ampliado, se reduce en su nuevo sitio.\nSitios:\n${spotLines}\nWidgets disponibles:\n${widgets}`,
         inputSchema: idInput.extend({
           spot: z.enum(SPOTS).describe("El sitio al que moverlo."),
         }),
@@ -131,6 +133,33 @@ export function createWidgetTools(
           )
         },
       }),
+      expand_widget: tool({
+        description: `Amplía un widget: lo muestra grande en el centro de la pantalla del dueño, sobre lo demás; si estaba oculto, también lo muestra. Solo puede haber uno ampliado, así que ampliar otro reduce el anterior. Úsalo solo cuando el dueño lo pida, nunca por tu cuenta.\nWidgets que se pueden ampliar:\n${catalogLines(expandable)}`,
+        inputSchema: z.object({
+          id: z
+            .string()
+            .describe(`El id del widget que ampliar: ${expandableIds}.`),
+        }),
+        execute: async ({ id }) => {
+          const widget = catalog.find((entry) => entry.id === id)
+          if (widget && !widget.expandable) {
+            return `El widget ${widget.name} no se puede ampliar. Los que se pueden ampliar son: ${expandableIds}.`
+          }
+          return record(
+            { type: "expand", id },
+            (name) => `Widget ${name} ampliado.`
+          )
+        },
+      }),
+      collapse_widget: tool({
+        description:
+          "Reduce el widget ampliado: vuelve a su sitio de siempre y sigue visible. Mientras hay uno ampliado, «ciérralo», «quítalo» o «hazlo pequeño» se refieren a esto, no a ocultarlo.",
+        inputSchema: z.object({}),
+        execute: async () => {
+          changes.push({ type: "collapse" })
+          return "Widget reducido."
+        },
+      }),
     },
     changes: () => [...changes],
   }
@@ -140,8 +169,8 @@ export function createWidgetTools(
 export function widgetLayoutNotice(layout: WidgetLayout) {
   if (layout.length === 0) return "El dueño no tiene widgets."
   const lines = layout.map(
-    ({ id, name, shown, spot, settings }) =>
-      `- ${id} (${name}): ${shown ? "visible" : "oculto"}, en ${spot} (${SPOT_NAMES[spot]}), ajustes ${JSON.stringify(settings)}`
+    ({ id, name, shown, expanded, spot, settings }) =>
+      `- ${id} (${name}): ${shown ? "visible" : "oculto"}${expanded ? ", ampliado," : ","} en ${spot} (${SPOT_NAMES[spot]}), ajustes ${JSON.stringify(settings)}`
   )
   return `Widgets del dueño ahora mismo:\n${lines.join("\n")}`
 }

@@ -14,14 +14,24 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Tool tests: `expand_widget` records an expand change for Results and Browser, answers in Spanish and records nothing for Weather and unknown ids, and `collapse_widget` records a collapse change
-- [ ] Tool test: the layout notice says "ampliado" for the Expanded Widget only
-- [ ] Board test: `applyChanges` handles `expand` and `collapse` in order with other changes
-- [ ] In the running app, by voice:
+- [x] Tool tests: `expand_widget` records an expand change for Results and Browser, answers in Spanish and records nothing for Weather and unknown ids, and `collapse_widget` records a collapse change
+- [x] Tool test: the layout notice says "ampliado" for the Expanded Widget only
+- [x] Board test: `applyChanges` handles `expand` and `collapse` in order with other changes
+- [x] In the running app, by voice:
   - "amplía los resultados" expands Results
   - "ciérralo" collapses it and leaves it Shown
   - "amplía el tiempo" gets a spoken refusal
   - expanding a Hidden Browser Widget Shows it Expanded
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
+
+## Comments
+
+Done on 2026-10-14. Checked in the running app by voice (headless Chrome, with each phrase made by Jarvis's own speech route and fed in as the microphone):
+
+- "Amplía los resultados." → Results Expanded; "Listo, ya tienes los resultados en grande."
+- "Ciérralo." → Results Collapsed and still Shown; "Hecho, vuelve a su sitio."
+- "Amplía el tiempo." → nothing changed; "El del tiempo no se puede ampliar, solo los resultados y el navegador."
+- With the Browser Widget Hidden, "Amplía el navegador." → Browser Shown and Expanded.
+- The `applyChanges` test for `expand` and `collapse` landed with 01, along with the Board side of the changes.

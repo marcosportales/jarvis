@@ -228,3 +228,91 @@ describe("Widget layout notice with Widget Settings", () => {
     expect(notice).toContain('ajustes {"place":"Londres"}')
   })
 })
+
+describe("Jarvis's tools for Expanded Widgets", () => {
+  const WITH_EXPANDABLE: WidgetInfo[] = [
+    ...CATALOG,
+    {
+      id: "results",
+      name: "Resultados",
+      description: "Lo que encontró la última búsqueda.",
+      source: "built-in",
+      expandable: true,
+    },
+    {
+      id: "browser",
+      name: "Navegador",
+      description: "La navegación actual en directo.",
+      source: "built-in",
+      expandable: true,
+    },
+  ]
+
+  it("records an expand change for an Expandable Widget", async () => {
+    const turn = createWidgetTools(WITH_EXPANDABLE)
+
+    const results = await call(turn, "expand_widget", { id: "results" })
+    await call(turn, "expand_widget", { id: "browser" })
+
+    expect(turn.changes()).toEqual([
+      { type: "expand", id: "results" },
+      { type: "expand", id: "browser" },
+    ])
+    expect(results).toMatch(/Resultados/)
+  })
+
+  it("answers in Spanish and records nothing for a Widget that can't be Expanded, or doesn't exist", async () => {
+    const turn = createWidgetTools(WITH_EXPANDABLE)
+
+    const weather = await call(turn, "expand_widget", { id: "weather" })
+    const unknown = await call(turn, "expand_widget", { id: "stocks" })
+
+    expect(turn.changes()).toEqual([])
+    expect(weather).toMatch(/Tiempo.*no se puede ampliar/)
+    expect(weather).toMatch(/results, browser/)
+    expect(unknown).toMatch(/no existe/)
+  })
+
+  it("lists only the Expandable Widgets in expand_widget", () => {
+    const { tools } = createWidgetTools(WITH_EXPANDABLE)
+
+    const description = tools.expand_widget?.description ?? ""
+    expect(description).toContain("results")
+    expect(description).toContain("browser")
+    expect(description).not.toContain("weather")
+    expect(description).not.toContain("clock")
+  })
+
+  it("records a collapse change for collapse_widget", async () => {
+    const turn = createWidgetTools(WITH_EXPANDABLE)
+
+    await call(turn, "collapse_widget", {})
+
+    expect(turn.changes()).toEqual([{ type: "collapse" }])
+  })
+
+  it("tells Jarvis which Widget is Expanded", () => {
+    const notice = widgetLayoutNotice([
+      {
+        id: "weather",
+        name: "Tiempo",
+        shown: true,
+        expanded: false,
+        spot: "right-top",
+        settings: {},
+      },
+      {
+        id: "results",
+        name: "Resultados",
+        shown: true,
+        expanded: true,
+        spot: "left-top",
+        settings: {},
+      },
+    ])
+
+    expect(notice).toContain("results (Resultados): visible, ampliado,")
+    expect(notice).toContain("weather (Tiempo): visible, en right-top")
+    expect(notice.match(/ampliado/g)).toHaveLength(1)
+  })
+})
