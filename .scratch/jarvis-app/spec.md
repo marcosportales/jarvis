@@ -66,7 +66,7 @@ Only the Owner's Arch Linux machine (Hyprland, Wayland) is supported for now. No
 31. As the Owner, I want to hold the Floating Orb with the mouse for Push-to-talk, so that I can talk to Jarvis without a key.
 32. As the Owner, I want clicking the Floating Orb (without holding it) to bring up the Jarvis window, so that the Transcript and Widgets are one click away.
 33. As the Owner, I want the Floating Orb to hold nothing but the Orb, so that it stays small and never covers my work.
-34. As the Owner, I want the Floating Orb's window to have a fixed window class, so that one Hyprland window rule floats and pins it where I want.
+34. As the Owner, I want the Floating Orb's window to have a fixed window class and title, so that one Hyprland window rule floats and pins it where I want.
 35. As the Owner, I want the Floating Orb not to take focus when shown or clicked, so that typing in my current app isn't interrupted.
 36. As the Owner, I want the Floating Orb to stay in step with the Jarvis window, so that both always show the same Jarvis State.
 
@@ -102,7 +102,7 @@ Only the Owner's Arch Linux machine (Hyprland, Wayland) is supported for now. No
 
 - A new `desktop` workspace in the monorepo, an Electron app. It depends on `web` but adds no Jarvis feature of its own. Everything a browser tab could do stays in `apps/web`.
 - The web app is built with Next's standalone output, traced from the monorepo root so workspace packages are included. The Jarvis App packages that standalone server together with its static assets and the database migrations folder.
-- The server runs in an Electron utility process (Electron's own Node, never the system's), started with the standalone app folder as its working directory, because migrations are found relative to it. `better-sqlite3` is rebuilt for Electron's Node when packaging.
+- The server runs in an Electron utility process (Electron's own Node, never the system's), started with the standalone app folder as its working directory, because migrations are found relative to it. `better-sqlite3` needs no rebuild: its prebuilt binary is a Node-API addon, which loads in Electron's Node as it is, so packaging only checks that it's there.
 - Server environment: `HOSTNAME=127.0.0.1`, `PORT` from `JARVIS_PORT` or 3737, `JARVIS_DB_PATH` under the app's config directory, and every variable from `jarvis.env`. Unset optional keys behave as today (e.g. no Composio key means Plugins show "No configurado").
 - The window is shown once the server answers over HTTP. If the server exits or doesn't answer within a time limit, the Jarvis App shows an error dialog with the reason and the log file path, then quits. Server output goes to a log file in the config directory.
 - Packaging: electron-builder, Linux target (AppImage) plus a `.desktop` entry. No signing, no auto-update and no Windows/macOS targets yet.
@@ -142,7 +142,7 @@ A thin Electron adapter wires the real Electron APIs to these ports. It also:
 ### Push-to-talk from any app (Wayland portal)
 
 - The Shortcuts port is backed by the XDG desktop portal's Global Shortcuts interface over the session D-Bus. It opens a portal session, binds one shortcut with id `push-to-talk` (preferred trigger `SUPER+J`), and maps the portal's `Activated` and `Deactivated` signals to `pressed` and `released`.
-- On Hyprland the Owner binds the key in `hyprland.conf` against the app's portal app id. The README documents the exact lines, including `exec-once` for `jarvis --hidden` and the window rules that float and pin the Floating Orb by its window class.
+- On Hyprland the Owner binds the key in `hyprland.conf` against the app's portal app id. The README documents the exact lines, including `exec-once` for `jarvis --hidden` and the window rules that float and pin the Floating Orb by its window class (`Jarvis`, shared by all of the Jarvis App's windows) and its fixed title (`Jarvis Floating Orb`).
 - If the portal or the shortcut isn't available, the Jarvis App still runs and logs it; only Push-to-talk from any app is missing.
 - Electron's own global shortcut API is not used: it never reports a release.
 
@@ -222,7 +222,7 @@ A thin Electron adapter wires the real Electron APIs to these ports. It also:
 
 ## Further Notes
 
-- On Wayland, Electron can ask for "always on top", but Hyprland decides. The Floating Orb relies on the Owner's window rule for its class. The README gives it.
+- On Wayland, Electron can ask for "always on top", but Hyprland decides. The Floating Orb relies on the Owner's window rule for its class and title. The README gives it.
 - The page already has an Orb (the round button with "Mantén pulsado el orbe…"). The glossary now names it, and the Floating Orb reuses it. Neither is a Widget.
 - `apps/web`'s Next.js 16 docs in `node_modules/next/dist/docs/` must be checked for the standalone output and its monorepo tracing option before changing the build. The installed Turborepo's docs must be checked before adding the desktop tasks (AGENTS.md).
 - ADR 0009 records why Electron over a PWA, a browser `--app` window with a background service, Tauri, or a hosted server.

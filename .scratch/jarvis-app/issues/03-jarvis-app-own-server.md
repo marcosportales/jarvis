@@ -4,7 +4,7 @@
 
 The server:
 - The web app builds with Next's standalone output, traced from the monorepo root, and runs in an Electron utility process on Electron's own Node.
-- `better-sqlite3` is rebuilt for Electron, and the migrations folder ships with the app.
+- `better-sqlite3` loads in Electron as it is (its prebuilt binary is a Node-API addon, so no rebuild), and the migrations folder ships with the app.
 - The server runs from the standalone app folder, because migrations are found relative to it.
 - It listens on `127.0.0.1` only, at `JARVIS_PORT` or 3737.
 - Keys come from `~/.config/Jarvis/jarvis.env`.

@@ -10,8 +10,8 @@ We considered a PWA, which gives Jarvis its own window but can't start or keep t
 
 ## Consequences
 
-- `better-sqlite3` is a native module and must be rebuilt for Electron's Node; the server runs in an Electron background process, never on the system's Node, so the Jarvis App needs nothing installed beside it.
+- The server runs in an Electron background process, never on the system's Node, so the Jarvis App needs nothing installed beside it. `better-sqlite3` is a native module, but its prebuilt binary is a Node-API addon, which loads in Electron's Node without a rebuild; packaging only checks that it's there. A native module that isn't Node-API would have to be rebuilt for Electron.
 - Electron's own global shortcuts only report a key going down, so holding Push-to-talk from another app goes through the XDG desktop portal's Global Shortcuts over D-Bus, which reports press and release. On Hyprland the Owner binds the key in `hyprland.conf`; KDE and GNOME offer the same portal.
-- On Wayland the compositor, not the app, decides what floats and stays on top; the Floating Orb's window has a fixed class so a window rule can float and pin it.
+- On Wayland the compositor, not the app, decides what floats and stays on top; the Floating Orb's window is matched by a window rule that floats and pins it. Electron gives every window of an app the same Wayland app id (X11 class), `Jarvis`, which the portal also needs, so the Floating Orb can't have a class of its own: the rule matches that class together with the Floating Orb's fixed title, `Jarvis Floating Orb`, which its page can't change.
 - Google refuses sign-in inside embedded app windows, so connecting a Plugin opens the Owner's own browser, which reaches the same server.
 - Only the Owner's Arch Linux (Hyprland) machine is supported for now; nothing machine-specific is baked in, so installers for other systems can come later.

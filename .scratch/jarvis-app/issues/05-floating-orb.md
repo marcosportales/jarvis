@@ -4,7 +4,7 @@
 
 The window:
 - It is always shown while the Jarvis App runs.
-- It has a fixed window class, so a Hyprland window rule floats and pins it.
+- It has a fixed window class and title (the class `Jarvis` is shared by all of the Jarvis App's windows; the title `Jarvis Floating Orb` is its own), so a Hyprland window rule floats and pins it.
 - It never takes focus.
 
 The page:
