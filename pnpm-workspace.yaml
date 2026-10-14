@@ -9,3 +9,8 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   msw: false
+
+overrides:
+  # dbus-next's optional native helper passes Unix fds, which Jarvis never
+  # does; it would pull node-gyp in for nothing.
+  usocket: "-"

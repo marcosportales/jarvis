@@ -12,7 +12,7 @@ export default [
   {
     // The shared config doesn't pick up TypeScript files on its own. Its
     // parser doesn't see TypeScript's scopes, so tsc checks names instead.
-    files: ["**/*.ts"],
+    files: ["**/*.ts", "**/*.cts"],
     rules: {
       "no-undef": "off",
       "no-unused-vars": "off",

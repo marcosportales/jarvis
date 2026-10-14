@@ -16,16 +16,16 @@ See `../spec.md` (stories 19–28; "Push-to-talk from any app", "The page side: 
 
 **Status:** ready-for-agent
 
-- [ ] App Bridge tests, real Jarvis Session with fake adapters (as `session.test.ts`):
+- [x] App Bridge tests, real Jarvis Session with fake adapters (as `session.test.ts`):
   - bridge press then release → a Turn
   - a short hold → discarded with the usual hint
   - a press while Speaking cuts the Reply
   - every Jarvis State change is published
   - a Jarvis App hold survives a window blur, while a Space hold still ends on blur
   - no bridge → nothing wired
-- [ ] Portal adapter test with a fake D-Bus: our id's `Activated`/`Deactivated` → pressed/released; other ids ignored
-- [ ] App controller test: shortcut pressed/released reach the Jarvis page without showing or focusing the window
+- [x] Portal adapter test with a fake D-Bus: our id's `Activated`/`Deactivated` → pressed/released; other ids ignored
+- [x] App controller test: shortcut pressed/released reach the Jarvis page without showing or focusing the window
 - [ ] In the running app on Hyprland:
   - with the README's bind, holding `SUPER + J` in another app while Jarvis is hidden makes a Turn that is Spoken and appears in the Transcript
   - focus stays in the other app
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass
