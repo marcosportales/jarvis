@@ -17,8 +17,12 @@ _Avoid_: Bot, agent, AI
 ### Conversation
 
 **Session**:
-One continuous conversation between the Owner and Jarvis. It ends when the page is closed or reloaded; nothing said in it carries over.
-_Avoid_: Chat, thread, history
+One saved conversation between the Owner and Jarvis, kept until the Owner deletes it. The Owner can start a new one, resume any earlier one, or delete it; a Session exists only once its first Turn is done.
+_Avoid_: Chat, thread, history, conversation
+
+**Session Title**:
+The short name Jarvis gives a Session after its first Turn, shown in the Session list.
+_Avoid_: Name, label, subject
 
 **Turn**:
 One Utterance (or typed message) from the Owner together with Jarvis's Reply to it.
@@ -35,6 +39,16 @@ _Avoid_: Response, answer, completion
 **Transcript**:
 The visible text record of every Turn in the current Session.
 _Avoid_: Log, history
+
+### Memory
+
+**Memory**:
+One durable fact about the Owner that Jarvis keeps across all Sessions, e.g. a preference, a person in their life, a place, a routine, or a standing instruction. Not something Jarvis can look up through a Plugin, and not something only true for now.
+_Avoid_: Note, fact, observation, knowledge
+
+**Remember** / **Forget**:
+Jarvis saving or deleting a Memory, either because the Owner asked or, for remembering, because Jarvis judged it worth keeping, in which case it says so. Deleting a Session never forgets its Memories.
+_Avoid_: Store, save, learn
 
 ### Voice
 
@@ -91,7 +105,7 @@ A small floating panel on the Jarvis page showing one thing at a glance, e.g. th
 _Avoid_: Panel, card, overlay, gadget
 
 **Shown** / **Hidden**:
-Whether a Widget is currently on screen. Both the Owner and Jarvis can show or hide any Widget, and the choice is remembered across Sessions. Closing a Widget means hiding it.
+Whether a Widget is currently on screen. Both the Owner and Jarvis can show or hide any Widget, and the choice is kept across Sessions. Closing a Widget means hiding it.
 _Avoid_: Open, enabled, active
 
 **Spot**:
@@ -103,5 +117,5 @@ Where a Widget first appears before it has ever been moved, e.g. top-right for t
 _Avoid_: Default position
 
 **Widget Setting**:
-A choice about what a Widget shows that Jarvis can change, e.g. the Weather Widget's place. Remembered like the Widget's position.
+A choice about what a Widget shows that Jarvis can change, e.g. the Weather Widget's place. Kept like the Widget's position.
 _Avoid_: Option, config, parameter
