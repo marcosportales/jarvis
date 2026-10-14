@@ -7,11 +7,11 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Weather Widget can be dragged anywhere on screen by mouse and by touch
-- [ ] Clicking the ✕ still closes it and never drags it
-- [ ] The dragged position survives a reload
-- [ ] Shrinking the window keeps the Widget fully visible
-- [ ] Widget Board tests (seeded random, fixed viewport) cover: drag and persist, clamping on resize, random placement in the margins without overlap for Widgets without a Starting Spot
-- [ ] Lint, typecheck and tests pass
+- [x] The Weather Widget can be dragged anywhere on screen by mouse and by touch
+- [x] Clicking the ✕ still closes it and never drags it
+- [x] The dragged position survives a reload
+- [x] Shrinking the window keeps the Widget fully visible
+- [x] Widget Board tests (seeded random, fixed viewport) cover: drag and persist, clamping on resize, random placement in the margins without overlap for Widgets without a Starting Spot
+- [x] Lint, typecheck and tests pass

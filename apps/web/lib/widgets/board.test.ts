@@ -9,6 +9,8 @@ import {
 
 const VIEWPORT = { width: 1600, height: 1000 }
 const WIDGET_SIZE = { width: 200, height: 100 }
+/** The orb and Transcript column spans 500–1100px of the viewport. */
+const COLUMN_WIDTH = 600
 
 const WEATHER: BoardWidget = { id: "weather", startingSpot: "right-top" }
 const CLOCK: BoardWidget = { id: "clock", startingSpot: "left-bottom" }
@@ -24,15 +26,33 @@ function memoryStorage(initial: Record<string, string> = {}) {
 
 function board(
   registry: BoardWidget[] = [WEATHER],
-  storage = memoryStorage().storage
+  storage = memoryStorage().storage,
+  random = () => 0.5
 ) {
   return createWidgetBoard({
     registry,
     storage,
     viewport: VIEWPORT,
     widgetSize: WIDGET_SIZE,
-    random: () => 0.5,
+    columnWidth: COLUMN_WIDTH,
+    random,
   })
+}
+
+/** A repeatable stand-in for `Math.random`. */
+function seededRandom(seed: number) {
+  let state = seed
+  return () => {
+    state = (state * 1103515245 + 12345) % 2 ** 31
+    return state / 2 ** 31
+  }
+}
+
+function overlaps(a: { left: number; top: number }, b: typeof a) {
+  return (
+    Math.abs(a.left - b.left) < WIDGET_SIZE.width &&
+    Math.abs(a.top - b.top) < WIDGET_SIZE.height
+  )
 }
 
 /** Converts a Widget's stored fractions back to pixels for readable checks. */
@@ -144,5 +164,112 @@ describe("Widget Board", () => {
     ])
     const restored = board([WEATHER, CLOCK], storage).getSnapshot().widgets
     expect(restored.find((widget) => widget.id === "clock")!.shown).toBe(true)
+  })
+
+  it("moves a dragged Widget and remembers it on the next start", () => {
+    const { storage } = memoryStorage()
+    board([WEATHER], storage).drag("weather", { left: 700, top: 400 })
+
+    const reloaded = board([WEATHER], storage).getSnapshot().widgets[0]!
+
+    expect(pixels(reloaded.position)).toEqual({ left: 700, top: 400 })
+  })
+
+  it("keeps a Widget dragged past the edge fully inside the window", () => {
+    const widgets = board()
+
+    widgets.drag("weather", { left: 1550, top: -40 })
+
+    // 1600 − 200 wide, and no higher than the top edge.
+    expect(pixels(widgets.getSnapshot().widgets[0]!.position)).toEqual({
+      left: 1400,
+      top: 0,
+    })
+  })
+
+  it("pulls Widgets back into a shrunk window and remembers it", () => {
+    const { storage } = memoryStorage()
+    const widgets = board([WEATHER], storage)
+
+    widgets.resize({ width: 800, height: 500 })
+
+    // Was 16px from the right of 1600; now the right edge of 800 − 200 wide.
+    const resized = widgets.getSnapshot().widgets[0]!.position
+    expect({
+      left: Math.round(resized.x * 800),
+      top: Math.round(resized.y * 500),
+    }).toEqual({ left: 600, top: 8 })
+    const reloaded = board([WEATHER], storage).getSnapshot().widgets[0]!
+    expect(reloaded.position).toEqual(resized)
+  })
+
+  it("pulls a layout saved in a wider window into view on start", () => {
+    const { storage } = memoryStorage()
+    board([WEATHER], storage).drag("weather", { left: 1400, top: 900 })
+
+    const widget = createWidgetBoard({
+      registry: [WEATHER],
+      storage,
+      viewport: { width: 800, height: 500 },
+      widgetSize: WIDGET_SIZE,
+      columnWidth: COLUMN_WIDTH,
+      random: () => 0.5,
+    }).getSnapshot().widgets[0]!
+
+    expect({
+      left: Math.round(widget.position.x * 800),
+      top: Math.round(widget.position.y * 500),
+    }).toEqual({ left: 600, top: 400 })
+  })
+
+  it.each([1, 2, 3, 4, 5])(
+    "places Widgets without a Starting Spot in a free place in the margins (seed %i)",
+    (seed) => {
+      const registry = [
+        WEATHER,
+        ...["notes", "clock", "news", "music"].map((id) => ({ id })),
+      ]
+
+      const placed = board(
+        registry,
+        memoryStorage().storage,
+        seededRandom(seed)
+      )
+        .getSnapshot()
+        .widgets.map((widget) => pixels(widget.position))
+
+      for (const [index, at] of placed.entries()) {
+        const inLeftMargin = at.left >= 0 && at.left + 200 <= 500
+        const inRightMargin = at.left >= 1100 && at.left + 200 <= 1600
+        expect(inLeftMargin || inRightMargin).toBe(true)
+        expect(at.top).toBeGreaterThanOrEqual(0)
+        expect(at.top + 100).toBeLessThanOrEqual(1000)
+        for (const other of placed.slice(0, index)) {
+          expect(overlaps(at, other)).toBe(false)
+        }
+      }
+    }
+  )
+
+  it("uses both margins for Widgets without a Starting Spot", () => {
+    const registry = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id }))
+
+    const sides = board(registry, memoryStorage().storage, seededRandom(7))
+      .getSnapshot()
+      .widgets.map((widget) =>
+        pixels(widget.position).left < 800 ? "left" : "right"
+      )
+
+    expect(new Set(sides)).toEqual(new Set(["left", "right"]))
+  })
+
+  it("keeps a randomly placed Widget's place on the next start", () => {
+    const { storage } = memoryStorage()
+    const registry = [WEATHER, { id: "notes" }]
+    const first = board(registry, storage, seededRandom(1)).getSnapshot()
+
+    const again = board(registry, storage, seededRandom(99)).getSnapshot()
+
+    expect(again.widgets[1]!.position).toEqual(first.widgets[1]!.position)
   })
 })
