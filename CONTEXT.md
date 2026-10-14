@@ -33,7 +33,7 @@ A single stretch of the Owner's speech, captured while push-to-talk is held.
 _Avoid_: Recording, clip, voice message
 
 **Reply**:
-What Jarvis says back in a Turn — shown as text and spoken aloud.
+What Jarvis says back in a Turn — shown as text and spoken aloud — including what it says while it uses its tools, e.g. "déjame mirarlo". Jarvis starts speaking it, a sentence at a time, before it has finished writing it, and the Transcript shows each part as it is spoken.
 _Avoid_: Response, answer, completion
 
 **Transcript**:
@@ -72,7 +72,7 @@ The Jarvis State from the end of an Utterance (or a typed message) until the Rep
 _Avoid_: Transcribing, processing, loading
 
 **Speaking**:
-The Jarvis State while the Reply is being played aloud. Starting push-to-talk cuts it short.
+The Jarvis State while the Reply is being played aloud, from its first spoken sentence on, even while Jarvis is still writing the rest. Starting push-to-talk cuts it short: the voice stops at once, but the Reply is still finished, saved and shown in full, and the Owner's next message waits for it.
 
 **Idle**:
 The Jarvis State when none of the others apply.
