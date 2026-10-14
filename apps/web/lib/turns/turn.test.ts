@@ -680,6 +680,99 @@ describe("Taking a Turn", () => {
       )
     })
 
+    it.each([
+      [
+        "search_news",
+        { query: "Real Madrid" },
+        "COMPOSIO_SEARCH_NEWS",
+        { query: "Real Madrid", hl: "es", gl: "es" },
+        { kind: "news", heading: "Noticias: Real Madrid" },
+      ],
+      [
+        "search_hotels",
+        { place: "Lisboa", checkIn: "2026-11-03", checkOut: "2026-11-07" },
+        "COMPOSIO_SEARCH_HOTELS",
+        {
+          q: "Lisboa",
+          check_in_date: "2026-11-03",
+          check_out_date: "2026-11-07",
+          adults: 2,
+          children: 0,
+          currency: "EUR",
+          hl: "es",
+          gl: "es",
+        },
+        { kind: "hotels", heading: "Hoteles en Lisboa · 3–7 nov" },
+      ],
+      [
+        "search_places",
+        { query: "restaurantes japoneses", near: "Sol, Madrid" },
+        "COMPOSIO_SEARCH_GOOGLE_MAPS",
+        { q: "restaurantes japoneses cerca de Sol, Madrid" },
+        {
+          kind: "places",
+          heading: "Lugares: restaurantes japoneses · cerca de Sol, Madrid",
+        },
+      ],
+      [
+        "search_events",
+        { query: "conciertos", place: "Madrid" },
+        "COMPOSIO_SEARCH_EVENT",
+        { query: "conciertos", location: "Madrid", hl: "es", gl: "es" },
+        { kind: "events", heading: "Eventos: conciertos · Madrid" },
+      ],
+    ])(
+      "runs %s and returns its outcome with the Results Widget shown",
+      async (toolName, input, slug, args, outcome) => {
+        const search = fakeSearch()
+        const { turns } = setup(
+          [call(toolName, input), answer("Mira la pantalla.")],
+          {
+            search,
+          }
+        )
+
+        const reply = await turns.take({ text: "Busca", widgets: LAYOUT })
+
+        expect(search.calls).toEqual([{ slug, args }])
+        expect(reply.search).toMatchObject(outcome)
+        expect(reply.search?.results.length).toBeGreaterThan(1)
+        expect(reply.widgetChanges).toEqual([{ type: "show", id: "results" }])
+      }
+    )
+
+    it("searches hotels for the guests, currency and country named", async () => {
+      const search = fakeSearch()
+      const { turns } = setup(
+        [
+          call("search_hotels", {
+            place: "Nueva York",
+            checkIn: "2026-12-01",
+            checkOut: "2026-12-05",
+            adults: 1,
+            children: 2,
+            currency: "usd",
+            country: "US",
+          }),
+          answer("Listo."),
+        ],
+        { search }
+      )
+
+      await turns.take({ text: "Hoteles en Nueva York", widgets: LAYOUT })
+
+      expect(search.calls[0]?.args).toEqual({
+        q: "Nueva York",
+        check_in_date: "2026-12-01",
+        check_out_date: "2026-12-05",
+        adults: 1,
+        children: 2,
+        currency: "USD",
+        hl: "es",
+        gl: "us",
+      })
+    })
+
     it("returns no Search Outcome when the Turn didn't search", async () => {
       const { turns } = setup([answer("Hola.")])
 

@@ -1,7 +1,15 @@
 import { tool, type ToolSet } from "ai"
 import { z } from "zod"
 
-import { mapFlights, mapPage, mapWeb } from "./mappers"
+import {
+  mapEvents,
+  mapFlights,
+  mapHotels,
+  mapNews,
+  mapPage,
+  mapPlaces,
+  mapWeb,
+} from "./mappers"
 import type { ResultsOnScreen, SearchOutcome, SearchResult } from "./outcome"
 import type { SearchPort, SearchSlug } from "./port"
 
@@ -248,6 +256,111 @@ export function createSearchTools({
             },
             (data) =>
               mapFlights(data, { from, to, outboundDate, returnDate, currency })
+          ),
+      }),
+      search_news: tool({
+        description:
+          "Busca noticias recientes sobre un tema en medios de prensa. Devuelve titulares con su medio y cuándo se publicaron.",
+        inputSchema: z.object({
+          query: z.string().min(1).describe("El tema de las noticias."),
+          country: countryInput,
+        }),
+        execute: ({ query, country }) =>
+          run("COMPOSIO_SEARCH_NEWS", { query, ...region(country) }, (data) =>
+            mapNews(data, { query })
+          ),
+      }),
+      search_hotels: tool({
+        description:
+          "Busca hoteles en un lugar para unas fechas, con precio por noche, valoración y enlace.",
+        inputSchema: z.object({
+          place: z
+            .string()
+            .min(1)
+            .describe(
+              "Ciudad, barrio o lugar, por ejemplo «Lisboa» o «Chiado, Lisboa»."
+            ),
+          checkIn: dayInput.describe("Fecha de entrada, AAAA-MM-DD."),
+          checkOut: dayInput.describe("Fecha de salida, AAAA-MM-DD."),
+          adults: passengersInput("Adultos.", 2),
+          children: passengersInput("Niños.", 0),
+          currency: currencyInput,
+          country: countryInput,
+        }),
+        execute: ({
+          place,
+          checkIn,
+          checkOut,
+          adults,
+          children,
+          currency,
+          country,
+        }) =>
+          run(
+            "COMPOSIO_SEARCH_HOTELS",
+            {
+              q: place,
+              check_in_date: checkIn,
+              check_out_date: checkOut,
+              adults,
+              children,
+              currency,
+              ...region(country),
+            },
+            (data) => mapHotels(data, { place, checkIn, checkOut, currency })
+          ),
+      }),
+      search_places: tool({
+        description:
+          "Busca sitios reales en Google Maps (restaurantes, tiendas, museos…) con su valoración y dirección.",
+        inputSchema: z.object({
+          query: z
+            .string()
+            .min(1)
+            .describe(
+              "Qué sitios buscar, por ejemplo «restaurantes japoneses»."
+            ),
+          near: z
+            .string()
+            .min(1)
+            .optional()
+            .describe(
+              "Cerca de dónde, con la ciudad, por ejemplo «Sol, Madrid». Sin él, el lugar debe ir en query."
+            ),
+        }),
+        execute: ({ query, near }) =>
+          run(
+            "COMPOSIO_SEARCH_GOOGLE_MAPS",
+            { q: near ? `${query} cerca de ${near}` : query },
+            (data) => mapPlaces(data, { query, near })
+          ),
+      }),
+      search_events: tool({
+        description:
+          "Busca eventos próximos (conciertos, festivales, teatro, conferencias…) con su fecha y lugar.",
+        inputSchema: z.object({
+          query: z
+            .string()
+            .min(1)
+            .describe(
+              "El tipo de evento, por ejemplo «conciertos de jazz»; no vale solo «eventos»."
+            ),
+          place: z
+            .string()
+            .min(1)
+            .optional()
+            .describe("La ciudad, solo su nombre, por ejemplo «Madrid»."),
+          country: countryInput,
+        }),
+        execute: ({ query, place, country }) =>
+          run(
+            "COMPOSIO_SEARCH_EVENT",
+            {
+              query,
+              ...(place ? { location: place } : {}),
+              ...region(country),
+            },
+            (data) => mapEvents(data, { query, place })
           ),
       }),
     },

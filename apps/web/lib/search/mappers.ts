@@ -269,3 +269,211 @@ export function mapFlights(
     results,
   } satisfies SearchOutcome
 }
+
+/** "4,0 de 5 (3102 opiniones)", or nothing without a rating. */
+function rating(stars: number | null | undefined, reviews?: number | null) {
+  if (stars == null) return null
+  const value = stars.toLocaleString("es-ES", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  const count = reviews ? ` (${reviews.toLocaleString("es-ES")} opiniones)` : ""
+  return { label: "Valoración", value: `${value} de 5${count}` }
+}
+
+/** Only the items that parse; one odd item doesn't lose the others. */
+function each<T>(items: unknown[] | null | undefined, schema: z.ZodType<T>) {
+  return (items ?? []).flatMap((item) => {
+    const parsed = schema.safeParse(item)
+    return parsed.success ? [parsed.data] : []
+  })
+}
+
+const newsSchema = z.object({ news_results: z.array(z.unknown()).nullish() })
+
+const newsItemSchema = z.object({
+  title: z.string(),
+  snippet: z.string().nullish(),
+  link: z.string().nullish(),
+  source: z.string().nullish(),
+  /** Relative and in Spanish, e.g. "hace 16 horas". */
+  date: z.string().nullish(),
+})
+
+export function mapNews(data: unknown, { query }: { query: string }) {
+  const items = each(newsSchema.parse(data).news_results, newsItemSchema)
+  return {
+    kind: "news",
+    heading: `Noticias: ${query}`,
+    results: items.slice(0, MAX_RESULTS).map((item) =>
+      result({
+        title: item.title,
+        subtitle: item.snippet,
+        facts: [item.date ? { label: "Publicada", value: item.date } : null],
+        url: item.link,
+        source: item.source ?? (item.link ? siteOf(item.link) : undefined),
+      })
+    ),
+  } satisfies SearchOutcome
+}
+
+/** "3–7 nov", or "30 oct – 2 nov" across months. */
+function stay(checkIn: string, checkOut: string) {
+  const [inDay, inMonth] = shortDay(checkIn).split(" ").slice(1)
+  const [outDay, outMonth] = shortDay(checkOut).split(" ").slice(1)
+  if (!inDay || !outDay) return `${checkIn} – ${checkOut}`
+  return inMonth === outMonth
+    ? `${inDay}–${outDay} ${outMonth}`
+    : `${inDay} ${inMonth} – ${outDay} ${outMonth}`
+}
+
+const hotelsSchema = z.object({
+  results: z.object({ properties: z.array(z.unknown()).nullish() }),
+})
+
+const hotelSchema = z.object({
+  name: z.string(),
+  hotel_class: z.string().nullish(),
+  link: z.string().nullish(),
+  overall_rating: z.number().nullish(),
+  reviews: z.number().nullish(),
+  address: z.string().nullish(),
+  rate_per_night: z
+    .object({ extracted_lowest: z.number().nullish() })
+    .nullish(),
+})
+
+export type HotelsSearch = {
+  place: string
+  /** `YYYY-MM-DD`. */
+  checkIn: string
+  checkOut: string
+  currency: string
+}
+
+export function mapHotels(
+  data: unknown,
+  { place, checkIn, checkOut, currency }: HotelsSearch
+) {
+  const hotels = each(hotelsSchema.parse(data).results.properties, hotelSchema)
+  return {
+    kind: "hotels",
+    heading: `Hoteles en ${place} · ${stay(checkIn, checkOut)}`,
+    results: hotels.slice(0, MAX_RESULTS).map((hotel) => {
+      const perNight = hotel.rate_per_night?.extracted_lowest
+      return result({
+        title: hotel.name,
+        subtitle: hotel.hotel_class,
+        facts: [
+          perNight != null
+            ? { label: "Precio por noche", value: money(perNight, currency) }
+            : null,
+          rating(hotel.overall_rating, hotel.reviews),
+          hotel.address ? { label: "Dirección", value: hotel.address } : null,
+        ],
+        url: hotel.link,
+        source: hotel.link ? siteOf(hotel.link) : undefined,
+      })
+    }),
+  } satisfies SearchOutcome
+}
+
+const placesSchema = z.object({
+  results: z.object({
+    local_results: z.array(z.unknown()).nullish(),
+    place_results: z.unknown().optional(),
+  }),
+})
+
+const placeSchema = z.object({
+  title: z.string(),
+  /** In English: Google Maps here takes no language (ticket 01). */
+  type: z.string().nullish(),
+  rating: z.number().nullish(),
+  reviews: z.number().nullish(),
+  address: z.string().nullish(),
+  place_id: z.string().nullish(),
+})
+
+/** Google's documented Maps URL for a place, which opens it in Maps. */
+function mapsLink(title: string, placeId: string | null | undefined) {
+  if (!placeId) return undefined
+  const params = new URLSearchParams({
+    api: "1",
+    query: title,
+    query_place_id: placeId,
+  })
+  return `https://www.google.com/maps/search/?${params}`
+}
+
+/** A search for several places, or a single place, both read the same. */
+export function mapPlaces(
+  data: unknown,
+  { query, near }: { query: string; near?: string }
+) {
+  const { local_results, place_results } = placesSchema.parse(data).results
+  const places = each(
+    local_results ?? (place_results ? [place_results] : []),
+    placeSchema
+  )
+  return {
+    kind: "places",
+    heading: near
+      ? `Lugares: ${query} · cerca de ${near}`
+      : `Lugares: ${query}`,
+    results: places.slice(0, MAX_RESULTS).map((place) =>
+      result({
+        title: place.title,
+        subtitle: place.type,
+        facts: [
+          rating(place.rating, place.reviews),
+          place.address ? { label: "Dirección", value: place.address } : null,
+        ],
+        url: mapsLink(place.title, place.place_id),
+        source: "Google Maps",
+      })
+    ),
+  } satisfies SearchOutcome
+}
+
+const eventsSchema = z.object({
+  results: z.object({ events_results: z.array(z.unknown()).nullish() }),
+})
+
+const eventSchema = z.object({
+  title: z.string(),
+  /** Absent in every result when confirmed (ticket 01). */
+  link: z.string().nullish(),
+  /** In English, e.g. "Oct 16, 7:30 PM". */
+  date: z.object({ when: z.string().nullish() }).nullish(),
+  venue: z.object({ name: z.string().nullish() }).nullish(),
+  address: z.array(z.string()).nullish(),
+})
+
+export function mapEvents(
+  data: unknown,
+  { query, place }: { query: string; place?: string }
+) {
+  const events = each(
+    eventsSchema.parse(data).results.events_results,
+    eventSchema
+  )
+  return {
+    kind: "events",
+    heading: place ? `Eventos: ${query} · ${place}` : `Eventos: ${query}`,
+    results: events.slice(0, MAX_RESULTS).map((event) => {
+      const venue = event.venue?.name
+      const where = (event.address ?? []).filter((line) => line !== venue)
+      return result({
+        title: event.title,
+        subtitle: where.join(", "),
+        facts: [
+          event.date?.when ? { label: "Fecha", value: event.date.when } : null,
+          venue ? { label: "Lugar", value: venue } : null,
+        ],
+        url: event.link,
+        source: event.link ? siteOf(event.link) : undefined,
+      })
+    }),
+  } satisfies SearchOutcome
+}

@@ -1,14 +1,27 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  EVENTS,
   FLIGHTS,
   FLIGHTS_ROUND_TRIP,
   FLIGHTS_WITH_LAYOVER,
+  HOTELS,
+  NEWS,
   PAGE,
   PAGE_FAILED,
+  PLACES,
   WEB,
 } from "./fixtures"
-import { MAX_RESULTS, mapFlights, mapPage, mapWeb } from "./mappers"
+import {
+  MAX_RESULTS,
+  mapEvents,
+  mapFlights,
+  mapHotels,
+  mapNews,
+  mapPage,
+  mapPlaces,
+  mapWeb,
+} from "./mappers"
 
 describe("Mapping a web Search", () => {
   it("turns citations into Results, with their site as the source", () => {
@@ -228,5 +241,160 @@ describe("Mapping a flights Search", () => {
 
   it("finds nothing when there are no flights", () => {
     expect(mapFlights({ results: {} }, madridRome).results).toEqual([])
+  })
+})
+
+describe("Mapping a news Search", () => {
+  it("gives each headline with its source, time and link", () => {
+    const outcome = mapNews(NEWS, { query: "Real Madrid" })
+
+    expect(outcome.kind).toBe("news")
+    expect(outcome.heading).toBe("Noticias: Real Madrid")
+    expect(outcome.results).toHaveLength(3)
+    expect(outcome.results[0]).toEqual({
+      title: "¿Qué pasó en el primer minuto al que hace referencia Mourinho?",
+      subtitle: expect.stringMatching(/^El técnico esquivó cinco preguntas/),
+      facts: [{ label: "Publicada", value: "hace 16 horas" }],
+      url: expect.stringMatching(/^https:\/\/www\.marca\.com\//),
+      source: "MARCA",
+    })
+  })
+
+  it("finds nothing in an empty news response", () => {
+    expect(
+      mapNews({ news_results: [], has_results: false }, { query: "x" }).results
+    ).toEqual([])
+  })
+})
+
+describe("Mapping a hotels Search", () => {
+  const lisbon = {
+    place: "Lisboa",
+    checkIn: "2026-11-03",
+    checkOut: "2026-11-07",
+    currency: "EUR",
+  }
+
+  it("gives each hotel's price per night, rating and link", () => {
+    const outcome = mapHotels(HOTELS, lisbon)
+
+    expect(outcome.kind).toBe("hotels")
+    expect(outcome.heading).toBe("Hoteles en Lisboa · 3–7 nov")
+    expect(outcome.results[0]).toEqual({
+      title: "VIP Grand Lisboa Hotel & Spa",
+      subtitle: "Hotel de 5 estrellas",
+      facts: [
+        { label: "Precio por noche", value: "98 €" },
+        { label: "Valoración", value: "4,0 de 5 (3102 opiniones)" },
+        { label: "Dirección", value: "Avenida 5 de Outubro 197" },
+      ],
+      url: expect.stringMatching(/^https:\/\/www\.viphotels\.com\//),
+      source: "viphotels.com",
+    })
+    expect(JSON.stringify(outcome)).not.toMatch(/property_token|gps/)
+  })
+
+  it("spans months in the heading when the stay does", () => {
+    const outcome = mapHotels(HOTELS, {
+      ...lisbon,
+      checkIn: "2026-10-30",
+      checkOut: "2026-11-02",
+    })
+
+    expect(outcome.heading).toBe("Hoteles en Lisboa · 30 oct – 2 nov")
+  })
+})
+
+describe("Mapping a places Search", () => {
+  it("gives each place's rating, address and a Maps link", () => {
+    const outcome = mapPlaces(PLACES, {
+      query: "restaurantes japoneses",
+      near: "Sol, Madrid",
+    })
+
+    expect(outcome.kind).toBe("places")
+    expect(outcome.heading).toBe(
+      "Lugares: restaurantes japoneses · cerca de Sol, Madrid"
+    )
+    expect(outcome.results[1]).toEqual({
+      title: "MUSASHI",
+      subtitle: "Japanese restaurant",
+      facts: [
+        { label: "Valoración", value: "4,5 de 5 (2630 opiniones)" },
+        {
+          label: "Dirección",
+          value: "C. de las Conchas, 4, Centro, 28013 Madrid, Spain",
+        },
+      ],
+      url: "https://www.google.com/maps/search/?api=1&query=MUSASHI&query_place_id=ChIJyyYDC3woQg0RZ8cee-5110o",
+      source: "Google Maps",
+    })
+  })
+
+  it("reads a single place too", () => {
+    const outcome = mapPlaces(
+      {
+        results: {
+          place_results: {
+            title: "Museo del Prado",
+            type: "Art museum",
+            rating: 4.8,
+            reviews: 150000,
+            address: "C. de Ruiz de Alarcón, 23, 28014 Madrid",
+            place_id: "ChIJ_prado",
+          },
+        },
+      },
+      { query: "Museo del Prado" }
+    )
+
+    expect(outcome.heading).toBe("Lugares: Museo del Prado")
+    expect(outcome.results).toEqual([
+      expect.objectContaining({
+        title: "Museo del Prado",
+        facts: [
+          { label: "Valoración", value: "4,8 de 5 (150.000 opiniones)" },
+          {
+            label: "Dirección",
+            value: "C. de Ruiz de Alarcón, 23, 28014 Madrid",
+          },
+        ],
+      }),
+    ])
+  })
+})
+
+describe("Mapping an events Search", () => {
+  it("gives each event's date and venue; with no link, its card is plain", () => {
+    const outcome = mapEvents(EVENTS, { query: "conciertos", place: "Madrid" })
+
+    expect(outcome.kind).toBe("events")
+    expect(outcome.heading).toBe("Eventos: conciertos · Madrid")
+    expect(outcome.results[1]).toEqual({
+      title: "Concierto sinfónica B/2 Viernes",
+      subtitle: "Madrid, Spain",
+      facts: [
+        { label: "Fecha", value: "Oct 16, 7:30 PM" },
+        { label: "Lugar", value: "Teatro Monumental" },
+      ],
+    })
+  })
+
+  it("links an event that has a link", () => {
+    const outcome = mapEvents(
+      {
+        results: {
+          events_results: [
+            { title: "Jazz", link: "https://www.entradas.com/jazz", date: {} },
+          ],
+        },
+      },
+      { query: "jazz" }
+    )
+
+    expect(outcome.results[0]).toMatchObject({
+      url: "https://www.entradas.com/jazz",
+      source: "entradas.com",
+    })
   })
 })
