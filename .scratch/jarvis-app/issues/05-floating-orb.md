@@ -21,11 +21,11 @@ See `../spec.md` (stories 29–36; "The page side: the App Bridge", "The App con
 
 **Status:** ready-for-agent
 
-- [ ] App controller tests:
+- [x] App controller tests:
   - the Jarvis page's state reaches the Floating Orb
   - a Floating Orb hold relays press/release to the Jarvis page
   - a click shows and focuses the Jarvis window
-- [ ] Floating Orb page tests:
+- [x] Floating Orb page tests:
   - hold vs click by the threshold
   - shows each Jarvis State it receives
 - [ ] In the running app on Hyprland, with the README's rules:
@@ -33,4 +33,4 @@ See `../spec.md` (stories 29–36; "The page side: the App Bridge", "The App con
   - it goes Listening → Thinking → Speaking during a `SUPER + J` Turn
   - holding it makes a Turn
   - clicking it brings back the hidden Jarvis window
-- [ ] Typecheck, lint and the full test suite pass
+- [x] Typecheck, lint and the full test suite pass

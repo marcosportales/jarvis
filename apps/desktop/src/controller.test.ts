@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { createAppController } from "./controller.js"
-import type { JarvisPageMessage } from "./ports.js"
+import type { FloatingOrbPageMessage, JarvisPageMessage } from "./ports.js"
 
 const ORIGIN = "http://localhost:3000"
 
@@ -31,6 +31,9 @@ function fakeApp({
     jarvisVisible: false,
     jarvisFocused: false,
     pageMessages: [] as JarvisPageMessage[],
+    floatingOrbUrl: undefined as string | undefined,
+    floatingOrbVisible: false,
+    floatingOrbMessages: [] as FloatingOrbPageMessage[],
     openedInBrowser: [] as string[],
     errors: [] as { title: string; detail: string }[],
     exited: false,
@@ -76,6 +79,17 @@ function fakeApp({
       },
       isJarvisVisible: () => state.jarvisVisible,
       sendToJarvis: (message) => state.pageMessages.push(message),
+      openFloatingOrb: async (url) => {
+        state.floatingOrbUrl = url
+      },
+      showFloatingOrb: () => {
+        if (!state.floatingOrbUrl) throw new Error("No Floating Orb yet")
+        state.floatingOrbVisible = true
+      },
+      sendToFloatingOrb: (message) => {
+        if (!state.floatingOrbUrl) throw new Error("No Floating Orb yet")
+        state.floatingOrbMessages.push(message)
+      },
     },
     shortcuts: {
       onPushToTalk: (listeners) => {
@@ -429,6 +443,98 @@ describe("Push-to-talk from any app", () => {
     app.pushToTalk.pressed()
 
     expect(app.state.pageMessages).toEqual([])
+  })
+})
+
+describe("The Floating Orb", () => {
+  async function launched(argv: string[] = ["--hidden"]) {
+    const app = fakeApp()
+    const launching = app.controller.launch(argv)
+    await app.serverAnswers()
+    await launching
+    return app
+  }
+
+  it("is shown once the server answers, even when launched with --hidden", async () => {
+    const app = fakeApp()
+    const launching = app.controller.launch(["--hidden"])
+    await settle()
+    expect(app.state.floatingOrbVisible).toBe(false)
+
+    await app.serverAnswers()
+    await launching
+
+    expect(app.state.floatingOrbUrl).toBe(`${ORIGIN}/floating-orb`)
+    expect(app.state.floatingOrbVisible).toBe(true)
+    expect(app.state.jarvisVisible).toBe(false)
+  })
+
+  it("is shown beside a shown Jarvis window", async () => {
+    const app = await launched([])
+
+    expect(app.state.jarvisVisible).toBe(true)
+    expect(app.state.floatingOrbVisible).toBe(true)
+  })
+
+  it("receives every Jarvis State the Jarvis page publishes", async () => {
+    const app = await launched()
+
+    const states = ["listening", "thinking", "speaking", "idle"] as const
+    for (const state of states) app.controller.jarvisState(state)
+
+    expect(app.state.floatingOrbMessages).toEqual(
+      states.map((state) => ({ type: "jarvis-state", state }))
+    )
+  })
+
+  it("gets the latest Jarvis State published before it was open", async () => {
+    const app = fakeApp()
+    const launching = app.controller.launch([])
+    await settle()
+
+    app.controller.jarvisState("listening")
+    app.controller.jarvisState("thinking")
+    await app.serverAnswers()
+    await launching
+
+    expect(app.state.floatingOrbMessages).toEqual([
+      { type: "jarvis-state", state: "thinking" },
+    ])
+  })
+
+  it("relays a hold to the Jarvis page as Push-to-talk, without showing it", async () => {
+    const app = await launched()
+
+    app.controller.floatingOrb("press")
+    app.controller.floatingOrb("release")
+
+    expect(app.state.pageMessages).toEqual([
+      { type: "push-to-talk", action: "press" },
+      { type: "push-to-talk", action: "release" },
+    ])
+    expect(app.state.jarvisVisible).toBe(false)
+    expect(app.state.jarvisFocused).toBe(false)
+  })
+
+  it("shows and focuses the Jarvis window when clicked", async () => {
+    const app = await launched()
+
+    app.controller.floatingOrb("click")
+
+    expect(app.state.jarvisVisible).toBe(true)
+    expect(app.state.jarvisFocused).toBe(true)
+    expect(app.state.pageMessages).toEqual([])
+  })
+
+  it("stays open when something tries to close it, unless Jarvis is quitting", async () => {
+    const app = await launched()
+
+    expect(app.controller.closeFloatingOrb()).toBe("deny")
+    expect(app.state.floatingOrbVisible).toBe(true)
+
+    const quitting = app.controller.quit()
+    expect(app.controller.closeFloatingOrb()).toBe("allow")
+    await quitting
   })
 })
 

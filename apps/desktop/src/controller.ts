@@ -1,12 +1,15 @@
 /**
  * The App controller holds the Jarvis App's decisions: when the Jarvis window
- * shows, what closing it means, how Jarvis quits, and which URLs leave for the
- * Owner's browser. It works only through its ports, so it never touches
- * Electron; the Electron adapter in `main.ts` feeds it events and obeys it.
+ * shows, what closing it means, how Jarvis quits, what the Floating Orb
+ * relays, and which URLs leave for the Owner's browser. It works only
+ * through its ports, so it never touches Electron; the Electron adapter in
+ * `main.ts` feeds it events and obeys it.
  */
 
 import type {
   Dialogs,
+  FloatingOrbGesture,
+  JarvisState,
   Server,
   Shell,
   Shortcuts,
@@ -54,6 +57,9 @@ export function createAppController({
   let jarvisOpen = false
   /** A request to show the window that came before it was open. */
   let showWhenOpen = false
+  let floatingOrbOpen = false
+  /** The Jarvis page's latest Jarvis State, for a Floating Orb opened later. */
+  let jarvisState: JarvisState | undefined
   let quitting: Promise<void> | undefined
 
   function showJarvis() {
@@ -79,6 +85,10 @@ export function createAppController({
   /** Push-to-talk reaches the page without showing or focusing the window. */
   function sendPushToTalk(action: "press" | "release") {
     if (jarvisOpen) windows.sendToJarvis({ type: "push-to-talk", action })
+  }
+
+  function sendJarvisState(state: JarvisState) {
+    windows.sendToFloatingOrb({ type: "jarvis-state", state })
   }
 
   /** Tells the Owner why Jarvis can't go on, then quits. */
@@ -120,15 +130,49 @@ export function createAppController({
       }
       if (quitting) return
 
-      await windows.openJarvis(`${origin}/`)
-      jarvisOpen = true
-      if (showWhenOpen) showJarvis()
+      await Promise.all([
+        (async () => {
+          await windows.openJarvis(`${origin}/`)
+          jarvisOpen = true
+          if (showWhenOpen) showJarvis()
+        })(),
+        (async () => {
+          // The Floating Orb is always shown, even when launched --hidden.
+          await windows.openFloatingOrb(`${origin}/floating-orb`)
+          floatingOrbOpen = true
+          windows.showFloatingOrb()
+          if (jarvisState) sendJarvisState(jarvisState)
+        })(),
+      ])
     },
 
     /** The Jarvis App was launched again while this one runs. */
     secondLaunch(argv: readonly string[]) {
       if (argv.includes("--quit")) return void quit()
       showJarvis()
+    },
+
+    /**
+     * The Jarvis page's Jarvis State changed. The Floating Orb shows it too,
+     * so both always agree.
+     */
+    jarvisState(state: JarvisState) {
+      jarvisState = state
+      if (floatingOrbOpen) sendJarvisState(state)
+    },
+
+    /**
+     * The Owner held or clicked the Floating Orb. A hold is Push-to-talk on
+     * the Jarvis page, which stays hidden or behind; a click brings it up.
+     */
+    floatingOrb(gesture: FloatingOrbGesture) {
+      if (gesture === "click") showJarvis()
+      else sendPushToTalk(gesture)
+    },
+
+    /** Something tries to close the Floating Orb: it stays while Jarvis runs. */
+    closeFloatingOrb(): Verdict {
+      return quitting ? "allow" : "deny"
     },
 
     /** The Owner closes the Jarvis window: hide it, unless Jarvis is quitting. */

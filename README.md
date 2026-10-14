@@ -106,6 +106,37 @@ hl.bind("SUPER + J", hl.dsp.global("Jarvis:push-to-talk"))
 
 `hyprctl globalshortcuts` lists `Jarvis:push-to-talk` while the Jarvis App runs. If the portal or the shortcut isn't available, the Jarvis App still runs and says why in its output; only this key is missing.
 
+### The Floating Orb
+
+While the Jarvis App runs, it also shows the Floating Orb: the Orb alone in a small transparent window, showing the Jarvis State. Hold it with the mouse to speak, as with the Orb on the Jarvis page; a short click brings up the Jarvis window. It never takes focus from your app.
+
+Electron gives all of the Jarvis App's windows the same class, `Jarvis`, so the Floating Orb is told apart by its fixed title, `Jarvis Floating Orb`. These window rules float it, pin it above other windows on every workspace, keep focus out of it, and place it at the bottom right. Put them after your other window rules, so they win over any catch-all rule that sizes, centres or dims floating windows. In `hyprland.conf`:
+
+```
+windowrule = match:class ^Jarvis$, match:title ^Jarvis Floating Orb$, float on, pin on, no_focus on, size 96 96, move (monitor_w-120) (monitor_h-120), border_size 0, no_shadow on, no_blur on, opacity 1 override
+```
+
+or, with a Lua config (`hyprland.lua`):
+
+```lua
+hl.window_rule({
+    name        = "jarvis-floating-orb",
+    match       = { class = "^Jarvis$", title = "^Jarvis Floating Orb$" },
+    float       = true,
+    pin         = true,
+    no_focus    = true,
+    size        = "96 96",
+    move        = "(monitor_w-120) (monitor_h-120)",
+    center      = false,
+    border_size = 0,
+    no_shadow   = true,
+    no_blur     = true,
+    opacity     = "1 override",
+})
+```
+
+`hyprctl clients` shows it as `class: Jarvis`, `title: Jarvis Floating Orb`.
+
 ## Plugins
 
 Open http://localhost:3000/plugins to see the Marketplace. Plugins reach their services through [Composio](https://composio.dev) (ADR 0005), which holds the Owner's authorizations; Jarvis stores no tokens.

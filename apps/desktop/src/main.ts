@@ -1,8 +1,9 @@
 /**
  * The Electron adapter: wires Electron's real APIs to the App controller's
  * ports and feeds it Electron's events. Every decision is the controller's;
- * this file only keeps a single instance, grants the microphone, and keeps
- * the Jarvis window working (and where it was) while hidden.
+ * this file only keeps a single instance, grants the microphone, keeps the
+ * Jarvis window working (and where it was) while hidden, and checks what the
+ * pages send over IPC.
  */
 
 import { readFileSync, writeFileSync } from "node:fs"
@@ -12,6 +13,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   screen,
   session,
@@ -19,13 +21,24 @@ import {
   Tray,
 } from "electron"
 
-import { PAGE_CHANNEL } from "./channels.js"
+import {
+  FLOATING_ORB_CHANNEL,
+  JARVIS_STATE_CHANNEL,
+  PAGE_CHANNEL,
+} from "./channels.js"
 import { createAppController, type AppController } from "./controller.js"
 import { connectSessionBus } from "./dbus.js"
 import { jarvisServer, type JarvisServer } from "./electron-server.js"
+import { createFloatingOrbWindow } from "./floating-orb-window.js"
+import { parseFloatingOrbGesture, parseJarvisState } from "./page-messages.js"
 import { grantsPermission } from "./permissions.js"
 import { createPortalShortcuts } from "./portal-shortcuts.js"
-import type { JarvisPageMessage, Tray as TrayPort, Windows } from "./ports.js"
+import type {
+  FloatingOrbPageMessage,
+  JarvisPageMessage,
+  Tray as TrayPort,
+  Windows,
+} from "./ports.js"
 import { restoreBounds } from "./window-bounds.js"
 
 const ICON = path.join(import.meta.dirname, "../assets/icon.png")
@@ -129,7 +142,23 @@ function grantMicrophoneToJarvis(origin: string) {
 
 function electronWindows(controller: () => AppController): Windows {
   let jarvis: BrowserWindow | undefined
+  let floatingOrb: BrowserWindow | undefined
   const boundsFile = path.join(app.getPath("userData"), "window-bounds.json")
+
+  // Each page may send only its own messages: the Jarvis State from the
+  // Jarvis page, holds and clicks from the Floating Orb.
+  ipcMain.on(JARVIS_STATE_CHANNEL, (event, value: unknown) => {
+    const state = parseJarvisState(value)
+    if (state && event.sender === jarvis?.webContents) {
+      controller().jarvisState(state)
+    }
+  })
+  ipcMain.on(FLOATING_ORB_CHANNEL, (event, value: unknown) => {
+    const gesture = parseFloatingOrbGesture(value)
+    if (gesture && event.sender === floatingOrb?.webContents) {
+      controller().floatingOrb(gesture)
+    }
+  })
 
   function saveBounds() {
     if (!jarvis || jarvis.isDestroyed()) return
@@ -166,26 +195,7 @@ function electronWindows(controller: () => AppController): Windows {
       window.on("resized", saveBounds)
       window.on("moved", saveBounds)
 
-      const { webContents } = window
-      webContents.setWindowOpenHandler(({ url }) => ({
-        action: controller().navigation(url),
-      }))
-      const leaveIfOutside = (event: Electron.Event, url: string) => {
-        if (controller().navigation(url) === "deny") event.preventDefault()
-      }
-      webContents.on("will-navigate", (event) =>
-        leaveIfOutside(event, event.url)
-      )
-      webContents.on("will-redirect", (event) =>
-        leaveIfOutside(event, event.url)
-      )
-
-      try {
-        await window.loadURL(url)
-      } catch (error) {
-        // The page shows its own error; the window can still be reloaded.
-        console.error(`Couldn't load ${url}`, error)
-      }
+      await loadJarvisPage(window, url, controller)
     },
     showJarvis: () => jarvis?.show(),
     hideJarvis: () => jarvis?.hide(),
@@ -193,6 +203,44 @@ function electronWindows(controller: () => AppController): Windows {
     isJarvisVisible: () => jarvis?.isVisible() ?? false,
     sendToJarvis: (message: JarvisPageMessage) =>
       jarvis?.webContents.send(PAGE_CHANNEL, message),
+
+    async openFloatingOrb(url) {
+      floatingOrb = createFloatingOrbWindow({
+        preload: PRELOAD,
+        onClose: () => controller().closeFloatingOrb(),
+      })
+      await loadJarvisPage(floatingOrb, url, controller)
+    },
+    showFloatingOrb: () => floatingOrb?.showInactive(),
+    sendToFloatingOrb: (message: FloatingOrbPageMessage) =>
+      floatingOrb?.webContents.send(PAGE_CHANNEL, message),
+  }
+}
+
+/**
+ * Loads one of Jarvis's pages in `window`, keeping it on Jarvis's own pages:
+ * the controller sends any other URL to the Owner's browser.
+ */
+async function loadJarvisPage(
+  window: BrowserWindow,
+  url: string,
+  controller: () => AppController
+) {
+  const { webContents } = window
+  webContents.setWindowOpenHandler(({ url }) => ({
+    action: controller().navigation(url),
+  }))
+  const leaveIfOutside = (event: Electron.Event, url: string) => {
+    if (controller().navigation(url) === "deny") event.preventDefault()
+  }
+  webContents.on("will-navigate", (event) => leaveIfOutside(event, event.url))
+  webContents.on("will-redirect", (event) => leaveIfOutside(event, event.url))
+
+  try {
+    await window.loadURL(url)
+  } catch (error) {
+    // The page shows its own error; the window can still be reloaded.
+    console.error(`Couldn't load ${url}`, error)
   }
 }
 

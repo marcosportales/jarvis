@@ -15,13 +15,29 @@ export type Server = {
   onExit(listener: (reason: string) => void): void
 }
 
+/** What Jarvis is doing, as the Jarvis page's Session says. */
+export type JarvisState = "idle" | "listening" | "thinking" | "speaking"
+
 /** A message from the Jarvis App to the Jarvis page. */
 export type JarvisPageMessage = {
   type: "push-to-talk"
   action: "press" | "release"
 }
 
-/** The Jarvis App's windows. Only the Jarvis window for now. */
+/** A message from the Jarvis App to the Floating Orb page. */
+export type FloatingOrbPageMessage = {
+  type: "jarvis-state"
+  state: JarvisState
+}
+
+/**
+ * What the Owner did with the mouse on the Floating Orb: a hold beyond a
+ * short threshold is a Push-to-talk press then release; anything shorter is
+ * a click.
+ */
+export type FloatingOrbGesture = "press" | "release" | "click"
+
+/** The Jarvis App's windows: the Jarvis window and the Floating Orb. */
 export type Windows = {
   /** Opens the Jarvis window on `url`, hidden; resolves once it's loaded. */
   openJarvis(url: string): Promise<void>
@@ -30,6 +46,11 @@ export type Windows = {
   focusJarvis(): void
   isJarvisVisible(): boolean
   sendToJarvis(message: JarvisPageMessage): void
+  /** Opens the Floating Orb on `url`, hidden; resolves once it's loaded. */
+  openFloatingOrb(url: string): Promise<void>
+  /** Shows the Floating Orb without giving it focus. */
+  showFloatingOrb(): void
+  sendToFloatingOrb(message: FloatingOrbPageMessage): void
 }
 
 /** Push-to-talk held from any app. */

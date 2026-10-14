@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-import { JARVIS_STATE_CHANNEL, PAGE_CHANNEL } from "./channels.js"
+import {
+  FLOATING_ORB_CHANNEL,
+  JARVIS_STATE_CHANNEL,
+  PAGE_CHANNEL,
+} from "./channels.js"
 import type { JarvisAppApi } from "./preload.cjs"
-import type { JarvisPageMessage } from "./ports.js"
+import type { FloatingOrbPageMessage, JarvisPageMessage } from "./ports.js"
 
 /** Electron's renderer side, as far as the preload script uses it. */
 const electron = vi.hoisted(() => {
@@ -89,6 +93,72 @@ describe("The preload script", () => {
 
     expect(electron.sent).toEqual([
       { channel: JARVIS_STATE_CHANNEL, args: ["listening"] },
+    ])
+  })
+})
+
+describe("The preload script on the Floating Orb", () => {
+  function sendJarvisState(state: unknown) {
+    sendToPage({ type: "jarvis-state", state })
+  }
+
+  it("hands the page every Jarvis State the Jarvis App sends, and nothing else", async () => {
+    const jarvisApp = await loadPreload()
+    const states: string[] = []
+    jarvisApp.onJarvisState((state) => states.push(state))
+
+    for (const state of [
+      "listening",
+      "thinking",
+      "speaking",
+      "idle",
+    ] as const) {
+      sendToPage({
+        type: "jarvis-state",
+        state,
+      } satisfies FloatingOrbPageMessage)
+    }
+    sendJarvisState("asleep")
+    sendToPage({ type: "push-to-talk", action: "press" })
+
+    expect(states).toEqual(["listening", "thinking", "speaking", "idle"])
+  })
+
+  it("hands a late listener the latest Jarvis State at once", async () => {
+    const jarvisApp = await loadPreload()
+    sendJarvisState("listening")
+    sendJarvisState("thinking")
+
+    const states: string[] = []
+    jarvisApp.onJarvisState((state) => states.push(state))
+    sendJarvisState("speaking")
+
+    expect(states).toEqual(["thinking", "speaking"])
+  })
+
+  it("stops handing states once the page stops listening", async () => {
+    const jarvisApp = await loadPreload()
+    const states: string[] = []
+    const stop = jarvisApp.onJarvisState((state) => states.push(state))
+
+    stop()
+    sendJarvisState("listening")
+
+    expect(states).toEqual([])
+  })
+
+  it("sends the Owner's holds and clicks to the Jarvis App, and nothing else", async () => {
+    const jarvisApp = await loadPreload()
+
+    for (const gesture of ["press", "release", "click"] as const) {
+      jarvisApp.sendFloatingOrbGesture(gesture)
+    }
+    jarvisApp.sendFloatingOrbGesture("drag" as "click")
+
+    expect(electron.sent).toEqual([
+      { channel: FLOATING_ORB_CHANNEL, args: ["press"] },
+      { channel: FLOATING_ORB_CHANNEL, args: ["release"] },
+      { channel: FLOATING_ORB_CHANNEL, args: ["click"] },
     ])
   })
 })
