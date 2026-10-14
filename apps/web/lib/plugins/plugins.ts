@@ -3,19 +3,12 @@ import { randomBytes } from "node:crypto"
 import type { ToolSet } from "ai"
 
 import { marketplace, type PluginEntry } from "./catalog"
-import {
-  ConnectorAuthError,
-  type Connector,
-  type ConnectorSession,
-} from "./connector"
-import { OAuthAuthError, type OAuthClient, type OAuthTokens } from "./oauth"
-import type { PluginStore } from "./store"
-
-export type Env = Record<string, string | undefined>
+import type { ComposioPort, ConnectedAccount } from "./composio"
+import type { Connector, ConnectorSession } from "./connector"
 
 /**
- * - `not-configured`: the provider's OAuth credentials are missing from env.
- * - `installable`: not Installed; Install runs OAuth.
+ * - `not-configured`: the Composio API key is missing from env.
+ * - `installable`: not Installed; Install runs the consent flow.
  * - `connected`: Installed and authorized; Jarvis can use it.
  * - `reconnect`: Installed, but its authorization stopped working.
  */
@@ -33,17 +26,23 @@ export type MarketplaceItem = {
  * An Install waiting for the Owner to come back from the consent screen. The
  * caller keeps it somewhere only this browser can present (an httpOnly cookie).
  */
-export type PendingInstall = { pluginId: string; state: string }
+export type PendingInstall = {
+  pluginId: string
+  state: string
+  /** The account Composio created for this Install; the only one we trust. */
+  connectedAccountId: string
+}
 
 export type BeginInstallResult =
   | { ok: true; authorizationUrl: string; pending: PendingInstall }
-  | { ok: false; reason: "unknown-plugin" | "not-configured" }
+  | { ok: false; reason: "unknown-plugin" | "not-configured" | "failed" }
 
-/** Query params the provider sends back to the OAuth callback. */
-export type OAuthCallback = {
-  code?: string
+/** Query params Composio sends back to the callback. */
+export type InstallCallback = {
+  /** Ours, carried through Composio in the callback URL. */
   state?: string
-  error?: string
+  /** Composio's `success` or `failed`; only the account's status is trusted. */
+  status?: string
 }
 
 export type CompleteInstallResult =
@@ -65,107 +64,122 @@ export type TurnTools = {
   close(): Promise<void>
 }
 
-/** Refresh tokens this close to expiry so they don't lapse mid-Turn. */
-const EXPIRY_MARGIN_MS = 60_000
+/** Account statuses whose authorization stopped working (shown as Reconnect). */
+const BROKEN_STATUSES = new Set(["EXPIRED", "FAILED", "INACTIVE", "REVOKED"])
 
-const isAuthFailure = (error: unknown) =>
-  error instanceof OAuthAuthError || error instanceof ConnectorAuthError
+/** Account statuses of a consent flow that was started but not finished. */
+const PENDING_STATUSES = new Set(["INITIATED", "INITIALIZING"])
 
-/** Model-facing explanation of why a Plugin can't be used right now. */
-function failureNotice(name: string, needsReconnect: boolean) {
-  return needsReconnect
-    ? `No tienes acceso a ${name}: su autorización dejó de funcionar. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que el dueño debe reconectarlo en Plugins.`
-    : `${name} no responde ahora mismo. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que lo intente más tarde.`
+function stateOf(accounts: ConnectedAccount[]): PluginState {
+  if (accounts.some((account) => account.status === "ACTIVE")) {
+    return "connected"
+  }
+  if (accounts.some((account) => BROKEN_STATUSES.has(account.status))) {
+    return "reconnect"
+  }
+  return "installable"
 }
+
+/** Model-facing explanations of why a Plugin can't be used right now. */
+const reconnectNotice = (name: string) =>
+  `No tienes acceso a ${name}: su autorización dejó de funcionar. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que el dueño debe reconectarlo en Plugins.`
+
+const unavailableNotice = (name: string) =>
+  `${name} no responde ahora mismo. Si te preguntan por ${name}, explica en una frase que no pudiste acceder y que lo intente más tarde.`
+
+const PLUGINS_UNAVAILABLE_NOTICE =
+  "Ahora mismo no puedes acceder a ningún servicio de los Plugins. Si te preguntan por uno, explica en una frase que no pudiste acceder y que lo intente más tarde."
 
 export type PluginsDeps = {
-  env: Env
-  store: PluginStore
-  oauth: OAuthClient
+  /** `null` when the Composio API key is missing: every Plugin is not configured. */
+  composio: ComposioPort | null
   connector: Connector
-  now?: () => Date
 }
 
-function credentialsFor(entry: PluginEntry, env: Env) {
-  const { provider } = entry.connector.oauth
-  const clientId = env[provider.clientIdEnv]
-  const clientSecret = env[provider.clientSecretEnv]
-  return clientId && clientSecret ? { clientId, clientSecret } : undefined
-}
-
-export function createPlugins({
-  env,
-  store,
-  oauth,
-  connector,
-  now = () => new Date(),
-}: PluginsDeps) {
+export function createPlugins({ composio, connector }: PluginsDeps) {
   const findEntry = (pluginId: string) =>
     marketplace.find((entry) => entry.id === pluginId)
 
-  return {
-    async listMarketplace(): Promise<MarketplaceItem[]> {
-      const installed = new Map(
-        (await store.listInstalled()).map((p) => [p.pluginId, p])
+  /** The Owner's accounts, grouped by the Marketplace entry they belong to. */
+  async function accountsByPlugin(port: ComposioPort) {
+    const accounts = await port.listAccounts(
+      marketplace.map((entry) => entry.toolkit)
+    )
+    return marketplace.map((entry) => ({
+      entry,
+      accounts: accounts.filter((account) => account.toolkit === entry.toolkit),
+    }))
+  }
+
+  /** Deletes accounts, logging failures: cleanup never fails an Install. */
+  async function deleteQuietly(port: ComposioPort, ids: string[]) {
+    await Promise.all(
+      ids.map((id) =>
+        port.deleteAccount(id).catch((error: unknown) => {
+          console.error(`Could not delete Composio account ${id}`, error)
+        })
       )
-      return marketplace.map((entry) => {
-        const record = installed.get(entry.id)
-        const state: PluginState = !credentialsFor(entry, env)
-          ? "not-configured"
-          : !record
-            ? "installable"
-            : record.connected
-              ? "connected"
-              : "reconnect"
-        return { id: entry.id, name: entry.name, icon: entry.icon, state }
+    )
+  }
+
+  return {
+    /** Throws when Composio can't be reached. */
+    async listMarketplace(): Promise<MarketplaceItem[]> {
+      const item = (entry: PluginEntry, state: PluginState) => ({
+        id: entry.id,
+        name: entry.name,
+        icon: entry.icon,
+        state,
       })
+      if (!composio) {
+        return marketplace.map((entry) => item(entry, "not-configured"))
+      }
+      return (await accountsByPlugin(composio)).map(({ entry, accounts }) =>
+        item(entry, stateOf(accounts))
+      )
     },
 
-    /** Install (and Reconnect) starts at the provider's consent screen. */
+    /** Install (and Reconnect) starts at the consent screen Composio returns. */
     async beginInstall(
       pluginId: string,
-      { redirectUri }: { redirectUri: string }
+      { callbackUrl }: { callbackUrl: string }
     ): Promise<BeginInstallResult> {
       const entry = findEntry(pluginId)
       if (!entry) return { ok: false, reason: "unknown-plugin" }
-      const credentials = credentialsFor(entry, env)
-      if (!credentials) return { ok: false, reason: "not-configured" }
+      if (!composio) return { ok: false, reason: "not-configured" }
 
-      const { provider, scopes } = entry.connector.oauth
       const state = randomBytes(32).toString("base64url")
-      const url = new URL(provider.authorizationUrl)
-      url.search = new URLSearchParams({
-        client_id: credentials.clientId,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: scopes.join(" "),
-        state,
-        ...provider.authorizationParams,
-      }).toString()
-      return {
-        ok: true,
-        authorizationUrl: url.toString(),
-        pending: { pluginId, state },
+      const callbackWithState = new URL(callbackUrl)
+      callbackWithState.searchParams.set("state", state)
+      try {
+        const { connectedAccountId, redirectUrl } = await composio.authorize({
+          toolkit: entry.toolkit,
+          callbackUrl: callbackWithState.toString(),
+        })
+        return {
+          ok: true,
+          authorizationUrl: redirectUrl,
+          pending: { pluginId, state, connectedAccountId },
+        }
+      } catch (error) {
+        console.error(`Starting Install of ${pluginId} failed`, error)
+        return { ok: false, reason: "failed" }
       }
     },
 
     /**
-     * Finishes Install when the provider redirects back. Install and connect
-     * are one action: unless this succeeds, nothing is Installed.
+     * Finishes Install when Composio redirects back. Install and connect are
+     * one action: unless the account is ACTIVE, nothing is Installed, and the
+     * attempt's account is deleted. A success deletes the toolkit's accounts
+     * that don't work, so one working connection remains.
      */
     async completeInstall({
       pending,
-      redirectUri,
       callback,
     }: {
       pending: PendingInstall | undefined
-      redirectUri: string
-      callback: OAuthCallback
+      callback: InstallCallback
     }): Promise<CompleteInstallResult> {
-      // A cancelled consent changes nothing, so it needs no state check.
-      if (pending && callback.error) {
-        return { ok: false, pluginId: pending.pluginId, reason: "cancelled" }
-      }
       if (!pending || !callback.state || callback.state !== pending.state) {
         return {
           ok: false,
@@ -173,23 +187,31 @@ export function createPlugins({
           reason: "invalid-state",
         }
       }
-      const { pluginId } = pending
-      if (!callback.code) {
-        return { ok: false, pluginId, reason: "cancelled" }
-      }
+      const { pluginId, connectedAccountId } = pending
       const entry = findEntry(pluginId)
-      const credentials = entry && credentialsFor(entry, env)
-      if (!entry || !credentials)
-        return { ok: false, pluginId, reason: "failed" }
+      if (!entry || !composio) return { ok: false, pluginId, reason: "failed" }
 
       try {
-        const tokens = await oauth.exchangeCode({
-          provider: entry.connector.oauth.provider,
-          credentials,
-          code: callback.code,
-          redirectUri,
-        })
-        await store.saveInstall(pluginId, tokens, now())
+        const account = await composio.getAccount(connectedAccountId)
+        if (account.toolkit !== entry.toolkit) {
+          return { ok: false, pluginId, reason: "failed" }
+        }
+        if (account.status !== "ACTIVE") {
+          await deleteQuietly(composio, [connectedAccountId])
+          const cancelled = PENDING_STATUSES.has(account.status)
+          return {
+            ok: false,
+            pluginId,
+            reason: cancelled ? "cancelled" : "failed",
+          }
+        }
+        const others = await composio.listAccounts([entry.toolkit])
+        await deleteQuietly(
+          composio,
+          others
+            .filter((other) => other.status !== "ACTIVE")
+            .map((other) => other.id)
+        )
       } catch (error) {
         console.error(`Install of ${pluginId} failed`, error)
         return { ok: false, pluginId, reason: "failed" }
@@ -198,147 +220,93 @@ export function createPlugins({
     },
 
     /**
-     * The allowlisted tools of every Connected Plugin, named `<plugin>_<tool>`.
-     * Never throws because of a Plugin: problems become `notices`, and failing
-     * tool calls return an explanation for the model.
+     * The allowlisted tools of every Connected Plugin, under their Composio
+     * slugs, from one Composio session. Never throws because of a Plugin:
+     * problems become `notices`, and failing tool calls return an explanation
+     * for the model.
      */
     async toolsForTurn(): Promise<TurnTools> {
-      const sessions: ConnectorSession[] = []
-      const tools: ToolSet = {}
+      const none = async () => {}
+      if (!composio) return { tools: {}, notices: [], close: none }
+
+      let plugins
+      try {
+        plugins = await accountsByPlugin(composio)
+      } catch (error) {
+        console.error("Composio failed at the start of a Turn", error)
+        return { tools: {}, notices: [PLUGINS_UNAVAILABLE_NOTICE], close: none }
+      }
+
       const notices: string[] = []
+      const connected: PluginEntry[] = []
+      for (const { entry, accounts } of plugins) {
+        const state = stateOf(accounts)
+        if (state === "connected") connected.push(entry)
+        if (state === "reconnect") notices.push(reconnectNotice(entry.name))
+      }
+      if (connected.length === 0) return { tools: {}, notices, close: none }
 
-      for (const installed of await store.listInstalled()) {
-        const entry = findEntry(installed.pluginId)
-        if (!entry) continue
-        if (!installed.connected) {
-          notices.push(failureNotice(entry.name, true))
-          continue
-        }
-
-        try {
-          const { session, serverTools } = await openConnector(entry)
-          sessions.push(session)
-          for (const name of entry.connector.toolAllowlist) {
-            const serverTool = serverTools[name]
-            if (serverTool) {
-              tools[`${entry.id}_${name}`] = guardToolCalls(entry, serverTool)
-            }
+      let session: ConnectorSession | undefined
+      const tools: ToolSet = {}
+      try {
+        const mcp = await composio.openSession({
+          tools: Object.fromEntries(
+            connected.map((entry) => [entry.toolkit, entry.toolAllowlist])
+          ),
+        })
+        session = await connector.connect(mcp)
+        const served = await session.tools()
+        // The session is already limited; the allowlist is checked again here.
+        for (const entry of connected) {
+          for (const name of entry.toolAllowlist) {
+            const servedTool = served[name]
+            if (servedTool) tools[name] = guardToolCalls(entry, servedTool)
           }
-        } catch (error) {
-          notices.push(await handleFailure(entry, error))
         }
+      } catch (error) {
+        console.error("Opening the Composio session failed", error)
+        await session?.close().catch(() => {})
+        session = undefined
+        notices.push(...connected.map((entry) => unavailableNotice(entry.name)))
       }
 
       return {
         tools,
         notices,
         async close() {
-          await Promise.allSettled(sessions.map((session) => session.close()))
+          await session?.close().catch((error: unknown) => {
+            console.error("Closing the Composio session failed", error)
+          })
         },
       }
     },
 
     /**
-     * Deletes the Plugin's tokens and Installed record. Revocation with the
-     * provider is attempted, but failing to revoke doesn't block uninstalling.
+     * Deletes every one of the Plugin's connected accounts at Composio. Throws
+     * if any can't be deleted, so the Owner isn't told it's gone when it isn't.
      */
     async uninstall(pluginId: string): Promise<void> {
       const entry = findEntry(pluginId)
-      const tokens = await store.getTokens(pluginId)
-      await store.remove(pluginId)
-      if (!entry || !tokens) return
-
-      try {
-        // Revoking the refresh token also invalidates its access tokens.
-        await oauth.revoke({
-          provider: entry.connector.oauth.provider,
-          token: tokens.refreshToken ?? tokens.accessToken,
-        })
-      } catch (error) {
-        console.error(`Revoking ${pluginId} failed; uninstalled anyway`, error)
-      }
+      if (!entry || !composio) return
+      const accounts = await composio.listAccounts([entry.toolkit])
+      await Promise.all(
+        accounts.map((account) => composio.deleteAccount(account.id))
+      )
     },
   }
 
-  /**
-   * Connects and lists the server's tools. A token the Connector rejects gets
-   * one refresh before the failure counts as the authorization being gone.
-   */
-  async function openConnector(entry: PluginEntry) {
-    const attempt = async (accessToken: string) => {
-      const session = await connector.connect({
-        url: entry.connector.mcpUrl,
-        accessToken,
-      })
-      try {
-        return { session, serverTools: await session.tools() }
-      } catch (error) {
-        await session.close().catch(() => {})
-        throw error
-      }
-    }
-    try {
-      return await attempt(await freshAccessToken(entry))
-    } catch (error) {
-      if (!(error instanceof ConnectorAuthError)) throw error
-      return attempt(await refreshAccessToken(entry))
-    }
-  }
-
-  /** The stored access token, refreshed first if it has (nearly) expired. */
-  async function freshAccessToken(entry: PluginEntry) {
-    const tokens = await store.getTokens(entry.id)
-    if (!tokens) throw new OAuthAuthError("No tokens stored")
-    const expiresSoon =
-      tokens.expiresAt !== null &&
-      tokens.expiresAt.getTime() - EXPIRY_MARGIN_MS <= now().getTime()
-    return expiresSoon ? refreshAccessToken(entry) : tokens.accessToken
-  }
-
-  /** Gets a new access token with the refresh token and stores it. */
-  async function refreshAccessToken(entry: PluginEntry) {
-    const tokens = await store.getTokens(entry.id)
-    if (!tokens) throw new OAuthAuthError("No tokens stored")
-    const credentials = credentialsFor(entry, env)
-    if (!tokens.refreshToken || !credentials) {
-      throw new OAuthAuthError("Access token cannot be refreshed")
-    }
-    const refreshed = await oauth.refresh({
-      provider: entry.connector.oauth.provider,
-      credentials,
-      refreshToken: tokens.refreshToken,
-    })
-    const next: OAuthTokens = {
-      ...refreshed,
-      refreshToken: refreshed.refreshToken ?? tokens.refreshToken,
-    }
-    await store.saveTokens(entry.id, next)
-    return next.accessToken
-  }
-
-  /** Records an auth failure as not Connected; returns the model-facing notice. */
-  async function handleFailure(entry: PluginEntry, error: unknown) {
-    console.error(`Plugin ${entry.id} failed during a Turn`, error)
-    const needsReconnect = isAuthFailure(error)
-    if (needsReconnect) {
-      await store.markDisconnected(entry.id).catch((storeError: unknown) => {
-        console.error(`Could not mark ${entry.id} disconnected`, storeError)
-      })
-    }
-    return failureNotice(entry.name, needsReconnect)
-  }
-
   /** A failing tool call yields `{ error }` for the model, never an exception. */
-  function guardToolCalls(entry: PluginEntry, serverTool: ToolSet[string]) {
-    const { execute } = serverTool
-    if (!execute) return serverTool
+  function guardToolCalls(entry: PluginEntry, servedTool: ToolSet[string]) {
+    const { execute } = servedTool
+    if (!execute) return servedTool
     return {
-      ...serverTool,
+      ...servedTool,
       execute: async (...args: Parameters<typeof execute>) => {
         try {
           return await execute(...args)
         } catch (error) {
-          return { error: await handleFailure(entry, error) }
+          console.error(`A ${entry.name} tool call failed`, error)
+          return { error: unavailableNotice(entry.name) }
         }
       },
     }

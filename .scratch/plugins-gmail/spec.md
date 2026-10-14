@@ -2,6 +2,8 @@
 
 Status: done
 
+> **Superseded in part:** the Connector design here (our own Google OAuth client, Google's Gmail MCP server, tokens in SQLite) is replaced by `.scratch/plugins-composio/spec.md` (ADR 0005). The Owner's workflow and the `/plugins` page are unchanged.
+
 ## Problem Statement
 
 Jarvis can only converse: it knows nothing about the Owner's world. The Owner wants to give Jarvis access to outside services (Gmail, Google Calendar, Linear, Slack…) the way a plugin marketplace works — pick a Plugin, authorize it, and from then on Jarvis can use that service when asked. This phase lays the groundwork for that with one Plugin: Gmail, read-only.

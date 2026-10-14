@@ -25,7 +25,9 @@ const ERROR_MESSAGES: Record<string, (name: string) => string> = {
     `La autorización de ${name} no es válida o caducó. Vuelve a intentarlo.`,
   failed: (name) => `No se pudo conectar ${name}. Vuelve a intentarlo.`,
   "not-configured": (name) =>
-    `${name} no está configurado: faltan sus credenciales OAuth.`,
+    `${name} no está configurado: falta COMPOSIO_API_KEY.`,
+  "uninstall-failed": (name) =>
+    `No se pudo desinstalar ${name}. Vuelve a intentarlo.`,
   "unknown-plugin": () => "Ese Plugin no está en el Marketplace.",
 }
 
@@ -56,10 +58,15 @@ export default async function PluginsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  // The Marketplace reads local SQLite synchronously; keep it out of prerendering.
+  // The Marketplace is read from Composio on every visit.
   await connection()
-  const items = await getPlugins().listMarketplace()
-  const message = messageFor(await searchParams, items)
+  let items: MarketplaceItem[] | undefined
+  try {
+    items = await getPlugins().listMarketplace()
+  } catch (error) {
+    console.error("Listing the Marketplace failed", error)
+  }
+  const message = messageFor(await searchParams, items ?? [])
 
   return (
     <div className="mx-auto flex min-h-svh w-full max-w-2xl flex-col gap-6 p-4 pt-10">
@@ -83,11 +90,17 @@ export default async function PluginsPage({
         </p>
       )}
 
-      <ul className="flex flex-col gap-3">
-        {items.map((item) => (
-          <PluginCard key={item.id} item={item} />
-        ))}
-      </ul>
+      {items ? (
+        <ul className="flex flex-col gap-3">
+          {items.map((item) => (
+            <PluginCard key={item.id} item={item} />
+          ))}
+        </ul>
+      ) : (
+        <p role="alert" className="text-sm text-destructive">
+          No se pudo contactar con Composio. Vuelve a intentarlo en un momento.
+        </p>
+      )}
     </div>
   )
 }
