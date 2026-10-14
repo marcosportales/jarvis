@@ -31,7 +31,8 @@ NAN_API_KEY=...
 # NAN_TRANSCRIPTION_MODEL=whisper-1
 # NAN_SPEECH_MODEL=kokoro
 # NAN_VOICE=em_alex
-# City for the weather when the Owner's location is unknown (default Madrid)
+# City for the weather when the Owner's location is unknown (default Madrid).
+# Add ",<country code>" to pick between namesakes, e.g. Cordoba,ES (Spain, not Argentina)
 # JARVIS_WEATHER_FALLBACK_CITY=Madrid
 ```
 

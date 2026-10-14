@@ -22,6 +22,9 @@ const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 const FORECAST_DAYS = 3
 
+/** `Cordoba,ES`: a name, then an ISO 3166-1 alpha-2 country after a comma. */
+const COUNTRY_SUFFIX = /^(.+?)\s*,\s*([a-z]{2})$/i
+
 /**
  * - A named `place` is geocoded and wins over `coords`.
  * - Otherwise the Owner's `coords`, then the fallback city from env.
@@ -111,9 +114,17 @@ export function createWeather({ fetch, env }: WeatherDeps): WeatherService {
     return response.json()
   }
 
-  async function geocode(name: string): Promise<ResolvedPlace | null> {
+  /**
+   * Open-Meteo finds nothing for `Cordoba,ES`, and plain `Cordoba` is the
+   * bigger Córdoba in Argentina, so a country code narrows the search.
+   */
+  async function geocode(place: string): Promise<ResolvedPlace | null> {
     const url = new URL(GEOCODING_URL)
-    url.searchParams.set("name", name)
+    const match = COUNTRY_SUFFIX.exec(place)
+    url.searchParams.set("name", match?.[1] ?? place)
+    if (match?.[2]) {
+      url.searchParams.set("countryCode", match[2].toUpperCase())
+    }
     url.searchParams.set("count", "1")
     url.searchParams.set("language", "es")
     url.searchParams.set("format", "json")

@@ -116,6 +116,42 @@ describe("weather", () => {
     expect(geocoding?.searchParams.get("name")).toBe("Madrid")
   })
 
+  it("narrows the env city to the country after its comma", async () => {
+    const { fetch, requests } = fakeFetch()
+    const weather = createWeather({
+      fetch,
+      env: { JARVIS_WEATHER_FALLBACK_CITY: "Cordoba,ES" },
+    })
+
+    await weather.forPlace({})
+
+    const geocoding = requests.find((url) =>
+      url.hostname.startsWith("geocoding")
+    )
+    expect(geocoding?.searchParams.get("name")).toBe("Cordoba")
+    expect(geocoding?.searchParams.get("countryCode")).toBe("ES")
+  })
+
+  it.each([
+    ["Córdoba, es", "Córdoba", "ES"],
+    ["Valencia", "Valencia", null],
+    ["Washington, D.C.", "Washington, D.C.", null],
+  ])(
+    "geocodes «%s» as «%s» in country %s",
+    async (place, name, countryCode) => {
+      const { fetch, requests } = fakeFetch()
+      const weather = createWeather({ fetch, env: {} })
+
+      await weather.forPlace({ place })
+
+      const geocoding = requests.find((url) =>
+        url.hostname.startsWith("geocoding")
+      )
+      expect(geocoding?.searchParams.get("name")).toBe(name)
+      expect(geocoding?.searchParams.get("countryCode")).toBe(countryCode)
+    }
+  )
+
   it("geocodes a named place in Spanish and returns its country", async () => {
     const { fetch, requests } = fakeFetch()
     const weather = createWeather({ fetch, env: {} })
