@@ -1,6 +1,8 @@
 # Spec: Streaming Reply — Jarvis speaks while it writes
 
-Status: ready-for-agent
+Status: needs-triage
+
+> **On hold (2026-10-15).** Measured against Nan with Jarvis's real system prompt and no response caching, the chat model's *reasoning* is most of the wait: text arrives 2.7–4 s into a step, and the rest of a short Reply follows only 0.1–0.3 s later. Synthesizing the first sentence alone takes about as long as the whole short Reply. So streaming as specified wins back only a fraction of a second on a typical Reply. Turning reasoning off (`chat_template_kwargs: { thinking: false }`) saves about 1–1.5 s per model step and about two-thirds of the completion tokens, and is being tried first. Revisit this spec only if Turns are still slow after that, e.g. long Replies or Turns that use several tools.
 
 ## Problem Statement
 
