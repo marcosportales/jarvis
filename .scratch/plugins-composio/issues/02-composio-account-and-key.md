@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-human
+**Status:** done
 
-- [ ] Composio account and project created
-- [ ] API key created and present in the web app's local env file (not committed)
-- [ ] After ticket 07 lands: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` removed from that file
+- [x] Composio account and project created
+- [x] API key created and present in the web app's local env file (not committed)
+- [x] After ticket 07 lands: `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` removed from that file
