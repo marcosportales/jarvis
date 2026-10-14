@@ -246,6 +246,33 @@ describe("Launching it a second time", () => {
     expect(app.state.jarvisFocused).toBe(true)
   })
 
+  it("shows the window once ready when it came before a --hidden launch began", async () => {
+    // Electron hands over a second launch as soon as it holds the lock,
+    // before the app is ready and this one's launch has begun.
+    const app = fakeApp()
+    app.controller.secondLaunch([])
+
+    const launched = app.controller.launch(["--hidden"])
+    await app.serverAnswers()
+    await launched
+
+    expect(app.state.jarvisVisible).toBe(true)
+    expect(app.state.jarvisFocused).toBe(true)
+  })
+
+  it("with --quit before the launch began, quits without starting anything", async () => {
+    const app = fakeApp()
+    app.controller.secondLaunch(["--quit"])
+    await settle()
+    await settle()
+
+    await app.controller.launch([])
+
+    expect(app.state.serverRunning).toBe(false)
+    expect(app.state.jarvisUrl).toBeUndefined()
+    expect(app.state.events).toEqual(["server stopped", "exited"])
+  })
+
   it("with --quit, quits the running Jarvis App", async () => {
     const app = fakeApp()
     const launched = app.controller.launch([])

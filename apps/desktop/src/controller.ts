@@ -105,8 +105,10 @@ export function createAppController({
     /** The Jarvis App starts, with its command-line arguments. */
     async launch(argv: readonly string[]) {
       if (argv.includes("--quit")) return exit()
-
-      showWhenOpen = !argv.includes("--hidden")
+      // A second launch may already have asked to quit or to show the
+      // window: Electron hands it over before the app is ready.
+      if (quitting) return quitting
+      if (!argv.includes("--hidden")) showWhenOpen = true
       server.onExit((reason) => {
         void failed(
           "Jarvis se ha detenido",
