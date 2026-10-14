@@ -120,7 +120,7 @@ One of six named places in the side margins of the Jarvis page — left or right
 _Avoid_: Slot, zone, corner
 
 **Starting Spot**:
-Where a Widget first appears before it has ever been moved, e.g. top-right for the Today Widget. A Widget without one first appears at a random free place in the side margins.
+Where a Widget first appears before it has ever been moved, e.g. top-right for the Today Widget, or directly below another Widget, e.g. the System Widget below the Weather Widget, falling back to a Spot when that one is Hidden or there is no room. A Widget without one first appears at a random free place in the side margins.
 _Avoid_: Default position
 
 **Widget Setting**:
@@ -154,6 +154,20 @@ _Avoid_: Browser, viewer, live view
 **Today Widget**:
 The Widget showing today's date with its weekday and the time of day in 24-hour form, always for where the Owner is. Built into Jarvis.
 _Avoid_: Clock, date widget, today's info
+
+### System
+
+**System Widget**:
+The Widget showing how busy the computer Jarvis runs on is right now (CPU, RAM and, if it has one, its battery) together with Jarvis Health. Built into Jarvis, not a Plugin. Jarvis Shows it on its own when a Reply is about the computer or about whether Jarvis is working, but never brings these up unasked.
+_Avoid_: System monitor, stats, dashboard, system plugin
+
+**Jarvis Health**:
+Whether Jarvis's own parts are working, as one of Working, Limited or Down, overall and for each part. It is checked now and then and also changes as soon as a part fails during a Turn. The Owner's Plugins don't count one by one: whether one needs reconnecting is the Marketplace's business; only reaching Plugins and Search at all is a part. Not the same as Jarvis State, which is what Jarvis is doing.
+_Avoid_: Status, uptime, system status
+
+**Working** / **Limited** / **Down**:
+The three levels of Jarvis Health. Working: every part works. Limited: Jarvis can still hold a Turn, but some abilities fail, e.g. Search, Plugins, the weather, the map or Browse. Down: the Owner cannot hold a Turn because understanding, thinking, speaking or remembering has failed.
+_Avoid_: OK, degraded, error, offline
 
 ### Calendar
 
