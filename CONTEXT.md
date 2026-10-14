@@ -105,8 +105,15 @@ A floating panel on the Jarvis page showing one thing, e.g. the Weather Widget. 
 _Avoid_: Panel, card, overlay, gadget
 
 **Shown** / **Hidden**:
-Whether a Widget is currently on screen. Both the Owner and Jarvis can show or hide any Widget, and the choice is kept across Sessions. Closing a Widget means hiding it.
+Whether a Widget is currently on screen. Both the Owner and Jarvis can show or hide any Widget, and the choice is kept across Sessions. Closing a Collapsed Widget means hiding it; hiding an Expanded one collapses it first.
 _Avoid_: Open, enabled, active
+
+**Expanded** / **Collapsed**:
+How a Shown Widget is on screen. Collapsed is its usual small form at its place; Expanded is the same Widget shown large in the middle of the page, over the others, while the Owner can still talk to Jarvis. At most one Widget is Expanded at a time, so expanding another collapses the first. Both the Owner and Jarvis can expand or collapse a Widget, but Jarvis only does it when the Owner asks; a Widget never expands itself. Expanding a Hidden Widget also shows it, and moving an Expanded Widget collapses it at its new place. Closing an Expanded Widget collapses it back to its place, still Shown. Every page load starts with all Widgets Collapsed.
+_Avoid_: Dialog, modal, fullscreen, maximized, popup, open
+
+**Expandable**:
+A Widget that can be Expanded, e.g. the Results Widget and the Browser Widget, but not the Weather Widget.
 
 **Spot**:
 One of six named places in the side margins of the Jarvis page — left or right, each top, middle or bottom — where Jarvis can move a Widget. The Owner can instead drag a Widget anywhere on screen.
