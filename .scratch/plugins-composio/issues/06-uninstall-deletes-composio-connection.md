@@ -4,7 +4,7 @@
 
 **Blocked by:** 03 (Marketplace shows Plugin states from Composio)
 
-**Status:** ready-for-human (implemented; only the manual check against real Gmail remains, after ticket 02)
+**Status:** done
 
 - [x] Uninstall removes all of the toolkit's accounts, from both Conectado and Desconectado
 - [x] Plugins module tests cover it with the fake Composio port

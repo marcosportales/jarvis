@@ -11,7 +11,7 @@ Add a short note to the Gmail Plugins spec saying its Connector design is replac
 
 **Blocked by:** 04, 05, 06
 
-**Status:** ready-for-human (implemented; only the manual check against real Gmail remains, after ticket 02)
+**Status:** done
 
 - [x] No code reads Google OAuth credentials or stores tokens
 - [x] Migration drops the Installed Plugins and tokens tables, and runs cleanly on an existing database
