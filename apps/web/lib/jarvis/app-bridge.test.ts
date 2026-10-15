@@ -10,7 +10,7 @@ import {
 } from "./app-bridge"
 import { createPushToTalk } from "./push-to-talk"
 import { DISCARDED_UTTERANCE_HINT, type JarvisState } from "./session"
-import { fakeRecorder, flush, setup } from "./session-fakes"
+import { fakeListener, flush, setup } from "./session-fakes"
 
 /** The Jarvis App's preload API, as the Jarvis page sees it. */
 function fakeJarvisApp() {
@@ -80,7 +80,7 @@ describe("The App Bridge", () => {
 
   it("discards a short hold with the usual hint", async () => {
     const { session, jarvisApp, brain, transcript } = setupInApp({
-      recorder: fakeRecorder({ durationMs: 300 }),
+      listener: fakeListener({ durationMs: 300 }),
     })
 
     jarvisApp.press()

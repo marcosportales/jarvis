@@ -11,10 +11,10 @@ import {
   type Brain,
   type BrowseSource,
   type JarvisAdapters,
-  type Recorder,
+  type Listener,
+  type ListenerEvents,
   type Reply,
   type Transcriber,
-  type Utterance,
   type Voice,
   type WidgetChanges,
 } from "./session"
@@ -43,41 +43,73 @@ async function post(url: string, body: Blob | object): Promise<Response> {
   return response
 }
 
-function createMediaRecorder(): Recorder {
-  let capture: {
-    mediaRecorder: MediaRecorder
-    chunks: Blob[]
+/** For now only Push-to-talk: each hold is captured whole by a MediaRecorder. */
+function createMediaRecorderListener(): Listener {
+  const subscribers = new Set<ListenerEvents>()
+  let stream: MediaStream | null = null
+  // Timed from its start, so waiting on the mic still counts.
+  let hold: {
     startedAt: number
+    chunks: Blob[]
+    mediaRecorder?: MediaRecorder
   } | null = null
 
+  function emit(report: (events: ListenerEvents) => void) {
+    subscribers.forEach(report)
+  }
+
+  function record(current: NonNullable<typeof hold>, mic: MediaStream) {
+    const mediaRecorder = new MediaRecorder(mic)
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) current.chunks.push(event.data)
+    })
+    mediaRecorder.start()
+    current.mediaRecorder = mediaRecorder
+  }
+
+  function close() {
+    hold?.mediaRecorder?.stop()
+    hold = null
+    stream?.getTracks().forEach((track) => track.stop())
+    stream = null
+  }
+
   return {
-    async start() {
-      // Measured from the press, so waiting on the mic still counts.
-      const startedAt = performance.now()
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      const chunks: Blob[] = []
-      mediaRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) chunks.push(event.data)
-      })
-      mediaRecorder.start()
-      capture = { mediaRecorder, chunks, startedAt }
+    async open() {
+      try {
+        stream ??= await navigator.mediaDevices.getUserMedia({ audio: true })
+        if (hold && !hold.mediaRecorder) record(hold, stream)
+      } catch (error) {
+        close()
+        throw error
+      }
     },
-    stop() {
-      const current = capture
-      capture = null
-      if (!current) return Promise.reject(new Error("No Utterance in progress"))
-      const { mediaRecorder, chunks, startedAt } = current
-      return new Promise<Utterance>((resolve) => {
-        mediaRecorder.addEventListener("stop", () => {
-          mediaRecorder.stream.getTracks().forEach((track) => track.stop())
-          resolve({
-            audio: new Blob(chunks, { type: mediaRecorder.mimeType }),
-            durationMs: performance.now() - startedAt,
-          })
-        })
-        mediaRecorder.stop()
+    close,
+    holdStart() {
+      hold = { startedAt: performance.now(), chunks: [] }
+      if (stream) record(hold, stream)
+    },
+    holdEnd() {
+      const current = hold
+      hold = null
+      const mediaRecorder = current?.mediaRecorder
+      if (!current || !mediaRecorder) {
+        const error = new Error("No hold in progress")
+        return emit((events) => events.failed(error))
+      }
+      mediaRecorder.addEventListener("stop", () => {
+        const audio = new Blob(current.chunks, { type: mediaRecorder.mimeType })
+        const durationMs = performance.now() - current.startedAt
+        emit((events) => events.pieceReady(audio, durationMs))
+        emit((events) => events.endOfTurn())
       })
+      mediaRecorder.stop()
+    },
+    listen(events) {
+      subscribers.add(events)
+      return () => {
+        subscribers.delete(events)
+      }
     },
   }
 }
@@ -204,7 +236,7 @@ function createAudioVoice(): Voice {
 
 export function createBrowserAdapters(): JarvisAdapters {
   return {
-    recorder: createMediaRecorder(),
+    listener: createMediaRecorderListener(),
     transcriber: httpTranscriber,
     brain: httpBrain,
     voice: createAudioVoice(),

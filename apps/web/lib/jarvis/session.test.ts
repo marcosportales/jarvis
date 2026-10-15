@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { BROWSE_POLL_MS, SessionGoneError, type Reply } from "./session"
 import {
   fakeBrowse,
-  fakeRecorder,
+  fakeListener,
   fakeTranscriber,
   flush,
   setup,
@@ -15,7 +15,7 @@ import type { WidgetChange } from "../widgets/changes"
 
 describe("Jarvis Session", () => {
   it("completes a spoken Turn: Listening → Thinking → Speaking → Idle", async () => {
-    const { session, recorder, transcriber, brain, voice, states, transcript } =
+    const { session, listener, transcriber, brain, voice, states, transcript } =
       setup()
 
     session.pressPushToTalk()
@@ -23,7 +23,7 @@ describe("Jarvis Session", () => {
     session.releasePushToTalk()
     await flush()
 
-    expect(recorder.calls).toEqual(["start", "stop"])
+    expect(listener.calls).toEqual(["holdStart", "open", "holdEnd", "close"])
     expect(transcriber.calls).toHaveLength(1)
     expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
 
@@ -50,7 +50,7 @@ describe("Jarvis Session", () => {
   })
 
   it("completes a typed Turn and speaks the Reply", async () => {
-    const { session, recorder, brain, voice, states, transcript } = setup()
+    const { session, listener, brain, voice, states, transcript } = setup()
 
     session.sendTypedMessage("¿Qué hora es?")
     await flush()
@@ -59,7 +59,7 @@ describe("Jarvis Session", () => {
     voice.finish()
     await flush()
 
-    expect(recorder.calls).toEqual([])
+    expect(listener.calls).toEqual([])
     expect(brain.calls).toEqual([{ text: "¿Qué hora es?" }])
     expect(voice.spoken).toEqual(["Son las cinco, señor."])
     expect(states).toEqual(["idle", "thinking", "speaking", "idle"])
@@ -71,7 +71,7 @@ describe("Jarvis Session", () => {
 
   it("discards an Utterance shorter than half a second with a hint", async () => {
     const { session, transcriber, brain, states, transcript } = setup({
-      recorder: fakeRecorder({ durationMs: 300 }),
+      listener: fakeListener({ durationMs: 300 }),
     })
 
     session.pressPushToTalk()
@@ -103,7 +103,7 @@ describe("Jarvis Session", () => {
   })
 
   it("clears the hint when the Owner starts the next Utterance", async () => {
-    const { session } = setup({ recorder: fakeRecorder({ durationMs: 100 }) })
+    const { session } = setup({ listener: fakeListener({ durationMs: 100 }) })
 
     session.pressPushToTalk()
     await flush()
@@ -152,7 +152,7 @@ describe("Jarvis Session", () => {
   })
 
   it("ignores push-to-talk and typed messages while Thinking", async () => {
-    const { session, recorder, brain, voice, transcript } = setup()
+    const { session, listener, brain, voice, transcript } = setup()
     session.sendTypedMessage("Primero")
     await flush()
 
@@ -162,7 +162,7 @@ describe("Jarvis Session", () => {
     await flush()
 
     expect(session.getSnapshot().state).toBe("thinking")
-    expect(recorder.calls).toEqual([])
+    expect(listener.calls).toEqual([])
     expect(brain.calls).toHaveLength(1)
 
     brain.answer("Respuesta.")
@@ -179,8 +179,8 @@ describe("Jarvis Session", () => {
 
   it("shows an inline error when the microphone is denied, and typing still works", async () => {
     const { session, brain, voice, transcript } = setup({
-      recorder: fakeRecorder({
-        startError: new DOMException("denied", "NotAllowedError"),
+      listener: fakeListener({
+        openError: new DOMException("denied", "NotAllowedError"),
       }),
     })
 
@@ -206,6 +206,54 @@ describe("Jarvis Session", () => {
       role: "jarvis",
       text: "Le leo, señor.",
     })
+  })
+
+  it("sends a hold's pieces as one message once its Turn has ended", async () => {
+    const listener = fakeListener({ manual: true })
+    const { session, transcriber, brain, transcript } = setup({
+      listener,
+      transcriber: fakeTranscriber((audio) => audio.text()),
+    })
+
+    session.pressPushToTalk()
+    await flush()
+    session.releasePushToTalk()
+    await flush()
+    listener.fire.pieceReady(listener.audio("Pon una alarma"), 1500)
+    listener.fire.pieceReady(listener.audio("a las siete"), 1000)
+    await flush()
+
+    expect(brain.calls).toEqual([])
+
+    listener.fire.endOfTurn()
+    await flush()
+
+    expect(transcriber.calls).toHaveLength(2)
+    expect(brain.calls).toEqual([{ text: "Pon una alarma a las siete" }])
+    expect(transcript()).toEqual([
+      { role: "owner", text: "Pon una alarma a las siete" },
+    ])
+    expect(listener.calls.at(-1)).toBe("close")
+  })
+
+  it("shows an inline error when capturing the hold fails, and releases the mic", async () => {
+    const listener = fakeListener({ manual: true })
+    const { session, transcriber, brain, transcript } = setup({ listener })
+
+    session.pressPushToTalk()
+    await flush()
+    session.releasePushToTalk()
+    await flush()
+    listener.fire.failed(new Error("MediaRecorder broke"))
+    await flush()
+
+    expect(transcriber.calls).toEqual([])
+    expect(brain.calls).toEqual([])
+    expect(session.getSnapshot().state).toBe("idle")
+    expect(transcript()).toEqual([
+      { role: "error", text: expect.stringMatching(/micrófono/i) },
+    ])
+    expect(listener.calls.at(-1)).toBe("close")
   })
 
   it("shows an inline error and returns to Idle when transcription fails", async () => {
@@ -330,7 +378,7 @@ describe("Jarvis Session", () => {
   })
 
   it("clears the hint when the Owner sends a typed message", async () => {
-    const { session } = setup({ recorder: fakeRecorder({ durationMs: 100 }) })
+    const { session } = setup({ listener: fakeListener({ durationMs: 100 }) })
 
     session.pressPushToTalk()
     await flush()
@@ -705,8 +753,27 @@ describe("Jarvis Session", () => {
       expect(transcript()).toEqual([{ role: "owner", text: "¿Llueve?" }])
     })
 
+    it("releases the mic when it lands before the hold's audio comes back", async () => {
+      const listener = fakeListener({ manual: true })
+      const { session, brain } = setup({ listener })
+      session.pressPushToTalk()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      session.teardown()
+      await flush()
+      listener.fire.pieceReady(listener.audio(), 2000)
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(listener.calls).toEqual(["holdStart", "open", "holdEnd", "close"])
+      expect(brain.calls).toEqual([])
+      expect(session.getSnapshot().state).toBe("idle")
+    })
+
     it("stops capturing an Utterance and never sends it", async () => {
-      const { session, recorder, transcriber, brain } = setup()
+      const { session, listener, transcriber, brain } = setup()
       session.pressPushToTalk()
       await flush()
 
@@ -715,7 +782,7 @@ describe("Jarvis Session", () => {
       session.releasePushToTalk()
       await flush()
 
-      expect(recorder.calls).toEqual(["start", "stop"])
+      expect(listener.calls).toEqual(["holdStart", "open", "close"])
       expect(transcriber.calls).toEqual([])
       expect(brain.calls).toEqual([])
       expect(session.getSnapshot().state).toBe("idle")

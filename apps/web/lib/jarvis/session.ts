@@ -68,11 +68,30 @@ async function orFail<T>(work: Promise<T>, message: string): Promise<T> {
   }
 }
 
-export type Utterance = { audio: Blob; durationMs: number }
+/** A stretch of an Utterance's audio, ready to be Transcribed. */
+export type Piece = { audio: Blob; durationMs: number }
 
-export interface Recorder {
-  start(): Promise<void>
-  stop(): Promise<Utterance>
+/** What the Listener reports while it captures an Utterance. */
+export type ListenerEvents = {
+  pieceReady(audio: Blob, durationMs: number): void
+  /** The Utterance is over: no more pieces of it will come. */
+  endOfTurn(): void
+  /** Capturing the Utterance broke; none of it will come. */
+  failed(error: unknown): void
+}
+
+/** The mic, capturing the Owner's Utterances. */
+export interface Listener {
+  /** Gets the mic; rejects when it is denied or missing. */
+  open(): Promise<void>
+  /** Releases the mic, dropping whatever was being captured. */
+  close(): void
+  /** A Push-to-talk hold starts: capture until `holdEnd`. */
+  holdStart(): void
+  /** The hold is released: its audio comes as a last piece, then end of turn. */
+  holdEnd(): void
+  /** Reports the Listener's events; returns a function that stops them. */
+  listen(events: ListenerEvents): () => void
 }
 
 export interface Transcriber {
@@ -129,7 +148,7 @@ export interface BrowseSource {
 }
 
 export type JarvisAdapters = {
-  recorder: Recorder
+  listener: Listener
   transcriber: Transcriber
   brain: Brain
   voice: Voice
@@ -144,7 +163,7 @@ export type JarvisSession = ReturnType<typeof createJarvisSession>
 export type SavedSession = { sessionId: string; turns: SavedTurn[] }
 
 export function createJarvisSession(
-  { recorder, transcriber, brain, voice, widgets, browse }: JarvisAdapters,
+  { listener, transcriber, brain, voice, widgets, browse }: JarvisAdapters,
   saved?: SavedSession
 ) {
   let nextId = 0
@@ -165,14 +184,47 @@ export function createJarvisSession(
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
-  // Resolves to whether the Recorder actually started capturing the Utterance.
-  let micStarted: Promise<boolean> = Promise.resolve(false)
+  // Resolves to whether the Listener actually got the mic for the Utterance.
+  let micOpened: Promise<boolean> = Promise.resolve(false)
+  // The Utterance being captured: its pieces so far, and how it ends.
+  let capture: {
+    pieces: Piece[]
+    end: (pieces: Piece[]) => void
+    fail: (error: unknown) => void
+  } | null = null
+  // Settles with the captured Utterance's pieces at its end of turn.
+  let utteranceEnded: Promise<Piece[]> = Promise.resolve([])
   const listeners = new Set<() => void>()
   // Polling the Browse Task: on while watching, one load at a time.
   let watchingBrowse = false
   let browseTimer: ReturnType<typeof setTimeout> | undefined
   // Bumped by every load and by teardown, so a late load changes nothing.
   let browseLoad = 0
+
+  const stopListening = listener.listen({
+    pieceReady(audio, durationMs) {
+      capture?.pieces.push({ audio, durationMs })
+    },
+    endOfTurn() {
+      const ended = capture
+      capture = null
+      ended?.end(ended.pieces)
+    },
+    failed(error) {
+      const ended = capture
+      capture = null
+      ended?.fail(error)
+    },
+  })
+
+  /** Starts gathering the pieces of a new Utterance. */
+  function startCapture() {
+    utteranceEnded = new Promise<Piece[]>((end, fail) => {
+      capture = { pieces: [], end, fail }
+    })
+    // Its failure is reported on release, not as an unhandled rejection.
+    utteranceEnded.catch(() => {})
+  }
 
   function update(patch: Partial<JarvisSnapshot>) {
     snapshot = { ...snapshot, ...patch }
@@ -322,9 +374,12 @@ export function createJarvisSession(
       if (!canStartTurn()) return
       interruptSpeaking()
       update({ state: "listening", hint: null })
-      micStarted = recorder.start().then(
+      startCapture()
+      listener.holdStart()
+      micOpened = listener.open().then(
         () => true,
         () => {
+          capture = null
           append("error", ERRORS.microphone)
           setState("idle")
           return false
@@ -335,19 +390,33 @@ export function createJarvisSession(
       if (snapshot.state !== "listening") return
       const turnGeneration = generation
       setState("thinking")
-      if (!(await micStarted) || turnGeneration !== generation) return
+      if (!(await micOpened) || turnGeneration !== generation) return
+      const ended = utteranceEnded
+      listener.holdEnd()
       await runTurn(turnGeneration, async () => {
-        const utterance = await orFail(recorder.stop(), ERRORS.microphone)
+        // Hands-free is off, so the mic closes once the hold is captured.
+        const pieces = await orFail(
+          ended.finally(() => listener.close()),
+          ERRORS.microphone
+        )
         ensureCurrent(turnGeneration)
-        if (utterance.durationMs < MIN_UTTERANCE_MS) {
+        const durationMs = pieces.reduce(
+          (total, piece) => total + piece.durationMs,
+          0
+        )
+        if (durationMs < MIN_UTTERANCE_MS) {
           return discardUtterance()
         }
-        const text = (
-          await orFail(
-            transcriber.transcribe(utterance.audio),
-            ERRORS.transcription
-          )
-        ).trim()
+        const texts = await orFail(
+          Promise.all(
+            pieces.map((piece) => transcriber.transcribe(piece.audio))
+          ),
+          ERRORS.transcription
+        )
+        const text = texts
+          .map((text) => text.trim())
+          .filter(Boolean)
+          .join(" ")
         ensureCurrent(turnGeneration)
         if (!text) {
           return discardUtterance()
@@ -401,13 +470,13 @@ export function createJarvisSession(
       const { state } = snapshot
       generation++
       stopWatchingBrowse()
+      stopListening()
+      capture = null
       if (state === "speaking") voice.stop()
-      if (state === "listening") {
-        // Releases the microphone; the Utterance is never sent.
-        void micStarted.then(async (started) => {
-          if (started) await recorder.stop().catch(() => {})
-        })
-      }
+      // Releases the microphone, even mid-capture; the Utterance is never sent.
+      void micOpened.then((opened) => {
+        if (opened) listener.close()
+      })
       update({ state: "idle", hint: null })
     },
   }

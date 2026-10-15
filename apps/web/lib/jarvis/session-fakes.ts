@@ -9,7 +9,8 @@ import {
   type Brain,
   type BrowseSource,
   type JarvisState,
-  type Recorder,
+  type Listener,
+  type ListenerEvents,
   type Reply,
   type Transcriber,
   type Voice,
@@ -37,33 +38,60 @@ export function deferred<T>(): Deferred<T> {
 
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-export function fakeRecorder(
-  options: { durationMs?: number; startError?: unknown } = {}
+/**
+ * A Listener whose events a test fires by hand. Unless `manual`, releasing a
+ * hold yields it at once as one piece of `durationMs`, then end of turn.
+ */
+export function fakeListener(
+  options: { durationMs?: number; openError?: unknown; manual?: boolean } = {}
 ) {
   const calls: string[] = []
-  const recorder: Recorder = {
-    async start() {
-      calls.push("start")
-      if (options.startError) throw options.startError
+  const subscribers = new Set<ListenerEvents>()
+  const fire: ListenerEvents = {
+    pieceReady: (audio, durationMs) =>
+      subscribers.forEach((events) => events.pieceReady(audio, durationMs)),
+    endOfTurn: () => subscribers.forEach((events) => events.endOfTurn()),
+    failed: (error) => subscribers.forEach((events) => events.failed(error)),
+  }
+  const audio = (content = "audio") =>
+    new Blob([content], { type: "audio/webm" })
+  const listener: Listener = {
+    async open() {
+      calls.push("open")
+      if (options.openError) throw options.openError
     },
-    async stop() {
-      calls.push("stop")
-      return {
-        audio: new Blob(["audio"], { type: "audio/webm" }),
-        durationMs: options.durationMs ?? 2000,
+    close() {
+      calls.push("close")
+    },
+    holdStart() {
+      calls.push("holdStart")
+    },
+    holdEnd() {
+      calls.push("holdEnd")
+      if (options.manual) return
+      fire.pieceReady(audio(), options.durationMs ?? 2000)
+      fire.endOfTurn()
+    },
+    listen(events) {
+      subscribers.add(events)
+      return () => {
+        subscribers.delete(events)
       }
     },
   }
-  return { recorder, calls }
+  return { listener, calls, fire, audio }
 }
 
-export function fakeTranscriber(text: string | Error = "Hola Jarvis") {
+/** Hears `text`, or what `text` makes of the audio, or fails with it. */
+export function fakeTranscriber(
+  text: string | Error | ((audio: Blob) => Promise<string>) = "Hola Jarvis"
+) {
   const calls: Blob[] = []
   const transcriber: Transcriber = {
     async transcribe(audio) {
       calls.push(audio)
       if (text instanceof Error) throw text
-      return text
+      return typeof text === "function" ? text(audio) : text
     },
   }
   return { transcriber, calls }
@@ -174,13 +202,13 @@ export function fakeVoice(events: Events = []) {
 
 export function setup(
   options: {
-    recorder?: ReturnType<typeof fakeRecorder>
+    listener?: ReturnType<typeof fakeListener>
     transcriber?: ReturnType<typeof fakeTranscriber>
     saved?: Parameters<typeof createJarvisSession>[1]
     browse?: ReturnType<typeof fakeBrowse>
   } = {}
 ) {
-  const recorder = options.recorder ?? fakeRecorder()
+  const listener = options.listener ?? fakeListener()
   const transcriber = options.transcriber ?? fakeTranscriber()
   const events: Events = []
   const brain = fakeBrain()
@@ -189,7 +217,7 @@ export function setup(
   const browse = options.browse ?? fakeBrowse()
   const session = createJarvisSession(
     {
-      recorder: recorder.recorder,
+      listener: listener.listener,
       transcriber: transcriber.transcriber,
       brain: brain.brain,
       voice: voice.voice,
@@ -207,7 +235,7 @@ export function setup(
     session.getSnapshot().transcript.map(({ role, text }) => ({ role, text }))
   return {
     session,
-    recorder,
+    listener,
     transcriber,
     brain,
     voice,
