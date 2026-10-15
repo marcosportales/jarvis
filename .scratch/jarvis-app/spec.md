@@ -1,6 +1,6 @@
 # Spec: Jarvis App — Jarvis as its own app on the Owner's computer
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
