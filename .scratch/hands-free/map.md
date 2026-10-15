@@ -26,14 +26,15 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 - [Can a wake word ("Jarvis…") be detected locally?](issues/04-wake-word.md): Possible but nothing is ready to use. Porcupine has an English `jarvis` in the browser, but behind an AccessKey with no personal plan. openWakeWord's `hey_jarvis` is Python-only and non-commercial. There are no Spanish error rates, and voice detection is still needed to end the Utterance.
 - [Voice detection that runs locally in the browser and the Jarvis App](issues/01-local-voice-detection.md): Silero VAD v6 through `@ricky0123/vad-web`, self-hosted in `public/vad/`. About 3.7 MB gzipped and an estimated 1–3% of a core while waiting. It rejects noise far better than WebRTC VAD (0.87 vs 0 on ESC-50). The energy level only drives the Orb, never the gate.
 - [Echo cancellation so Jarvis doesn't hear its own Reply](issues/03-echo-cancellation.md): Chromium/Electron echo cancellation on Linux already cancels any Reply audio the same app plays, but not other apps' audio and not with zero leftover echo, so the listener must be the player. Use it plus a stricter detection gate while Speaking, with half duplex as the fallback. PipeWire's echo-cancel is an opt-in extra.
+- [Can Whisper on Nan transcribe while the Owner is still speaking?](issues/02-whisper-while-speaking.md): No streaming on Nan, but a finished Utterance takes about 1.5–3 s whatever its length, so transcribe once the Owner stops. Pieces cut in pauses only pay off for long monologues. Nan allows 10 Whisper requests a minute and drops audio over about 2 minutes.
 
 ## Not yet specified
 
-- **Other voices in the room.** A TV, a call, or someone else talking will look like speech. Whether Jarvis needs to tell the Owner's voice apart, or whether the opening mode (wake word, toggle) is enough protection, depends on what voice detection and the opening mode turn out to be.
+- **Other voices in the room.** A TV, a call, or someone else talking will look like speech. Whether Jarvis needs to tell the Owner's voice apart, or whether the opening mode (wake word, toggle) is enough protection, depends on what voice detection and the opening mode turn out to be. Every false trigger also spends one of Nan's 10 Whisper requests a minute.
 - **Failure and Jarvis Health.** What happens when the mic is denied, unplugged or switched, or voice detection fails to load, how the mic comes back after the Jarvis page crashes or reloads, and whether "hearing" becomes a part of Jarvis Health.
 - **How the Orb, Floating Orb and Caption show the new states.** This waits on the new Jarvis State(s) and on the privacy decision.
 - **What happens to the Push-to-talk machinery:** the hold arbitration, the portal Global Shortcut, Space and holding the Orb. Retired, repurposed (for example as a mute or toggle key) or kept, depending on the opening mode.
-- **Very long Utterances.** Monologues, pauses mid-thought, and Whisper's upload limits. This depends on the end-of-turn pause and on whether transcription can run while the Owner speaks.
+- **Very long Utterances.** Monologues and pauses mid-thought. Nan returns a 524 timeout for audio over about 2 minutes, so long speech needs cutting in pauses or capping. This depends on the end-of-turn pause.
 - **The Jarvis page in a background tab or on a phone.** The browser may throttle or suspend audio work in a background tab, and phones behave differently again. How far "works on the Jarvis page" reaches is still open.
 
 ## Out of scope
