@@ -14,7 +14,7 @@ See `../spec.md` (stories 19–28; "Push-to-talk from any app", "The page side: 
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] App Bridge tests, real Jarvis Session with fake adapters (as `session.test.ts`):
   - bridge press then release → a Turn

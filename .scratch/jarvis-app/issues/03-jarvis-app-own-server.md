@@ -24,7 +24,7 @@ See `../spec.md` (stories 2, 3, 10, 37–43, 51; "Shape").
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Read Next 16's docs in `node_modules/next/dist/docs/` on standalone output and monorepo tracing before changing the build
 - [x] Config tests:

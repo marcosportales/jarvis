@@ -19,7 +19,7 @@ See `../spec.md` (stories 29–36; "The page side: the App Bridge", "The App con
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] App controller tests:
   - the Jarvis page's state reaches the Floating Orb

@@ -1,6 +1,7 @@
 # 01: A Plugin sign-in can finish in a different browser from the one that started it
 
 **What to build:** Installing or reconnecting a Plugin keeps working when the consent screen finishes in a different browser from the one that started it. The Jarvis App needs this: Google refuses sign-in inside an app window, so the Jarvis App sends the sign-in to the Owner's own browser.
+
 - The Plugins module keeps each pending install itself (Plugin, OAuth state, connected account), keyed by its random state, for 10 minutes.
 - Completing an install takes the callback's state and status, finds the pending install, and uses it once.
 - An unknown, already used or expired state fails the way a mismatched state fails today.
@@ -14,7 +15,7 @@ See `../spec.md` (stories 44–48; "Plugins: a pending install no longer lives i
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] Plugins tests, with fixtures:
   - begin then complete by state → Connected
