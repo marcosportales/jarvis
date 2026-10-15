@@ -29,12 +29,13 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 - [Can Whisper on Nan transcribe while the Owner is still speaking?](issues/02-whisper-while-speaking.md): No streaming on Nan, but a finished Utterance takes about 1.5–3 s whatever its length, so transcribe once the Owner stops. Pieces cut in pauses only pay off for long monologues. Nan allows 10 Whisper requests a minute and drops audio over about 2 minutes.
 - [How a conversation opens: always listening, a wake word, or a toggle?](issues/07-how-a-conversation-opens.md): A toggle. While it's on, every stretch of speech becomes an Utterance, and it stays on until the Owner turns it off. A tap on the Orb, Space or the global key toggles; a hold is still Push-to-talk. The same on the Jarvis page and in the Jarvis App.
 - [Measure where the gap goes between the Owner finishing and Jarvis speaking](issues/06-where-the-gap-goes.md): 7–15 s today, mostly fixed costs. Each Nan chat call costs about 2–3 s whatever the prompt size, and a tool Turn makes three. Composio Plugin setup adds 2–2.5 s to every Turn. Whisper takes 1–2.5 s and Kokoro 1–1.7 s. Streaming the Reply would save at most 1–2 s, and only on long Replies.
+- [Privacy: when is the mic open, and how does the Owner know?](issues/09-privacy-and-mic-indicator.md): Hands-free is always off when Jarvis starts and stays on when the window closes. The Orb and Floating Orb take a distinct look while the mic is open, a sound plays on each toggle, and the tray icon may change too. Turning hands-free off is the mute. Jarvis never stores audio; it goes only to Nan, to be transcribed.
 
 ## Not yet specified
 
 - **Other voices in the room.** A TV, a call, or someone else talking will look like speech. The opening mode is a toggle with no wake word, so the Owner's defence is turning hands-free off. Still open: whether that's enough, or whether Jarvis needs something more (telling the Owner's voice apart, or backing off when it keeps hearing speech that isn't meant for it). Every false trigger also spends one of Nan's 10 Whisper requests a minute.
 - **Failure and Jarvis Health.** What happens when the mic is denied, unplugged or switched, or voice detection fails to load, how the mic comes back after the Jarvis page crashes or reloads, and whether "hearing" becomes a part of Jarvis Health.
-- **How the Orb, Floating Orb and Caption show the new states.** This waits on the new Jarvis State(s) and on the privacy decision.
+- **How the Orb, Floating Orb and Caption show the new states.** This waits on the new Jarvis State(s). The privacy decision fixes two things: a distinct "mic open" look on the Orb and Floating Orb, and a sound when hands-free turns on or off.
 - **Very long Utterances.** Monologues and pauses mid-thought. Nan returns a 524 timeout for audio over about 2 minutes, so long speech needs cutting in pauses or capping. This depends on the end-of-turn pause.
 - **The Jarvis page in a background tab or on a phone.** The browser may throttle or suspend audio work in a background tab, and phones behave differently again. How far "works on the Jarvis page" reaches is still open.
 
@@ -44,4 +45,5 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 
 - **A wake word ("Hey Jarvis…")**: nothing usable exists for a Spanish speaker. It becomes possible once Jarvis is in English, so it's a follow-up to that effort. See [How a conversation opens](issues/07-how-a-conversation-opens.md) and [Can a wake word be detected locally?](issues/04-wake-word.md).
 - **Turning hands-free off by voice**: a tap does the same job; it belongs with the wake word follow-up. See [How a conversation opens](issues/07-how-a-conversation-opens.md).
+- **A system mic-in-use indicator in Caelestia** (a PipeWire privacy indicator): it belongs to the Owner's desktop shell, not Jarvis. See [Privacy](issues/09-privacy-and-mic-indicator.md).
 - **Jarvis in English** (UI, persona, Replies, voice): the Owner's own follow-up effort, noted in `.scratch/english/idea.md`.
