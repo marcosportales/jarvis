@@ -181,6 +181,8 @@ export function fakeWidgets(events: Events) {
 export function fakeVoice(events: Events = []) {
   const spoken: string[] = []
   let stopped = 0
+  // The share of the clip played by the time it is stopped.
+  let played = 0.5
   const pending: Deferred<void>[] = []
   const voice: Voice = {
     speak(text) {
@@ -193,12 +195,15 @@ export function fakeVoice(events: Events = []) {
     stop() {
       stopped++
       pending.shift()?.resolve()
+      return played
     },
   }
   return {
     voice,
     spoken,
     stopped: () => stopped,
+    /** Stopping the Reply finds this share of it played. */
+    playsUpTo: (share: number) => (played = share),
     finish: () => pending.shift()!.resolve(),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }

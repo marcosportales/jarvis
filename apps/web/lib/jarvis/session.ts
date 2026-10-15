@@ -2,6 +2,7 @@ import { isRunning, type BrowseView } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
 import type { SearchOutcome } from "../search/outcome"
 import type { SavedTurn } from "../sessions/store"
+import type { Interrupted } from "../turns/interrupted"
 import { BROWSER_WIDGET_ID } from "../widgets/catalog"
 import type { WidgetChange } from "../widgets/changes"
 
@@ -14,6 +15,8 @@ export type TranscriptEntry = {
   text: string
   /** On a Reply: what Jarvis Remembered or Forgot. Shown, never spoken. */
   memoryEvents?: MemoryEvent[]
+  /** On an Interrupted Reply: cut short, or never spoken. Kept whole. */
+  interrupted?: Interrupted
 }
 
 export type JarvisSnapshot = {
@@ -127,6 +130,8 @@ export type ReplyRequest = {
   sessionId?: string
   text: string
   search?: SearchOutcome
+  /** The Session's previous Reply was an Interrupted Reply. */
+  interrupted?: Interrupted
 }
 
 /**
@@ -157,7 +162,8 @@ export interface WidgetChanges {
 export interface Voice {
   /** Plays the Reply; settles when playback ends or is stopped. */
   speak(text: string): Promise<void>
-  stop(): void
+  /** Stops the Reply; returns the share of it played, from 0 to 1. */
+  stop(): number
 }
 
 /** The server's current Browse Task. */
@@ -213,9 +219,15 @@ export function createJarvisSession(
   let snapshot: JarvisSnapshot = {
     state: "idle",
     transcript: (saved?.turns ?? []).flatMap(
-      ({ owner, reply, memoryEvents }): TranscriptEntry[] => [
+      ({ owner, reply, memoryEvents, interrupted }): TranscriptEntry[] => [
         { id: nextId++, role: "owner", text: owner },
-        { id: nextId++, role: "jarvis", text: reply, memoryEvents },
+        {
+          id: nextId++,
+          role: "jarvis",
+          text: reply,
+          ...(memoryEvents ? { memoryEvents } : {}),
+          ...(interrupted ? { interrupted } : {}),
+        },
       ]
     ),
     hint: null,
@@ -229,6 +241,8 @@ export function createJarvisSession(
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
+  // How the last Reply was interrupted, until a Turn telling the server is done.
+  let lastReplyInterrupted: Interrupted | null = null
   // Resolves to whether the Listener actually got the mic for the Utterance.
   let micOpened: Promise<boolean> = Promise.resolve(false)
   // A Push-to-talk hold is going on, from its press until its mic is done.
@@ -329,6 +343,23 @@ export function createJarvisSession(
     update({ transcript: [...snapshot.transcript, entry] })
   }
 
+  /**
+   * Marks the last Reply as an Interrupted Reply, in the Transcript and on
+   * the next Turn's request, so the server saves it and tells Jarvis.
+   */
+  function markLastReplyInterrupted(interrupted: Interrupted) {
+    const index = snapshot.transcript
+      .map(({ role }) => role)
+      .lastIndexOf("jarvis")
+    if (index === -1) return
+    lastReplyInterrupted = interrupted
+    update({
+      transcript: snapshot.transcript.map((entry, at) =>
+        at === index ? { ...entry, interrupted } : entry
+      ),
+    })
+  }
+
   /** Stops a Turn whose Jarvis State now belongs to a newer Turn or none. */
   function ensureCurrent(turnGeneration: number) {
     if (turnGeneration !== generation) throw new TurnSuperseded()
@@ -336,6 +367,7 @@ export function createJarvisSession(
 
   async function reply(message: string, turnGeneration: number) {
     const { sessionId, search: latest } = snapshot
+    const interrupted = lastReplyInterrupted
     // Played here, not on Thinking: an Utterance dropped there was never sent.
     cues.play("turnSent")
     const { text, widgetChanges, memoryEvents, search, ...saved } =
@@ -344,9 +376,12 @@ export function createJarvisSession(
           ...(sessionId ? { sessionId } : {}),
           text: message,
           ...(latest ? { search: latest } : {}),
+          ...(interrupted ? { interrupted } : {}),
         }),
         ERRORS.reply
       )
+    // The server has the mark now; a failed Turn sends it again next time.
+    if (lastReplyInterrupted === interrupted) lastReplyInterrupted = null
     // The server saved the Turn in its Session anyway; just don't show it.
     ensureCurrent(turnGeneration)
     update({
@@ -466,7 +501,7 @@ export function createJarvisSession(
   function interruptSpeaking() {
     if (snapshot.state !== "speaking") return
     generation++
-    voice.stop()
+    markLastReplyInterrupted({ cut: voice.stop() })
   }
 
   /** Gets the mic; on failure the inline error shows and the mic is off. */

@@ -155,6 +155,7 @@ describe("Jarvis Session", () => {
     expect(brain.calls.at(-1)).toEqual({
       sessionId: "session-1",
       text: "Basta",
+      interrupted: { cut: 0.5 },
     })
   })
 
@@ -466,6 +467,172 @@ describe("Jarvis Session", () => {
     await flush()
 
     expect(widgets.applied).toEqual([])
+  })
+
+  describe("Interrupted Reply", () => {
+    const STORY = "Había una vez un mayordomo muy paciente."
+
+    /** A typed Turn whose Reply is now being spoken. */
+    async function speaking(ctx: ReturnType<typeof setup>) {
+      ctx.session.sendTypedMessage("Cuéntame algo")
+      await flush()
+      ctx.brain.answer(STORY)
+      await flush()
+      expect(ctx.session.getSnapshot().state).toBe("speaking")
+    }
+
+    const replyEntry = (ctx: ReturnType<typeof setup>) =>
+      ctx.session.getSnapshot().transcript.find(({ role }) => role === "jarvis")
+
+    it("marks a Reply cut by a hold as cut short, with the share played, and sends the mark", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.4)
+
+      ctx.session.pressPushToTalk()
+      await flush()
+
+      expect(replyEntry(ctx)).toMatchObject({
+        text: STORY,
+        interrupted: { cut: 0.4 },
+      })
+
+      ctx.session.releasePushToTalk()
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Hola Jarvis",
+        interrupted: { cut: 0.4 },
+      })
+    })
+
+    it("marks a Reply cut by typing as cut short, and sends the mark", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.25)
+
+      ctx.session.sendTypedMessage("Basta")
+      await flush()
+
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { cut: 0.25 } })
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Basta",
+        interrupted: { cut: 0.25 },
+      })
+    })
+
+    it("sends the mark only with the next Turn", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.session.sendTypedMessage("Basta")
+      await flush()
+      ctx.brain.answer("Como quiera, señor.")
+      await flush()
+      ctx.voice.finish()
+      await flush()
+
+      ctx.session.sendTypedMessage("Gracias")
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Gracias",
+      })
+    })
+
+    it("sends the mark again when the Turn carrying it fails", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.4)
+      ctx.session.sendTypedMessage("Basta")
+      await flush()
+      ctx.brain.fail(new Error("Nan 500"))
+      await flush()
+
+      ctx.session.sendTypedMessage("Basta, por favor")
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Basta, por favor",
+        interrupted: { cut: 0.4 },
+      })
+    })
+
+    it("leaves a Reply heard whole unmarked", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.finish()
+      await flush()
+
+      ctx.session.sendTypedMessage("Otra")
+      await flush()
+
+      expect(replyEntry(ctx)).not.toHaveProperty("interrupted")
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Otra",
+      })
+    })
+
+    it("treats a Reply that fails to be spoken as an error, not an Interrupted Reply", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.fail(new DOMException("blocked", "NotAllowedError"))
+      await flush()
+
+      ctx.session.sendTypedMessage("¿Me oyes?")
+      await flush()
+
+      expect(replyEntry(ctx)).not.toHaveProperty("interrupted")
+      expect(ctx.transcript()).toContainEqual({
+        role: "error",
+        text: expect.stringMatching(/reproducir/i),
+      })
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "¿Me oyes?",
+      })
+    })
+
+    it("shows saved Interrupted Replies with their mark when resuming, and sends no mark", async () => {
+      const { session, brain } = setup({
+        saved: {
+          sessionId: "story",
+          turns: [
+            {
+              owner: "Cuéntame algo",
+              reply: STORY,
+              interrupted: { cut: 0.4 },
+            },
+            {
+              owner: "Otra",
+              reply: "Érase un robot.",
+              interrupted: { unspoken: true },
+            },
+          ],
+        },
+      })
+
+      expect(session.getSnapshot().transcript).toEqual([
+        { id: 0, role: "owner", text: "Cuéntame algo" },
+        { id: 1, role: "jarvis", text: STORY, interrupted: { cut: 0.4 } },
+        { id: 2, role: "owner", text: "Otra" },
+        {
+          id: 3,
+          role: "jarvis",
+          text: "Érase un robot.",
+          interrupted: { unspoken: true },
+        },
+      ])
+
+      session.sendTypedMessage("Sigue")
+      await flush()
+
+      expect(brain.calls).toEqual([{ sessionId: "story", text: "Sigue" }])
+    })
   })
 
   describe("Search Outcome", () => {

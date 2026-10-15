@@ -8,6 +8,7 @@ import {
 
 import { BROWSE_STATUSES } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
+import type { Interrupted } from "../turns/interrupted"
 
 /** A saved Session; it exists only once its first Turn is done. */
 export const sessions = sqliteTable(
@@ -41,6 +42,8 @@ export const turns = sqliteTable(
       .$type<MemoryEvent[]>()
       .notNull()
       .default([]),
+    /** Set once the Owner cut the Reply short or it was never spoken. */
+    interrupted: text("interrupted", { mode: "json" }).$type<Interrupted>(),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   },
   (table) => [primaryKey({ columns: [table.sessionId, table.position] })]

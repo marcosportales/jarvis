@@ -20,6 +20,7 @@ import { captionOf, type Caption } from "@/lib/jarvis/caption"
 import { shownResults } from "@/lib/search/browser-results"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 import { MEMORY_EVENT_LABELS } from "@/lib/memory/events"
+import { interruptedLabel } from "@/lib/turns/interrupted"
 import { getWidgetBoard } from "@/lib/widgets/browser-board"
 import { TRANSCRIPT_WIDGET_ID } from "@/lib/widgets/catalog"
 
@@ -241,6 +242,11 @@ function CaptionStrip({ caption }: { caption: Caption }) {
             <p className="text-xs opacity-70">Tú: {caption.owner}</p>
           )}
           {caption.reply && <p className="line-clamp-4">{caption.reply}</p>}
+          {caption.interrupted && (
+            <p className="text-xs italic opacity-70">
+              {interruptedLabel(caption.interrupted)}
+            </p>
+          )}
           {caption.memoryEvents?.map(({ kind, title }, index) => (
             <p key={index} className="text-xs opacity-70">
               {MEMORY_EVENT_LABELS[kind]}: {title}

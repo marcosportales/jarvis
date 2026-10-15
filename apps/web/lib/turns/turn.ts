@@ -35,6 +35,7 @@ import {
   type WidgetLayout,
 } from "../widgets/changes"
 import { createWidgetTools, widgetLayoutNotice } from "../widgets/tools"
+import { interruptedNote, type Interrupted } from "./interrupted"
 import { JARVIS_SYSTEM_PROMPT } from "./system-prompt"
 
 /** Bounds how many tool-use rounds a single Reply may take. */
@@ -54,6 +55,8 @@ export type TurnRequest = {
   coords?: Coordinates
   /** What the Results Widget shows, only while it is Shown. */
   results?: ResultsOnScreen
+  /** The Session's previous Reply was an Interrupted Reply. */
+  interrupted?: Interrupted
 }
 
 /** Jarvis's Reply, once the Turn is saved in `sessionId`. */
@@ -139,12 +142,25 @@ function withSystemShown(changes: WidgetChange[], checked: boolean) {
   return [...changes, { type: "show" as const, id: SYSTEM_WIDGET_ID }]
 }
 
-/** The earlier Turns as the chat model sees them. */
-function toMessages(turns: SavedTurn[]) {
-  return turns.flatMap(({ owner, reply }) => [
-    { role: "user" as const, content: owner },
-    { role: "assistant" as const, content: reply },
-  ])
+/**
+ * The earlier Turns and the Owner's new message as the chat model sees them.
+ * A message after an Interrupted Reply starts with a note saying how little
+ * of it the Owner heard.
+ */
+function toMessages(earlier: SavedTurn[], text: string) {
+  const owner = (content: string, before?: SavedTurn) => ({
+    role: "user" as const,
+    content: before?.interrupted
+      ? `${interruptedNote(before.interrupted, before.reply)}\n\n${content}`
+      : content,
+  })
+  return [
+    ...earlier.flatMap((turn, index) => [
+      owner(turn.owner, earlier[index - 1]),
+      { role: "assistant" as const, content: turn.reply },
+    ]),
+    owner(text, earlier.at(-1)),
+  ]
 }
 
 /** Lets the model resolve "hoy" or "esta semana" when searching a service. */
@@ -244,9 +260,14 @@ export function createTurns({
       widgets,
       coords,
       results,
+      interrupted,
     }: TurnRequest): Promise<TurnReply> {
       let earlier: SavedTurn[] = []
       if (sessionId) {
+        // Saved even if this Turn then fails: the Owner did cut it short.
+        if (interrupted) {
+          await sessions.markLastReplyInterrupted(sessionId, interrupted)
+        }
         const found = await sessions.recentTurns(sessionId)
         if (!found) throw new UnknownSessionError(sessionId)
         earlier = found
@@ -276,7 +297,7 @@ export function createTurns({
           generated = await generateText({
             model,
             system,
-            messages: [...toMessages(earlier), { role: "user", content: text }],
+            messages: toMessages(earlier, text),
             tools: mergeTools({
               builtIn: [
                 memoryTools.tools,

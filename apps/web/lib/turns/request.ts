@@ -3,6 +3,7 @@ import { z } from "zod"
 import { resultsOnScreenSchema } from "../search/outcome"
 import { coordinatesSchema } from "../weather/weather"
 import { widgetLayoutSchema } from "../widgets/changes"
+import { interruptedSchema } from "./interrupted"
 import type { TurnRequest } from "./turn"
 
 const turnRequestSchema = z.object({
@@ -15,6 +16,9 @@ const turnRequestSchema = z.object({
   results: resultsOnScreenSchema
     .nullish()
     .transform((results) => results ?? undefined),
+  interrupted: interruptedSchema
+    .nullish()
+    .transform((interrupted) => interrupted ?? undefined),
 }) satisfies z.ZodType<TurnRequest, unknown>
 
 /** Leaves out fields that are absent, so the request has only what was sent. */

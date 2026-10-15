@@ -58,7 +58,7 @@ const httpTranscriber: Transcriber = {
  * coordinates when the browser already allows it.
  */
 const httpBrain: Brain = {
-  async reply({ sessionId, text, search: latest }) {
+  async reply({ sessionId, text, search: latest, interrupted }) {
     const widgets = getWidgetBoard().describeLayout()
     const resultsShown = widgets.some(
       ({ id, shown }) => id === RESULTS_WIDGET_ID && shown
@@ -69,6 +69,7 @@ const httpBrain: Brain = {
       widgets,
       coords: await ownerLocationIfGranted(),
       results: latest && resultsShown ? toResultsOnScreen(latest) : undefined,
+      interrupted,
     }).catch((error: unknown) => {
       // The server doesn't know this Session, e.g. it was deleted.
       if (error instanceof HttpError && error.status === 404) {
@@ -158,7 +159,14 @@ function createAudioVoice(): Voice {
       })
     },
     stop() {
+      // Still being fetched or loaded: none of it was played yet.
+      const duration = audio?.duration ?? NaN
+      const played =
+        audio && Number.isFinite(duration) && duration > 0
+          ? Math.min(1, audio.currentTime / duration)
+          : 0
       finish?.()
+      return played
     },
   }
 }
