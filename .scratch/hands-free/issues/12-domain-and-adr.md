@@ -1,7 +1,7 @@
 # 12: Domain: Utterance, Listening, Push-to-talk and a waiting Jarvis State
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 07, 08, 09, 10
 
 ## Question
