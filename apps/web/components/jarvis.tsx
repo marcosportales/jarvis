@@ -1,6 +1,6 @@
 "use client"
 
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 
 import {
@@ -21,6 +21,7 @@ import {
   PromptInputTextarea,
 } from "@workspace/ui/components/ai-elements/prompt-input"
 
+import { JarvisLayoutPrototype } from "@/components/jarvis-layout-prototype"
 import { Orb } from "@/components/orb"
 import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
@@ -136,7 +137,24 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
 
   const busy = state === "listening" || state === "thinking"
 
+  // PROTOTYPE — `?variant=A|B|C` swaps in the Transcript Widget layouts.
+  const variant = useSearchParams().get("variant")
+
   if (gone) return <SessionGone />
+
+  if (variant) {
+    return (
+      <JarvisLayoutPrototype
+        variant={variant}
+        state={state}
+        transcript={transcript}
+        hint={hint}
+        onPress={() => pushToTalk.press("orb")}
+        onRelease={() => pushToTalk.release("orb")}
+        sendTypedMessage={(text) => void session.sendTypedMessage(text)}
+      />
+    )
+  }
 
   return (
     <div className="mx-auto flex h-svh w-full max-w-2xl flex-col gap-4 p-4">
