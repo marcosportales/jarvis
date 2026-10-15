@@ -24,6 +24,7 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 
 - [Can the Jarvis App keep listening with its window closed?](issues/05-mic-with-window-closed.md): Yes. The mic and voice detection live in the Jarvis page in the hidden Jarvis window, which already survives close, unthrottled and with the mic granted. The shell tells the page when it's hidden, and the Floating Orb shows the mic is open, because Hyprland and Caelestia show nothing.
 - [Can a wake word ("Jarvis…") be detected locally?](issues/04-wake-word.md): Possible but nothing is ready to use. Porcupine has an English `jarvis` in the browser, but behind an AccessKey with no personal plan. openWakeWord's `hey_jarvis` is Python-only and non-commercial. There are no Spanish error rates, and voice detection is still needed to end the Utterance.
+- [Voice detection that runs locally in the browser and the Jarvis App](issues/01-local-voice-detection.md): Silero VAD v6 through `@ricky0123/vad-web`, self-hosted in `public/vad/`. About 3.7 MB gzipped and an estimated 1–3% of a core while waiting. It rejects noise far better than WebRTC VAD (0.87 vs 0 on ESC-50). The energy level only drives the Orb, never the gate.
 
 ## Not yet specified
 
