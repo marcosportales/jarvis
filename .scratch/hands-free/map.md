@@ -27,16 +27,20 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 - [Voice detection that runs locally in the browser and the Jarvis App](issues/01-local-voice-detection.md): Silero VAD v6 through `@ricky0123/vad-web`, self-hosted in `public/vad/`. About 3.7 MB gzipped and an estimated 1–3% of a core while waiting. It rejects noise far better than WebRTC VAD (0.87 vs 0 on ESC-50). The energy level only drives the Orb, never the gate.
 - [Echo cancellation so Jarvis doesn't hear its own Reply](issues/03-echo-cancellation.md): Chromium/Electron echo cancellation on Linux already cancels any Reply audio the same app plays, but not other apps' audio and not with zero leftover echo, so the listener must be the player. Use it plus a stricter detection gate while Speaking, with half duplex as the fallback. PipeWire's echo-cancel is an opt-in extra.
 - [Can Whisper on Nan transcribe while the Owner is still speaking?](issues/02-whisper-while-speaking.md): No streaming on Nan, but a finished Utterance takes about 1.5–3 s whatever its length, so transcribe once the Owner stops. Pieces cut in pauses only pay off for long monologues. Nan allows 10 Whisper requests a minute and drops audio over about 2 minutes.
+- [How a conversation opens: always listening, a wake word, or a toggle?](issues/07-how-a-conversation-opens.md): A toggle. While it's on, every stretch of speech becomes an Utterance, and it stays on until the Owner turns it off. A tap on the Orb, Space or the global key toggles; a hold is still Push-to-talk. The same on the Jarvis page and in the Jarvis App.
 
 ## Not yet specified
 
-- **Other voices in the room.** A TV, a call, or someone else talking will look like speech. Whether Jarvis needs to tell the Owner's voice apart, or whether the opening mode (wake word, toggle) is enough protection, depends on what voice detection and the opening mode turn out to be. Every false trigger also spends one of Nan's 10 Whisper requests a minute.
+- **Other voices in the room.** A TV, a call, or someone else talking will look like speech. The opening mode is a toggle with no wake word, so the Owner's defence is turning hands-free off. Still open: whether that's enough, or whether Jarvis needs something more (telling the Owner's voice apart, or backing off when it keeps hearing speech that isn't meant for it). Every false trigger also spends one of Nan's 10 Whisper requests a minute.
 - **Failure and Jarvis Health.** What happens when the mic is denied, unplugged or switched, or voice detection fails to load, how the mic comes back after the Jarvis page crashes or reloads, and whether "hearing" becomes a part of Jarvis Health.
 - **How the Orb, Floating Orb and Caption show the new states.** This waits on the new Jarvis State(s) and on the privacy decision.
-- **What happens to the Push-to-talk machinery:** the hold arbitration, the portal Global Shortcut, Space and holding the Orb. Retired, repurposed (for example as a mute or toggle key) or kept, depending on the opening mode.
 - **Very long Utterances.** Monologues and pauses mid-thought. Nan returns a 524 timeout for audio over about 2 minutes, so long speech needs cutting in pauses or capping. This depends on the end-of-turn pause.
 - **The Jarvis page in a background tab or on a phone.** The browser may throttle or suspend audio work in a background tab, and phones behave differently again. How far "works on the Jarvis page" reaches is still open.
 
 ## Out of scope
 
 <!-- work consciously ruled beyond the destination: gist + why, linking the closed ticket -->
+
+- **A wake word ("Hey Jarvis…")**: nothing usable exists for a Spanish speaker. It becomes possible once Jarvis is in English, so it's a follow-up to that effort. See [How a conversation opens](issues/07-how-a-conversation-opens.md) and [Can a wake word be detected locally?](issues/04-wake-word.md).
+- **Turning hands-free off by voice**: a tap does the same job; it belongs with the wake word follow-up. See [How a conversation opens](issues/07-how-a-conversation-opens.md).
+- **Jarvis in English** (UI, persona, Replies, voice): the Owner's own follow-up effort, noted in `.scratch/english/idea.md`.
