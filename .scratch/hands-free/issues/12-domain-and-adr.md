@@ -11,6 +11,7 @@ Rewrite the Voice vocabulary in `CONTEXT.md` for hands-free conversation:
 - **Listening:** does it mean speech is being heard, or that the mic is open at all?
 - **Push-to-talk:** is it removed, kept as a fallback, or renamed?
 - Is a new Jarvis State needed for "the mic is open and Jarvis is waiting quietly" (e.g. Waiting), and how does it differ from Idle (mic closed)? Do Speaking ("starting push-to-talk cuts it short") and Thinking need new wording?
+- **Interrupted Reply** (from **Interrupting: does speaking over Jarvis cut it short?**): a Reply the Owner didn't fully hear, cut short or never spoken. Add it, and reword Speaking (voice, a tap or a hold cuts it short) and Thinking (speech during it queues as the next Turn).
 - Do the definitions of the Orb, the Floating Orb and the Jarvis App change?
 
 Then write the ADR that records replacing Push-to-talk with hands-free conversation. Push-to-talk was decided in `.scratch/voice-mvp/spec.md` and its global key in ADR 0009, so the new ADR supersedes those parts.
