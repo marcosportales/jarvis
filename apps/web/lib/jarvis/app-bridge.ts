@@ -1,4 +1,4 @@
-import type { PushToTalk } from "./push-to-talk"
+import type { OrbInput } from "./orb-input"
 import type { JarvisSession, JarvisState } from "./session"
 
 /**
@@ -47,11 +47,11 @@ declare global {
  */
 export function connectAppBridge({
   session,
-  pushToTalk,
+  orbInput,
   app,
 }: {
   session: Pick<JarvisSession, "getSnapshot" | "subscribe">
-  pushToTalk: PushToTalk
+  orbInput: OrbInput
   app: Pick<JarvisAppApi, "onPushToTalk" | "publishJarvisState"> | undefined
 }): () => void {
   if (!app) return () => {}
@@ -66,8 +66,8 @@ export function connectAppBridge({
   })
 
   const stopListening = app.onPushToTalk((action) => {
-    if (action === "press") pushToTalk.press("jarvis-app")
-    else pushToTalk.release("jarvis-app")
+    if (action === "press") orbInput.press("jarvis-app")
+    else orbInput.release("jarvis-app")
   })
 
   return () => {

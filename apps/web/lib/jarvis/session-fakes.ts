@@ -48,6 +48,8 @@ export function fakeListener(
   const calls: string[] = []
   const subscribers = new Set<ListenerEvents>()
   const fire: ListenerEvents = {
+    speechStarted: () =>
+      subscribers.forEach((events) => events.speechStarted()),
     pieceReady: (audio, durationMs) =>
       subscribers.forEach((events) => events.pieceReady(audio, durationMs)),
     endOfTurn: () => subscribers.forEach((events) => events.endOfTurn()),

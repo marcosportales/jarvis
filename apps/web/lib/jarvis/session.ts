@@ -38,6 +38,10 @@ export type JarvisSnapshot = {
   browse: BrowseView | null
   /** This page saw the Browse Task end, so the Browser Widget highlights it. */
   browseJustEnded: boolean
+  /** Hands-free is on: every stretch of speech Jarvis hears is an Utterance. */
+  handsFree: boolean
+  /** The mic is open: Hands-free is on or a Push-to-talk hold is going on. */
+  micOpen: boolean
 }
 
 export const MIN_UTTERANCE_MS = 500
@@ -71,8 +75,25 @@ async function orFail<T>(work: Promise<T>, message: string): Promise<T> {
 /** A stretch of an Utterance's audio, ready to be Transcribed. */
 export type Piece = { audio: Blob; durationMs: number }
 
+/**
+ * A captured Utterance: a hold's pieces, Transcribed once it is long enough,
+ * or under Hands-free their texts, each piece having been sent to the
+ * Transcriber as soon as it was ready.
+ */
+type Captured = { pieces: Piece[]; texts: Promise<string>[] }
+
+/** The pieces' texts as one message, in order. */
+function joinTexts(texts: string[]) {
+  return texts
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .join(" ")
+}
+
 /** What the Listener reports while it captures an Utterance. */
 export type ListenerEvents = {
+  /** Under Hands-free, the Owner started speaking: an Utterance begins. */
+  speechStarted(): void
   pieceReady(audio: Blob, durationMs: number): void
   /** The Utterance is over: no more pieces of it will come. */
   endOfTurn(): void
@@ -181,19 +202,28 @@ export function createJarvisSession(
     search: null,
     browse: null,
     browseJustEnded: false,
+    handsFree: false,
+    micOpen: false,
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
   // Resolves to whether the Listener actually got the mic for the Utterance.
   let micOpened: Promise<boolean> = Promise.resolve(false)
-  // The Utterance being captured: its pieces so far, and how it ends.
+  // A Push-to-talk hold is going on, from its press until its mic is done.
+  let holding = false
+  // The Utterance being captured: what it has so far, and how it ends.
   let capture: {
-    pieces: Piece[]
-    end: (pieces: Piece[]) => void
+    captured: Captured
+    /** Under Hands-free: each piece is Transcribed as soon as it's ready. */
+    transcribeAtOnce: boolean
+    end: (captured: Captured) => void
     fail: (error: unknown) => void
   } | null = null
-  // Settles with the captured Utterance's pieces at its end of turn.
-  let utteranceEnded: Promise<Piece[]> = Promise.resolve([])
+  // Settles with the captured Utterance at its end of turn.
+  let utteranceEnded: Promise<Captured> = Promise.resolve({
+    pieces: [],
+    texts: [],
+  })
   const listeners = new Set<() => void>()
   // Polling the Browse Task: on while watching, one load at a time.
   let watchingBrowse = false
@@ -202,13 +232,27 @@ export function createJarvisSession(
   let browseLoad = 0
 
   const stopListening = listener.listen({
+    speechStarted() {
+      if (!snapshot.handsFree || snapshot.state !== "idle" || capture) return
+      update({ state: "listening", hint: null })
+      startCapture({ transcribeAtOnce: true })
+      void takeHandsFreeUtterance(utteranceEnded)
+    },
     pieceReady(audio, durationMs) {
-      capture?.pieces.push({ audio, durationMs })
+      if (!capture) return
+      if (!capture.transcribeAtOnce) {
+        return void capture.captured.pieces.push({ audio, durationMs })
+      }
+      // Sent at once, so its audio is let go as soon as its text is back.
+      const text = transcriber.transcribe(audio)
+      // Its failure is reported at end of turn, not as an unhandled one.
+      text.catch(() => {})
+      capture.captured.texts.push(text)
     },
     endOfTurn() {
       const ended = capture
       capture = null
-      ended?.end(ended.pieces)
+      ended?.end(ended.captured)
     },
     failed(error) {
       const ended = capture
@@ -218,9 +262,14 @@ export function createJarvisSession(
   })
 
   /** Starts gathering the pieces of a new Utterance. */
-  function startCapture() {
-    utteranceEnded = new Promise<Piece[]>((end, fail) => {
-      capture = { pieces: [], end, fail }
+  function startCapture({ transcribeAtOnce = false } = {}) {
+    utteranceEnded = new Promise<Captured>((end, fail) => {
+      capture = {
+        captured: { pieces: [], texts: [] },
+        transcribeAtOnce,
+        end,
+        fail,
+      }
     })
     // Its failure is reported on release, not as an unhandled rejection.
     utteranceEnded.catch(() => {})
@@ -229,6 +278,16 @@ export function createJarvisSession(
   function update(patch: Partial<JarvisSnapshot>) {
     snapshot = { ...snapshot, ...patch }
     listeners.forEach((listener) => listener())
+  }
+
+  /** Hands-free or a hold changed, and with them whether the mic is open. */
+  function updateMic(
+    patch: Partial<JarvisSnapshot> & { holding?: boolean } = {}
+  ) {
+    const { holding: held = holding, ...rest } = patch
+    holding = held
+    const handsFree = rest.handsFree ?? snapshot.handsFree
+    update({ ...rest, micOpen: handsFree || holding })
   }
 
   function setState(state: JarvisState) {
@@ -351,6 +410,27 @@ export function createJarvisSession(
     }
   }
 
+  /**
+   * A hands-free Utterance: Thinking from its end of turn, then sent to the
+   * Brain once every piece's text is back. One with no words is dropped
+   * without a hint: under Hands-free, noises are not the Owner's mistake.
+   */
+  async function takeHandsFreeUtterance(ended: Promise<Captured>) {
+    const turnGeneration = generation
+    await runTurn(turnGeneration, async () => {
+      const { texts } = await orFail(ended, ERRORS.microphone)
+      ensureCurrent(turnGeneration)
+      setState("thinking")
+      const text = joinTexts(
+        await orFail(Promise.all(texts), ERRORS.transcription)
+      )
+      ensureCurrent(turnGeneration)
+      if (!text) return setState("idle")
+      append("owner", text)
+      await reply(text, turnGeneration)
+    })
+  }
+
   // A new Turn can only start when Jarvis isn't Listening or Thinking.
   function canStartTurn() {
     return snapshot.state === "idle" || snapshot.state === "speaking"
@@ -362,8 +442,54 @@ export function createJarvisSession(
     voice.stop()
   }
 
+  /** Gets the mic; on failure the inline error shows and the mic is off. */
+  function openMic() {
+    micOpened = listener.open().then(
+      () => true,
+      () => {
+        // Turned off meanwhile: the Owner no longer waits on the mic.
+        if (!holding && !snapshot.handsFree) return false
+        // A hold waiting on the mic ends here, before it is released.
+        const held = holding
+        if (held) capture = null
+        append("error", ERRORS.microphone)
+        updateMic({
+          holding: false,
+          handsFree: false,
+          ...(held ? { state: "idle" } : {}),
+        })
+        return false
+      }
+    )
+  }
+
+  function setHandsFree(on: boolean) {
+    if (on === snapshot.handsFree) return
+    updateMic({ handsFree: on })
+    if (on) {
+      // A hold going on already has the mic.
+      if (!holding) openMic()
+      return
+    }
+    // The Utterance being heard is dropped; a hold's is still sent.
+    if (capture?.transcribeAtOnce) {
+      const dropped = capture
+      capture = null
+      generation++
+      dropped.fail(new TurnSuperseded())
+      setState("idle")
+    }
+    // A hold keeps the mic until its release.
+    if (!holding) listener.close()
+  }
+
   return {
     getSnapshot: () => snapshot,
+    setHandsFree,
+    /** The Owner tapped the Orb or Space: Hands-free goes on or off. */
+    tap() {
+      setHandsFree(!snapshot.handsFree)
+    },
     subscribe(listener: () => void) {
       listeners.add(listener)
       return () => {
@@ -373,18 +499,11 @@ export function createJarvisSession(
     pressPushToTalk() {
       if (!canStartTurn()) return
       interruptSpeaking()
-      update({ state: "listening", hint: null })
+      updateMic({ holding: true, state: "listening", hint: null })
       startCapture()
       listener.holdStart()
-      micOpened = listener.open().then(
-        () => true,
-        () => {
-          capture = null
-          append("error", ERRORS.microphone)
-          setState("idle")
-          return false
-        }
-      )
+      // Under Hands-free the mic is already open.
+      if (!snapshot.handsFree) openMic()
     },
     async releasePushToTalk() {
       if (snapshot.state !== "listening") return
@@ -394,9 +513,12 @@ export function createJarvisSession(
       const ended = utteranceEnded
       listener.holdEnd()
       await runTurn(turnGeneration, async () => {
-        // Hands-free is off, so the mic closes once the hold is captured.
-        const pieces = await orFail(
-          ended.finally(() => listener.close()),
+        const { pieces } = await orFail(
+          ended.finally(() => {
+            // With Hands-free off, the mic closes once the hold is captured.
+            if (!snapshot.handsFree) listener.close()
+            updateMic({ holding: false })
+          }),
           ERRORS.microphone
         )
         ensureCurrent(turnGeneration)
@@ -413,10 +535,7 @@ export function createJarvisSession(
           ),
           ERRORS.transcription
         )
-        const text = texts
-          .map((text) => text.trim())
-          .filter(Boolean)
-          .join(" ")
+        const text = joinTexts(texts)
         ensureCurrent(turnGeneration)
         if (!text) {
           return discardUtterance()
@@ -477,7 +596,12 @@ export function createJarvisSession(
       void micOpened.then((opened) => {
         if (opened) listener.close()
       })
-      update({ state: "idle", hint: null })
+      updateMic({
+        holding: false,
+        state: "idle",
+        hint: null,
+        handsFree: false,
+      })
     },
   }
 }

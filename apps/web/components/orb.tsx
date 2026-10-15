@@ -6,18 +6,32 @@ import { cn } from "@workspace/ui/lib/utils"
 import type { JarvisState } from "@/lib/jarvis/session"
 
 /**
- * The Orb: the round button the Owner holds for Push-to-talk, showing the
- * Jarvis State. The Jarvis page and the Floating Orb both use it; each
- * decides what pressing and releasing it means.
+ * The Orb: the round button the Owner taps to turn Hands-free on or off, or
+ * holds for Push-to-talk, showing the Jarvis State and whether the mic is
+ * open. The Jarvis page and the Floating Orb both use it; each decides what
+ * pressing and releasing it means.
+ *
+ * The mic-open look is a placeholder ring, steady while Jarvis is busy and
+ * breathing while Idle with Hands-free on, so "waiting for you" looks
+ * different from "not listening". The look-and-sounds ticket replaces it.
  */
 export function Orb({
   state,
+  micOpen = false,
+  handsFree = false,
+  label = "Mantén pulsado para hablar con Jarvis",
   className,
   onPress,
   onRelease,
   onCancel = onRelease,
 }: {
   state: JarvisState
+  /** The mic is open: Hands-free is on or a hold is going on. */
+  micOpen?: boolean
+  /** Hands-free is on, so the button shows as pressed. */
+  handsFree?: boolean
+  /** What the button does, for assistive technology. */
+  label?: string
   /** The Orb's size, e.g. `size-48`. */
   className?: string
   /** The main button went down on it. */
@@ -30,9 +44,15 @@ export function Orb({
   return (
     <button
       type="button"
-      aria-label="Mantén pulsado para hablar con Jarvis"
-      aria-pressed={state === "listening"}
-      className="touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={label}
+      aria-pressed={handsFree || state === "listening"}
+      data-mic-open={micOpen}
+      className={cn(
+        "touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
+        micOpen &&
+          "ring-4 ring-emerald-500/70 ring-offset-4 ring-offset-background",
+        micOpen && state === "idle" && "animate-pulse"
+      )}
       onPointerDown={(event) => {
         if (event.button !== 0) return
         event.currentTarget.setPointerCapture(event.pointerId)

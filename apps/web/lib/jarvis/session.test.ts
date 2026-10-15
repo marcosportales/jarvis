@@ -1,12 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { BROWSE_POLL_MS, SessionGoneError, type Reply } from "./session"
 import {
+  BROWSE_POLL_MS,
+  DISCARDED_UTTERANCE_HINT,
+  SessionGoneError,
+  type Reply,
+} from "./session"
+import {
+  deferred,
   fakeBrowse,
   fakeListener,
   fakeTranscriber,
   flush,
   setup,
+  type Deferred,
 } from "./session-fakes"
 import type { BrowseView } from "../browse/view"
 import type { MemoryEvent } from "../memory/events"
@@ -707,6 +714,296 @@ describe("Jarvis Session", () => {
       expect(jarvis.session.getSnapshot().browseJustEnded).toBe(false)
       expect(jarvis.widgets.applied).toEqual([])
       expect(browse.loads()).toBe(1)
+    })
+  })
+
+  describe("Hands-free", () => {
+    it("is off in a new Session, with the mic closed", () => {
+      const { session, listener } = setup()
+
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(listener.calls).toEqual([])
+    })
+
+    it("turns on with a tap, opening the mic, and off with another, closing it", async () => {
+      const { session, listener } = setup()
+
+      session.tap()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        state: "idle",
+        handsFree: true,
+        micOpen: true,
+      })
+      expect(listener.calls).toEqual(["open"])
+
+      session.tap()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        state: "idle",
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(listener.calls).toEqual(["open", "close"])
+    })
+
+    it("completes a Turn on its own: Idle → Listening → Thinking → Speaking → Idle, still on", async () => {
+      const {
+        session,
+        listener,
+        transcriber,
+        brain,
+        voice,
+        states,
+        transcript,
+      } = setup({ transcriber: fakeTranscriber((audio) => audio.text()) })
+      session.tap()
+      await flush()
+
+      listener.fire.speechStarted()
+      listener.fire.pieceReady(listener.audio("¿Qué hora es?"), 1200)
+      await flush()
+
+      expect(session.getSnapshot().state).toBe("listening")
+      expect(transcriber.calls).toHaveLength(1)
+      expect(brain.calls).toEqual([])
+
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(brain.calls).toEqual([{ text: "¿Qué hora es?" }])
+
+      brain.answer("Son las cinco, señor.")
+      await flush()
+      voice.finish()
+      await flush()
+
+      expect(states).toEqual([
+        "idle",
+        "listening",
+        "thinking",
+        "speaking",
+        "idle",
+      ])
+      expect(transcript()).toEqual([
+        { role: "owner", text: "¿Qué hora es?" },
+        { role: "jarvis", text: "Son las cinco, señor." },
+      ])
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: true,
+        micOpen: true,
+      })
+      expect(listener.calls).toEqual(["open"])
+    })
+
+    it("joins two pieces into one message, each Transcribed once, asking the Brain once the last text is back", async () => {
+      const heard = new Map<string, Deferred<string>>()
+      const { session, listener, transcriber, brain, transcript } = setup({
+        transcriber: fakeTranscriber(async (audio) => {
+          const text = deferred<string>()
+          heard.set(await audio.text(), text)
+          return text.promise
+        }),
+      })
+      session.tap()
+      await flush()
+
+      listener.fire.speechStarted()
+      listener.fire.pieceReady(listener.audio("Pon una alarma"), 1500)
+      await flush()
+
+      expect(transcriber.calls).toHaveLength(1)
+
+      listener.fire.pieceReady(listener.audio("a las siete"), 900)
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(transcriber.calls).toHaveLength(2)
+      expect(session.getSnapshot().state).toBe("thinking")
+
+      heard.get("a las siete")!.resolve("a las siete.")
+      await flush()
+
+      expect(brain.calls).toEqual([])
+
+      heard.get("Pon una alarma")!.resolve(" Pon una alarma ")
+      await flush()
+
+      expect(transcriber.calls).toHaveLength(2)
+      expect(brain.calls).toEqual([{ text: "Pon una alarma a las siete." }])
+      expect(transcript()).toEqual([
+        { role: "owner", text: "Pon una alarma a las siete." },
+      ])
+    })
+
+    it("drops an Utterance with no words silently, with no hint", async () => {
+      const { session, listener, brain, transcript } = setup({
+        transcriber: fakeTranscriber(""),
+      })
+      session.tap()
+      await flush()
+
+      listener.fire.speechStarted()
+      listener.fire.pieceReady(listener.audio(), 300)
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(brain.calls).toEqual([])
+      expect(transcript()).toEqual([])
+      expect(session.getSnapshot()).toMatchObject({
+        state: "idle",
+        hint: null,
+        handsFree: true,
+      })
+    })
+
+    it("hears nothing on its own while off", async () => {
+      const { session, listener, transcriber } = setup()
+
+      listener.fire.speechStarted()
+      listener.fire.pieceReady(listener.audio(), 1000)
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(session.getSnapshot().state).toBe("idle")
+      expect(transcriber.calls).toEqual([])
+    })
+
+    it("drops the Utterance being heard when turned off, closing the mic", async () => {
+      const { session, listener, transcriber, brain } = setup()
+      session.tap()
+      await flush()
+      listener.fire.speechStarted()
+      await flush()
+
+      session.tap()
+      await flush()
+      listener.fire.pieceReady(listener.audio(), 1000)
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        state: "idle",
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(listener.calls).toEqual(["open", "close"])
+      expect(transcriber.calls).toEqual([])
+      expect(brain.calls).toEqual([])
+    })
+
+    it("keeps the mic open after a hold while on", async () => {
+      const { session, listener, brain } = setup()
+      session.tap()
+      await flush()
+
+      session.pressPushToTalk()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
+      expect(listener.calls).toEqual(["open", "holdStart", "holdEnd"])
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: true,
+        micOpen: true,
+      })
+    })
+
+    it("keeps the hint for a Push-to-talk hold with no words", async () => {
+      const { session, brain } = setup({ transcriber: fakeTranscriber("") })
+      session.tap()
+      await flush()
+
+      session.pressPushToTalk()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      expect(brain.calls).toEqual([])
+      expect(session.getSnapshot().hint).toBe(DISCARDED_UTTERANCE_HINT)
+    })
+
+    it("shows the mic open during a hold while off, and closed after it", async () => {
+      const { session } = setup()
+
+      session.pressPushToTalk()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: false,
+        micOpen: true,
+      })
+
+      session.releasePushToTalk()
+      await flush()
+
+      expect(session.getSnapshot().micOpen).toBe(false)
+    })
+
+    it("waits for a hold's release before closing the mic when turned off", async () => {
+      const { session, listener, brain } = setup()
+      session.tap()
+      await flush()
+      session.pressPushToTalk()
+      await flush()
+
+      session.setHandsFree(false)
+      await flush()
+
+      expect(listener.calls).toEqual(["open", "holdStart"])
+      expect(session.getSnapshot()).toMatchObject({
+        state: "listening",
+        handsFree: false,
+        micOpen: true,
+      })
+
+      session.releasePushToTalk()
+      await flush()
+
+      expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
+      expect(listener.calls).toEqual(["open", "holdStart", "holdEnd", "close"])
+      expect(session.getSnapshot().micOpen).toBe(false)
+    })
+
+    it("turns off, showing the microphone error, when the mic is denied", async () => {
+      const { session } = setup({
+        listener: fakeListener({
+          openError: new DOMException("denied", "NotAllowedError"),
+        }),
+      })
+
+      session.tap()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(session.getSnapshot().transcript.at(-1)).toMatchObject({
+        role: "error",
+        text: expect.stringMatching(/micrófono/i),
+      })
+    })
+
+    it("is off after teardown, with the mic closed", async () => {
+      const { session, listener } = setup()
+      session.tap()
+      await flush()
+
+      session.teardown()
+      await flush()
+
+      expect(session.getSnapshot()).toMatchObject({
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(listener.calls).toEqual(["open", "close"])
     })
   })
 

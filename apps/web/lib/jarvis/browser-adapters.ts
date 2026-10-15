@@ -11,13 +11,12 @@ import {
   type Brain,
   type BrowseSource,
   type JarvisAdapters,
-  type Listener,
-  type ListenerEvents,
   type Reply,
   type Transcriber,
   type Voice,
   type WidgetChanges,
 } from "./session"
+import { createVadListener } from "./vad-listener"
 
 class HttpError extends Error {
   constructor(
@@ -41,77 +40,6 @@ async function post(url: string, body: Blob | object): Promise<Response> {
   )
   if (!response.ok) throw new HttpError(url, response.status)
   return response
-}
-
-/** For now only Push-to-talk: each hold is captured whole by a MediaRecorder. */
-function createMediaRecorderListener(): Listener {
-  const subscribers = new Set<ListenerEvents>()
-  let stream: MediaStream | null = null
-  // Timed from its start, so waiting on the mic still counts.
-  let hold: {
-    startedAt: number
-    chunks: Blob[]
-    mediaRecorder?: MediaRecorder
-  } | null = null
-
-  function emit(report: (events: ListenerEvents) => void) {
-    subscribers.forEach(report)
-  }
-
-  function record(current: NonNullable<typeof hold>, mic: MediaStream) {
-    const mediaRecorder = new MediaRecorder(mic)
-    mediaRecorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) current.chunks.push(event.data)
-    })
-    mediaRecorder.start()
-    current.mediaRecorder = mediaRecorder
-  }
-
-  function close() {
-    hold?.mediaRecorder?.stop()
-    hold = null
-    stream?.getTracks().forEach((track) => track.stop())
-    stream = null
-  }
-
-  return {
-    async open() {
-      try {
-        stream ??= await navigator.mediaDevices.getUserMedia({ audio: true })
-        if (hold && !hold.mediaRecorder) record(hold, stream)
-      } catch (error) {
-        close()
-        throw error
-      }
-    },
-    close,
-    holdStart() {
-      hold = { startedAt: performance.now(), chunks: [] }
-      if (stream) record(hold, stream)
-    },
-    holdEnd() {
-      const current = hold
-      hold = null
-      const mediaRecorder = current?.mediaRecorder
-      if (!current || !mediaRecorder) {
-        const error = new Error("No hold in progress")
-        return emit((events) => events.failed(error))
-      }
-      mediaRecorder.addEventListener("stop", () => {
-        const audio = new Blob(current.chunks, { type: mediaRecorder.mimeType })
-        const durationMs = performance.now() - current.startedAt
-        emit((events) => events.pieceReady(audio, durationMs))
-        emit((events) => events.endOfTurn())
-      })
-      mediaRecorder.stop()
-    },
-    listen(events) {
-      subscribers.add(events)
-      return () => {
-        subscribers.delete(events)
-      }
-    },
-  }
 }
 
 const httpTranscriber: Transcriber = {
@@ -236,7 +164,7 @@ function createAudioVoice(): Voice {
 
 export function createBrowserAdapters(): JarvisAdapters {
   return {
-    listener: createMediaRecorderListener(),
+    listener: createVadListener(),
     transcriber: httpTranscriber,
     brain: httpBrain,
     voice: createAudioVoice(),
