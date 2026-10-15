@@ -6,3 +6,9 @@ export type MemoryEvent = {
   kind: "remembered" | "forgotten"
   title: string
 }
+
+/** How a MemoryEvent reads on screen, before its title. */
+export const MEMORY_EVENT_LABELS: Record<MemoryEvent["kind"], string> = {
+  remembered: "Recordado",
+  forgotten: "Olvidado",
+}

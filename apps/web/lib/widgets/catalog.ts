@@ -85,6 +85,19 @@ export const WIDGET_CATALOG = [
     size: { width: 400, height: 420 },
     expandable: true,
   },
+  {
+    id: "transcript",
+    name: "Conversación",
+    description:
+      "La conversación escrita de esta sesión, con todo lo dicho, y la caja para escribirte. Muéstralo, ocúltalo o amplíalo solo cuando el dueño lo pida, nunca por tu cuenta.",
+    startingSpot: "left-bottom",
+    source: "built-in",
+    // Room for a few Turns above the text box; the Transcript scrolls inside.
+    size: { width: 360, height: 520 },
+    expandable: true,
+    // No margins on a phone: along the bottom edge instead of floating.
+    dockedOnPhone: true,
+  },
 ] as const satisfies readonly WidgetInfo[]
 
 export type WidgetId = (typeof WIDGET_CATALOG)[number]["id"]
@@ -94,6 +107,9 @@ export const SYSTEM_WIDGET_ID = "system" satisfies WidgetId
 
 /** The Results Widget, which the Turn Shows on its own after a list Search. */
 export const RESULTS_WIDGET_ID = "results" satisfies WidgetId
+
+/** The Transcript Widget, which the Jarvis page Shows when the Owner asks to type. */
+export const TRANSCRIPT_WIDGET_ID = "transcript" satisfies WidgetId
 
 /** The Browser Widget, which the Turn Shows on its own when a Browse Task starts. */
 export const BROWSER_WIDGET_ID = "browser" satisfies WidgetId

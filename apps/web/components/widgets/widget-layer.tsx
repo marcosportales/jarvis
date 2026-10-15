@@ -23,6 +23,9 @@ import { WIDGETS, type WidgetDefinition } from "@/lib/widgets/registry"
 /** Controls inside a Widget are pressed, and its scrolling body scrolled. */
 const NOT_A_DRAG_HANDLE = "button, a, input, select, textarea, [data-scrolls]"
 
+/** Tailwind's `max-sm`: no side margins, so docked Widgets stay put. */
+const PHONE = "(width < 40rem)"
+
 /**
  * Floats every Shown Widget over the Jarvis page at its place, and the
  * Expanded one, if any, large in the middle over a dimmed backdrop. Not a
@@ -81,9 +84,10 @@ export function WidgetLayer() {
  * the Owner prefers reduced motion. A Widget with its own size keeps it and
  * scrolls inside, dragged by its header. Expanded, the same element becomes a
  * centred frame, so the Widget inside stays mounted and keeps its state.
+ * One docked on a phone sits along the bottom edge instead and isn't dragged.
  */
 function WidgetCard({
-  definition: { id, name, size, expandable, component: Widget },
+  definition: { id, name, size, expandable, dockedOnPhone, component: Widget },
   state: { position, glide, settings },
   expanded,
 }: {
@@ -96,6 +100,7 @@ function WidgetCard({
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
     if (expanded || !event.isPrimary || event.button !== 0) return
+    if (dockedOnPhone && window.matchMedia(PHONE).matches) return
     if ((event.target as Element).closest(NOT_A_DRAG_HANDLE)) return
     const card = event.currentTarget.getBoundingClientRect()
     grab.current = {
@@ -145,6 +150,10 @@ function WidgetCard({
           ? // Centred; the whole screen on a phone.
             "fixed inset-0 z-20 m-auto h-[85vh] w-[90vw] shadow-2xl max-sm:h-svh max-sm:w-full max-sm:rounded-none"
           : "absolute cursor-grab touch-none select-none active:cursor-grabbing",
+        !expanded &&
+          dockedOnPhone &&
+          // Over the inline place and size, which are for wider windows.
+          "max-sm:inset-x-0! max-sm:top-auto! max-sm:bottom-0! max-sm:h-[42svh]! max-sm:w-full! max-sm:cursor-auto max-sm:rounded-b-none",
         !expanded &&
           glide &&
           "motion-safe:transition-[left,top] motion-safe:duration-500 motion-safe:ease-out"

@@ -6,6 +6,7 @@ import { BrowserWidget } from "@/components/widgets/browser-widget"
 import { ResultsWidget } from "@/components/widgets/results-widget"
 import { SystemWidget } from "@/components/widgets/system-widget"
 import { TodayWidget } from "@/components/widgets/today-widget"
+import { TranscriptWidget } from "@/components/widgets/transcript-widget"
 import { WeatherWidget } from "@/components/widgets/weather-widget"
 
 import { WIDGET_CATALOG, type WidgetId, type WidgetInfo } from "./catalog"
@@ -25,6 +26,7 @@ export type WidgetDefinition = WidgetInfo & {
 }
 
 const COMPONENTS: Record<WidgetId, ComponentType<WidgetProps>> = {
+  transcript: TranscriptWidget,
   today: TodayWidget,
   weather: WeatherWidget,
   system: SystemWidget,
