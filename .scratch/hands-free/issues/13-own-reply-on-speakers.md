@@ -1,7 +1,7 @@
 # 13: Does Jarvis hear its own Reply on this machine's speakers?
 
 Type: task
-Status: open
+Status: claimed
 Blocked by: 01, 03
 
 ## Question
