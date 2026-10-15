@@ -1,6 +1,6 @@
 # Spec: Search — Jarvis looks things up on the web, with a Results Widget
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

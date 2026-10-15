@@ -9,7 +9,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-human (implemented; only the in-browser check of the Widget's cards, links and reload state remains, as no browser was available. Through the reply route, list Searches return `show results` and the cards' URLs, and single-fact web answers leave the Widget alone)
+**Status:** done
 
 - [x] A Turn test: a Search with several results → a `show results` change. One result or none → no change
 - [x] A Turn test: the model hiding the Results Widget in the same Turn wins over the automatic show
