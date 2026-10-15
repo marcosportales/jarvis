@@ -1,7 +1,7 @@
 # 11: Does this spec also shorten Thinking?
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 02, 06
 
 ## Question
