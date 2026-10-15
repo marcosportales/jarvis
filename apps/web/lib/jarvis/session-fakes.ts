@@ -8,6 +8,8 @@ import {
   createJarvisSession,
   type Brain,
   type BrowseSource,
+  type Cue,
+  type Cues,
   type JarvisState,
   type Listener,
   type ListenerEvents,
@@ -202,6 +204,17 @@ export function fakeVoice(events: Events = []) {
   }
 }
 
+/** Remembers which cue was asked for, in order; plays nothing. */
+export function fakeCues() {
+  const played: Cue[] = []
+  const cues: Cues = {
+    play(cue) {
+      played.push(cue)
+    },
+  }
+  return { cues, played }
+}
+
 export function setup(
   options: {
     listener?: ReturnType<typeof fakeListener>
@@ -217,6 +230,7 @@ export function setup(
   const voice = fakeVoice(events)
   const widgets = fakeWidgets(events)
   const browse = options.browse ?? fakeBrowse()
+  const cues = fakeCues()
   const session = createJarvisSession(
     {
       listener: listener.listener,
@@ -225,6 +239,7 @@ export function setup(
       voice: voice.voice,
       widgets: widgets.widgets,
       browse: browse.browse,
+      cues: cues.cues,
     },
     options.saved
   )
@@ -243,6 +258,7 @@ export function setup(
     voice,
     widgets,
     browse,
+    cues,
     events,
     states,
     transcript,

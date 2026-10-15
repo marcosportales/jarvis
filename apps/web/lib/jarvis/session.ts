@@ -168,6 +168,19 @@ export interface BrowseSource {
   stop(): Promise<BrowseView | null>
 }
 
+/**
+ * The short UI sounds, played locally:
+ * - `handsFreeOn` / `handsFreeOff`: Hands-free turned on or off, from any source.
+ * - `turnSent`: a soft acknowledgement that a Turn went to the Brain.
+ * - `speechQueued`: speech heard while Thinking was queued as the next Turn.
+ */
+export type Cue = "handsFreeOn" | "handsFreeOff" | "turnSent" | "speechQueued"
+
+export interface Cues {
+  /** Starts the cue and returns at once; a cue that can't play is skipped. */
+  play(cue: Cue): void
+}
+
 export type JarvisAdapters = {
   listener: Listener
   transcriber: Transcriber
@@ -175,6 +188,7 @@ export type JarvisAdapters = {
   voice: Voice
   widgets: WidgetChanges
   browse: BrowseSource
+  cues: Cues
 }
 
 /** One live Session on the page: its Jarvis State, Transcript and Turns. */
@@ -184,7 +198,15 @@ export type JarvisSession = ReturnType<typeof createJarvisSession>
 export type SavedSession = { sessionId: string; turns: SavedTurn[] }
 
 export function createJarvisSession(
-  { listener, transcriber, brain, voice, widgets, browse }: JarvisAdapters,
+  {
+    listener,
+    transcriber,
+    brain,
+    voice,
+    widgets,
+    browse,
+    cues,
+  }: JarvisAdapters,
   saved?: SavedSession
 ) {
   let nextId = 0
@@ -287,7 +309,10 @@ export function createJarvisSession(
     const { holding: held = holding, ...rest } = patch
     holding = held
     const handsFree = rest.handsFree ?? snapshot.handsFree
+    const toggled = handsFree !== snapshot.handsFree
     update({ ...rest, micOpen: handsFree || holding })
+    // Every toggle, whatever caused it, so a tap made without looking is heard.
+    if (toggled) cues.play(handsFree ? "handsFreeOn" : "handsFreeOff")
   }
 
   function setState(state: JarvisState) {
@@ -311,6 +336,8 @@ export function createJarvisSession(
 
   async function reply(message: string, turnGeneration: number) {
     const { sessionId, search: latest } = snapshot
+    // Played here, not on Thinking: an Utterance dropped there was never sent.
+    cues.play("turnSent")
     const { text, widgetChanges, memoryEvents, search, ...saved } =
       await orFail(
         brain.reply({

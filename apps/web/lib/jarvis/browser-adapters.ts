@@ -16,6 +16,7 @@ import {
   type Voice,
   type WidgetChanges,
 } from "./session"
+import { createToneCues } from "./tone-cues"
 import { createVadListener } from "./vad-listener"
 
 class HttpError extends Error {
@@ -170,5 +171,6 @@ export function createBrowserAdapters(): JarvisAdapters {
     voice: createAudioVoice(),
     widgets: boardWidgetChanges,
     browse: httpBrowse,
+    cues: createToneCues(),
   }
 }

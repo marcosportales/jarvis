@@ -1007,6 +1007,195 @@ describe("Jarvis Session", () => {
     })
   })
 
+  describe("Cues", () => {
+    it("plays the on cue when Hands-free turns on, and the off cue when it turns off", async () => {
+      const { session, cues } = setup()
+
+      session.tap()
+      await flush()
+      session.tap()
+      await flush()
+      session.setHandsFree(true)
+      await flush()
+      session.setHandsFree(false)
+      await flush()
+
+      expect(cues.played).toEqual([
+        "handsFreeOn",
+        "handsFreeOff",
+        "handsFreeOn",
+        "handsFreeOff",
+      ])
+    })
+
+    it("plays nothing when Hands-free is set to what it already is", async () => {
+      const { session, cues } = setup()
+
+      session.setHandsFree(false)
+      session.setHandsFree(true)
+      session.setHandsFree(true)
+      await flush()
+
+      expect(cues.played).toEqual(["handsFreeOn"])
+    })
+
+    it("plays the off cue when a denied mic turns Hands-free off", async () => {
+      const { session, cues } = setup({
+        listener: fakeListener({
+          openError: new DOMException("denied", "NotAllowedError"),
+        }),
+      })
+
+      session.tap()
+      await flush()
+
+      expect(cues.played).toEqual(["handsFreeOn", "handsFreeOff"])
+    })
+
+    it("plays no Hands-free cue for a denied mic during a hold while off", async () => {
+      const { session, cues } = setup({
+        listener: fakeListener({
+          openError: new DOMException("denied", "NotAllowedError"),
+        }),
+      })
+
+      session.pressPushToTalk()
+      await flush()
+
+      expect(cues.played).toEqual([])
+    })
+
+    it("plays the off cue when teardown turns Hands-free off, and none when it was off", async () => {
+      const on = setup()
+      on.session.tap()
+      await flush()
+      on.session.teardown()
+      await flush()
+
+      const off = setup()
+      off.session.teardown()
+      await flush()
+
+      expect(on.cues.played).toEqual(["handsFreeOn", "handsFreeOff"])
+      expect(off.cues.played).toEqual([])
+    })
+
+    it("acknowledges a typed Turn once, as it is sent", async () => {
+      const { session, brain, cues } = setup()
+
+      session.sendTypedMessage("¿Qué hora es?")
+      await flush()
+
+      expect(cues.played).toEqual(["turnSent"])
+
+      brain.answer("Son las cinco, señor.")
+      await flush()
+
+      expect(cues.played).toEqual(["turnSent"])
+    })
+
+    it("acknowledges a Push-to-talk Turn once, as it is sent", async () => {
+      const { session, cues } = setup()
+
+      session.pressPushToTalk()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      expect(cues.played).toEqual(["turnSent"])
+    })
+
+    it("acknowledges a hands-free Turn once, as it is sent", async () => {
+      const { session, listener, cues } = setup()
+      session.tap()
+      await flush()
+
+      listener.fire.speechStarted()
+      listener.fire.pieceReady(listener.audio(), 1000)
+      listener.fire.pieceReady(listener.audio(), 1000)
+      await flush()
+
+      expect(cues.played).toEqual(["handsFreeOn"])
+
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(cues.played).toEqual(["handsFreeOn", "turnSent"])
+    })
+
+    it("acknowledges each Turn of a hands-free conversation", async () => {
+      const { session, listener, brain, voice, cues } = setup()
+      session.tap()
+      await flush()
+
+      for (const _ of [1, 2]) {
+        listener.fire.speechStarted()
+        listener.fire.pieceReady(listener.audio(), 1000)
+        listener.fire.endOfTurn()
+        await flush()
+        brain.answer("Claro, señor.")
+        await flush()
+        voice.finish()
+        await flush()
+      }
+
+      expect(cues.played).toEqual(["handsFreeOn", "turnSent", "turnSent"])
+    })
+
+    it("never acknowledges a dropped Utterance", async () => {
+      const silent = setup({ transcriber: fakeTranscriber("") })
+      silent.session.tap()
+      await flush()
+      silent.listener.fire.speechStarted()
+      silent.listener.fire.pieceReady(silent.listener.audio(), 300)
+      silent.listener.fire.endOfTurn()
+      await flush()
+
+      const short = setup({ listener: fakeListener({ durationMs: 200 }) })
+      short.session.pressPushToTalk()
+      await flush()
+      short.session.releasePushToTalk()
+      await flush()
+
+      const empty = setup({ transcriber: fakeTranscriber("") })
+      empty.session.pressPushToTalk()
+      await flush()
+      empty.session.releasePushToTalk()
+      await flush()
+
+      expect(silent.cues.played).toEqual(["handsFreeOn"])
+      expect(short.cues.played).toEqual([])
+      expect(empty.cues.played).toEqual([])
+    })
+
+    it("doesn't acknowledge an Utterance dropped by turning Hands-free off", async () => {
+      const { session, listener, cues } = setup()
+      session.tap()
+      await flush()
+      listener.fire.speechStarted()
+      await flush()
+
+      session.tap()
+      listener.fire.endOfTurn()
+      await flush()
+
+      expect(cues.played).toEqual(["handsFreeOn", "handsFreeOff"])
+    })
+
+    it("doesn't acknowledge a Turn whose transcription failed", async () => {
+      const { session, cues } = setup({
+        transcriber: fakeTranscriber(new Error("Whisper down")),
+      })
+
+      session.pressPushToTalk()
+      await flush()
+      session.releasePushToTalk()
+      await flush()
+
+      expect(cues.played).toEqual([])
+    })
+  })
+
   describe("teardown, when the Owner switches Sessions", () => {
     it("stops the Voice at once while Speaking", async () => {
       const { session, brain, voice } = setup()
