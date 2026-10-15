@@ -1,7 +1,7 @@
 # 08: Interrupting: does speaking over Jarvis cut it short?
 
 Type: grilling
-Status: open
+Status: claimed
 Blocked by: 03, 07, 13
 
 ## Question
