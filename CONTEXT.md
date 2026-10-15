@@ -29,12 +29,16 @@ One Utterance (or typed message) from the Owner together with Jarvis's Reply to 
 _Avoid_: Exchange, round
 
 **Utterance**:
-A single stretch of the Owner's speech, captured while push-to-talk is held.
-_Avoid_: Recording, clip, voice message
+A single stretch of the Owner's speech that becomes one Turn: from when Jarvis hears it start until the Owner pauses long enough to be done, or from pressing Push-to-talk to releasing it.
+_Avoid_: Recording, clip, voice message, piece, segment, chunk
 
 **Reply**:
 What Jarvis says back in a Turn — shown as text and spoken aloud.
 _Avoid_: Response, answer, completion
+
+**Interrupted Reply**:
+A Reply the Owner didn't fully hear: cut short while Speaking, or shown but never spoken because the Owner had already said more. The Transcript keeps it whole, marked as interrupted, and Jarvis knows the Owner didn't hear all of it. A Reply that fails to be spoken is an error, not an Interrupted Reply.
+_Avoid_: Cancelled reply, stopped reply, partial reply
 
 **Transcript**:
 The visible text record of every Turn in the current Session, shown in the Transcript Widget.
@@ -56,12 +60,16 @@ _Avoid_: Store, save, learn
 
 ### Voice
 
+**Hands-free**:
+The way the Owner talks to Jarvis without holding anything. While Hands-free is on, the mic stays open and every stretch of speech Jarvis hears becomes an Utterance, until the Owner turns it off. It is always off when Jarvis starts.
+_Avoid_: Always listening, open mic, conversation mode, voice mode, mute
+
 **Push-to-talk**:
-The way the Owner speaks to Jarvis: hold to capture an Utterance, release to send it. Held on the Orb or with Space on the Jarvis page and, in the Jarvis App, also with a key from any other app.
-_Avoid_: Recording mode, listen mode
+Holding the Orb, Space or, in the Jarvis App, a key from any other app to speak a single Utterance, sent on release. It works whether Hands-free is on or off; with Hands-free off, the mic closes again on release.
+_Avoid_: Recording mode, listen mode, hold-to-talk
 
 **Orb**:
-The round button the Owner holds for Push-to-talk, which also shows the Jarvis State.
+The round button the Owner taps to turn Hands-free on or off, or holds for Push-to-talk. While Speaking, a tap only cuts the Reply short. It shows the Jarvis State and whether the mic is open.
 _Avoid_: Button, mic, sphere
 
 **Jarvis State**:
@@ -69,26 +77,26 @@ What Jarvis is doing right now — exactly one of Idle, Listening, Thinking, or 
 _Avoid_: Status, mode
 
 **Listening**:
-The Jarvis State while push-to-talk is held and an Utterance is being captured.
+The Jarvis State while an Utterance is being captured: from when Jarvis hears the Owner start speaking, or Push-to-talk is pressed, until the Utterance ends.
 
 **Thinking**:
-The Jarvis State from the end of an Utterance (or a typed message) until the Reply starts being spoken.
+The Jarvis State from the end of an Utterance (or a typed message) until the Reply starts being spoken. What the Owner says meanwhile becomes the next Turn, and the pending Reply then becomes an Interrupted Reply.
 _Avoid_: Transcribing, processing, loading
 
 **Speaking**:
-The Jarvis State while the Reply is being played aloud. Starting push-to-talk cuts it short.
+The Jarvis State while the Reply is being played aloud. The Owner speaking over it, a tap on the Orb, or Push-to-talk cuts it short, leaving an Interrupted Reply.
 
 **Idle**:
-The Jarvis State when none of the others apply.
+The Jarvis State when none of the others apply. With Hands-free on, Jarvis is waiting quietly for the Owner to speak; with it off, the mic is closed.
 
 ### The Jarvis App
 
 **Jarvis App**:
-Jarvis running as its own app on the Owner's computer instead of a browser tab: it starts with the computer, keeps running with its window closed, and lets the Owner hold Push-to-talk from any other app. It is the same Jarvis, with the same Sessions, Memories and Widgets, that a browser tab on the same computer reaches.
+Jarvis running as its own app on the Owner's computer instead of a browser tab: it starts with the computer, keeps running and listening with its window closed, and lets the Owner turn Hands-free on or off and hold Push-to-talk from any other app. It is the same Jarvis, with the same Sessions, Memories and Widgets, that a browser tab on the same computer reaches.
 _Avoid_: Desktop app, Electron app, desktop client, wrapper
 
 **Floating Orb**:
-The Orb in a small window of its own that the Jarvis App keeps above every other app, so the Owner sees the Jarvis State and can hold Push-to-talk without the Jarvis page in view. It holds nothing else; it is not a Widget.
+The Orb in a small window of its own that the Jarvis App keeps above every other app, so the Owner sees the Jarvis State and whether the mic is open, and can use it like the Orb, without the Jarvis page in view. It holds nothing else; it is not a Widget.
 _Avoid_: Mini window, overlay, bubble, widget
 
 ### Plugins
