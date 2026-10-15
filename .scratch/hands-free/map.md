@@ -23,6 +23,7 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 <!-- one line per closed ticket: [title](issues/NN-slug.md): gist -->
 
 - [Can the Jarvis App keep listening with its window closed?](issues/05-mic-with-window-closed.md): Yes. The mic and voice detection live in the Jarvis page in the hidden Jarvis window, which already survives close, unthrottled and with the mic granted. The shell tells the page when it's hidden, and the Floating Orb shows the mic is open, because Hyprland and Caelestia show nothing.
+- [Can a wake word ("Jarvis…") be detected locally?](issues/04-wake-word.md): Possible but nothing is ready to use. Porcupine has an English `jarvis` in the browser, but behind an AccessKey with no personal plan. openWakeWord's `hey_jarvis` is Python-only and non-commercial. There are no Spanish error rates, and voice detection is still needed to end the Utterance.
 
 ## Not yet specified
 
