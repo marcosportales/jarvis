@@ -1,36 +1,27 @@
 "use client"
 
+import { PencilIcon } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 
-import {
-  Conversation,
-  ConversationContent,
-  ConversationEmptyState,
-  ConversationScrollButton,
-} from "@workspace/ui/components/ai-elements/conversation"
-import {
-  Message,
-  MessageContent,
-} from "@workspace/ui/components/ai-elements/message"
-import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-} from "@workspace/ui/components/ai-elements/prompt-input"
+import { Button } from "@workspace/ui/components/button"
+import { cn } from "@workspace/ui/lib/utils"
 
 import { Orb } from "@/components/orb"
 import { SessionGone } from "@/components/session-gone"
 import { useJarvisSession } from "@/hooks/use-jarvis-session"
+import { useWidgetLayout } from "@/hooks/use-widget-layout"
 import { isTypingTarget } from "@/lib/is-typing-target"
 import { sessionPath } from "@/lib/navigation"
 import { shownBrowse } from "@/lib/browse/browser-view"
 import { shownJarvisState } from "@/lib/jarvis/browser-state"
+import { shownTranscript } from "@/lib/jarvis/browser-transcript"
+import { captionOf, type Caption } from "@/lib/jarvis/caption"
 import { shownResults } from "@/lib/search/browser-results"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
-import type { MemoryEvent } from "@/lib/memory/events"
+import { MEMORY_EVENT_LABELS } from "@/lib/memory/events"
+import { getWidgetBoard } from "@/lib/widgets/browser-board"
+import { TRANSCRIPT_WIDGET_ID } from "@/lib/widgets/catalog"
 
 const STATE_LABELS: Record<JarvisState, string> = {
   idle: "Mantén pulsado para hablar",
@@ -39,9 +30,24 @@ const STATE_LABELS: Record<JarvisState, string> = {
   speaking: "Hablando…",
 }
 
-const MEMORY_EVENT_LABELS: Record<MemoryEvent["kind"], string> = {
-  remembered: "Recordado",
-  forgotten: "Olvidado",
+/** Shows the Transcript Widget, if Hidden, with its text box ready. */
+function startTyping() {
+  getWidgetBoard().show(TRANSCRIPT_WIDGET_ID)
+  shownTranscript.requestTyping()
+}
+
+/** Enter or "/" on the page itself, not on a control or with a modifier. */
+function asksToType(event: KeyboardEvent) {
+  if (event.key !== "Enter" && event.key !== "/") return false
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) {
+    return false
+  }
+  const target = event.target
+  if (isTypingTarget(target)) return false
+  return !(
+    target instanceof Element &&
+    target.closest("button, a, [role=button], [role=dialog]")
+  )
 }
 
 /** The Jarvis page for a saved Session, or for a new one when none is given. */
@@ -99,6 +105,24 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
   // An Expanded Widget covers the orb, so it shows the Jarvis State itself.
   useEffect(() => shownJarvisState.set(state), [state])
 
+  // The Transcript Widget too, with the Transcript and the way to type.
+  useEffect(
+    () =>
+      shownTranscript.set({
+        entries: transcript,
+        send: (text) => void session.sendTypedMessage(text),
+      }),
+    [transcript, session]
+  )
+
+  // Captions stand in for the Transcript Widget while it's Hidden. Before
+  // the layout is read, neither shows, so neither flashes.
+  const { widgets } = useWidgetLayout()
+  const transcriptWidget = widgets.find(({ id }) => id === TRANSCRIPT_WIDGET_ID)
+  const transcriptShown = transcriptWidget?.shown === true
+  const caption =
+    transcriptWidget && !transcriptShown ? captionOf(transcript, state) : null
+
   // Once the first Turn is saved, reloading should stay in this Session.
   // Replacing the URL doesn't remount the page, so Speaking carries on.
   useEffect(() => {
@@ -107,7 +131,8 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     }
   }, [sessionId])
 
-  // Holding Space is push-to-talk, except while typing in a text field.
+  // Holding Space is push-to-talk, except while typing in a text field;
+  // Enter or "/" there opens the Transcript Widget to type.
   useEffect(() => {
     function claimsSpace(event: KeyboardEvent) {
       if (event.code !== "Space" || isTypingTarget(event.target)) return false
@@ -116,6 +141,10 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     }
     function onKeyDown(event: KeyboardEvent) {
       if (claimsSpace(event) && !event.repeat) pushToTalk.press("space")
+      if (asksToType(event)) {
+        event.preventDefault()
+        startTyping()
+      }
     }
     function onKeyUp(event: KeyboardEvent) {
       if (claimsSpace(event)) pushToTalk.release("space")
@@ -134,15 +163,23 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     }
   }, [pushToTalk])
 
-  const busy = state === "listening" || state === "thinking"
-
   if (gone) return <SessionGone />
 
+  // The Orb in the middle; below it, while the Transcript Widget is Hidden,
+  // the Caption as a subtitle and a way to start typing. On a phone a Shown
+  // Transcript Widget is docked along the bottom, so the Orb sits above it.
   return (
-    <div className="mx-auto flex h-svh w-full max-w-2xl flex-col gap-4 p-4">
-      <section className="flex flex-col items-center gap-2 pt-6">
+    <div
+      className={cn(
+        "mx-auto grid h-svh w-full max-w-2xl grid-rows-[1fr_auto_1fr] justify-items-center p-4",
+        transcriptShown && "max-sm:pb-[42svh]"
+      )}
+    >
+      <div />
+      <section className="flex flex-col items-center gap-2">
         <Orb
           state={state}
+          className="size-64 max-sm:size-48"
           onPress={() => pushToTalk.press("orb")}
           onRelease={() => pushToTalk.release("orb")}
         />
@@ -153,58 +190,55 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
           {hint}
         </p>
       </section>
+      {transcriptWidget && !transcriptShown && (
+        <div className="flex w-full flex-col items-center justify-end gap-3 pb-4">
+          {caption && <CaptionStrip caption={caption} />}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label="Escribir"
+            title="Escribir (Enter)"
+            className="cursor-pointer rounded-full"
+            onClick={startTyping}
+          >
+            <PencilIcon />
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
 
-      <Conversation className="min-h-0 flex-1">
-        <ConversationContent>
-          {transcript.length === 0 ? (
-            <ConversationEmptyState
-              title="Hola, soy Jarvis"
-              description="Mantén pulsado el orbe o la barra espaciadora para hablar, o escribe abajo."
-            />
-          ) : (
-            transcript.map((entry) =>
-              entry.role === "error" ? (
-                <p
-                  key={entry.id}
-                  role="alert"
-                  className="text-center text-sm text-destructive"
-                >
-                  {entry.text}
-                </p>
-              ) : (
-                <Message
-                  key={entry.id}
-                  from={entry.role === "owner" ? "user" : "assistant"}
-                >
-                  <MessageContent>{entry.text}</MessageContent>
-                  {entry.memoryEvents?.map(({ kind, title }, index) => (
-                    <p key={index} className="text-xs text-muted-foreground">
-                      {MEMORY_EVENT_LABELS[kind]}: {title}
-                    </p>
-                  ))}
-                </Message>
-              )
-            )
+/**
+ * The Caption, like a film subtitle. The Reply is already spoken aloud, so
+ * only an error is announced; long Replies are cut short.
+ */
+function CaptionStrip({ caption }: { caption: Caption }) {
+  return (
+    <div className="max-w-full rounded-lg bg-black/70 px-4 py-2 text-center text-white">
+      {caption.kind === "welcome" ? (
+        <p>
+          Hola, soy Jarvis. Mantén pulsado el orbe o la barra espaciadora para
+          hablar, o pulsa Enter para escribir.
+        </p>
+      ) : (
+        <>
+          {caption.owner && (
+            <p className="text-xs opacity-70">Tú: {caption.owner}</p>
           )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-
-      <PromptInput
-        onSubmit={({ text }) => {
-          if (text.trim()) void session.sendTypedMessage(text.trim())
-        }}
-      >
-        <PromptInputBody>
-          <PromptInputTextarea placeholder="Escribe a Jarvis…" />
-        </PromptInputBody>
-        <PromptInputFooter className="justify-end">
-          <PromptInputSubmit
-            disabled={busy}
-            status={state === "thinking" ? "submitted" : undefined}
-          />
-        </PromptInputFooter>
-      </PromptInput>
+          {caption.reply && <p className="line-clamp-4">{caption.reply}</p>}
+          {caption.memoryEvents?.map(({ kind, title }, index) => (
+            <p key={index} className="text-xs opacity-70">
+              {MEMORY_EVENT_LABELS[kind]}: {title}
+            </p>
+          ))}
+          {caption.error && (
+            <p role="alert" className="text-sm text-red-300">
+              {caption.error}
+            </p>
+          )}
+        </>
+      )}
     </div>
   )
 }

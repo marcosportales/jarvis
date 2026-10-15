@@ -44,6 +44,8 @@ export type BoardWidget = {
   height?: number
   /** It can be Expanded. */
   expandable?: boolean
+  /** On a phone it sits along the bottom edge at full width, not dragged. */
+  dockedOnPhone?: boolean
 }
 
 export type Size = { width: number; height: number }
