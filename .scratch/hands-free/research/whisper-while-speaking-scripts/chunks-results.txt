@@ -1,0 +1,60 @@
+audio 76.1s, pauses at [9.5, 19.8, 31.2, 43.7, 54.7, 65.1, 75.9]
+
+## full: 1 requests, WER 3.1%, last chunk 76.1s took 4.42s, mean 4.42s
+  | Hola, Harviss. Buenos días. Quería pedirte que me ayudes a organizar la semana porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar. El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa. El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche, pan y huevos. El miércoles es el cumpleaños de mi hermana Carmen. Todavía no le he comprado nada, así que me gustaría que me sugirieras algún regalo. Le gustan los libros de historia, la jardinería y el café de especialidad. Además, necesito revisar el correo de Ignacio sobre el presupuesto del proyecto de Valencia. Creo que había un error en la partida de transporte, unos 3,400 euros de diferencia. Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir a la sierra el sábado con unos amigos, pero si llueve prefiero quedarme en casa leyendo. Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidarme otra vez.
+
+## fixed5: 16 requests, WER 4.4%, last chunk 1.1s took 1.55s, mean 1.51s
+  | Hola, Harveys. Buenos días. Quería pedirte que me ayudes a organizar la semana.
+  | Porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar.
+  | El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que
+  | llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa.
+  | El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que
+  | terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche.
+  | pan y huevos. El miércoles es el cumpleaños de mi hermana Carmen. Todavía
+  | no le he comprado nada, así que me gustaría que me sugirieras algún regalo. ¿Le gustan
+  | los libros de historia, la jardinería y el café de especialidad. Además, necesita
+  | revisar el correo de Ignacio sobre el presupuesto del proyecto de Valencia. Creo que había un
+  | Un error en la partida de transporte, unos 3,400 euros de diferencia.
+  | Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir.
+  | a la sierra el sábado con unos amigos, pero si llueve prefiero quedarme en casa leyendo.
+  | Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo...
+  | cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidar
+  | otra vez.
+
+## fixed10: 8 requests, WER 3.5%, last chunk 6.1s took 1.27s, mean 1.73s
+  | Hola, Harveys. Buenos días. Quería pedirte que me ayudes a organizar la semana porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar.
+  | El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa.
+  | El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche.
+  | pan y huevos. El miércoles es el cumpleaños de mi hermana Carmen. Todavía no le he comprado nada, así que me gustaría que me sugirieras algún regalo. ¿Te gustan los
+  | libros de historia, la jardinería y el café de especialidad. Además, necesito revisar el correo de Ignacio sobre el presupuesto del proyecto de Valencia. Creo que había un
+  | error en la partida de transporte, unos 3,400 euros de diferencia. Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir.
+  | a la sierra el sábado con unos amigos, pero si llueve prefiero quedarme en casa leyendo. Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo
+  | cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidarme otra vez.
+
+## fixed10+p: 8 requests, WER 24.2%, last chunk 6.1s took 1.61s, mean 1.62s
+  | Hola, Harveys. Buenos días. Quería pedirte que me ayudes a organizar la semana porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar.
+  | El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa.
+  | El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche.
+  | El miércoles es el cumpleaños de mi hermana Carmen. Todavía no le he comprado nada, así que me gustaría que me sugirieras algún regalo.
+  | Gracias por ver el video.
+  | Un error en la partida de transporte, unos 3,400 euros de diferencia. Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir.
+  | Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo...
+  | cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidarme otra vez.
+
+## pause+p: 7 requests, WER 3.1%, last chunk 11.0s took 1.66s, mean 2.12s
+  | Hola, Harveys. Buenos días. Quería pedirte que me ayudes a organizar la semana porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar.
+  | El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa.
+  | El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche, pan y huevos.
+  | El miércoles es el cumpleaños de mi hermana Carmen. Todavía no le he comprado nada, así que me gustaría que me sugirieras algún regalo. Le gustan los libros de historia, la jardinería y el café de especialidad.
+  | Además, necesito revisar el correo de Ignacio sobre el presupuesto del proyecto de Valencia. Creo que había un error en la partida de transporte, unos 3,400 euros de diferencia.
+  | Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir a la sierra el sábado con unos amigos, pero si llueve prefiero quedarme en casa leyendo.
+  | Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidarme otra vez.
+
+## pause: 7 requests, WER 3.5%, last chunk 11.0s took 1.88s, mean 1.95s
+  | Hola, Harveys. Buenos días. Quería pedirte que me ayudes a organizar la semana porque tengo bastantes cosas pendientes y no sé muy bien por dónde empezar.
+  | El lunes tengo una reunión con el equipo de diseño a las 10 de la mañana y después tengo que llamar al dentista para cambiar la cita del jueves, que me coincide con otra cosa.
+  | El martes quiero ir al gimnasio temprano antes del trabajo y por la tarde tengo que terminar el informe trimestral que me pidió Lucía. Recuérdame también comprar leche, pan y huevos.
+  | El miércoles es el cumpleaños de mi hermana Carmen. Todavía no le he comprado nada, así que me gustaría que me sugirieras algún regalo. Me gustan los libros de historia, la jardinería y el café de especialidad.
+  | Además, necesito revisar el correo de Ignacio sobre el presupuesto del proyecto de Valencia. Creo que había un error en la partida de transporte, unos 3,400 euros de diferencia.
+  | Por cierto, ¿qué tiempo va a ser el fin de semana en Madrid? Estaba pensando en salir a la sierra el sábado con unos amigos, pero si llueve prefiero quedarme en casa leyendo.
+  | Y una última cosa, apúntame que el viernes a las 7 y media de la tarde tengo cena con Javier y Marta en el restaurante del barrio de Salamanca. No quiero olvidarme otra vez.
