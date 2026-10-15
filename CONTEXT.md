@@ -37,8 +37,12 @@ What Jarvis says back in a Turn — shown as text and spoken aloud.
 _Avoid_: Response, answer, completion
 
 **Transcript**:
-The visible text record of every Turn in the current Session.
+The visible text record of every Turn in the current Session, shown in the Transcript Widget.
 _Avoid_: Log, history
+
+**Caption**:
+The last Turn shown under the Orb while the Transcript Widget is Hidden: what Jarvis understood of the Owner while Thinking, then the whole Reply from Speaking until the next Utterance starts, with any Memory Remembered or Forgotten in it and any error. Long Replies are cut short; the Transcript keeps them whole. When the Session is empty it greets the Owner instead.
+_Avoid_: Subtitle, live text
 
 ### Memory
 
@@ -127,7 +131,7 @@ How a Shown Widget is on screen. Collapsed is its usual small form at its place;
 _Avoid_: Dialog, modal, fullscreen, maximized, popup, open
 
 **Expandable**:
-A Widget that can be Expanded, e.g. the Results, Browser, Calendar and Map Widgets, but not the Weather or Today Widgets.
+A Widget that can be Expanded, e.g. the Transcript, Results, Browser, Calendar and Map Widgets, but not the Weather or Today Widgets.
 
 **Spot**:
 One of six named places in the side margins of the Jarvis page — left or right, each top, middle or bottom — where Jarvis can move a Widget. The Owner can instead drag a Widget anywhere on screen.
@@ -140,6 +144,12 @@ _Avoid_: Default position
 **Widget Setting**:
 A choice about what a Widget shows that Jarvis can change, e.g. the Weather Widget's place. Kept like the Widget's position.
 _Avoid_: Option, config, parameter
+
+### Transcript
+
+**Transcript Widget**:
+The Widget holding the Transcript and the box where the Owner types a message, so the Orb and talking by voice have the middle of the page. Built into Jarvis, with no Widget Settings. Its Starting Spot is left-bottom and it starts Shown; after that it is kept Shown or Hidden like any Widget. Jarvis Shows or Hides it only when the Owner asks, never on its own. While it is Hidden the Orb shows Captions, and asking to type («Escribir», or Enter when no text field has focus) Shows it with its text box ready. On a phone it sits along the bottom edge at full width and Expands to the whole screen.
+_Avoid_: Chat, chat panel, conversation widget
 
 ### The web
 
