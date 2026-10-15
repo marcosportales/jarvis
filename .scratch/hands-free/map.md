@@ -22,10 +22,12 @@ A spec at `.scratch/hands-free/spec.md`, ready for `/to-spec`, that replaces Pus
 
 <!-- one line per closed ticket: [title](issues/NN-slug.md): gist -->
 
+- [Can the Jarvis App keep listening with its window closed?](issues/05-mic-with-window-closed.md): Yes. The mic and voice detection live in the Jarvis page in the hidden Jarvis window, which already survives close, unthrottled and with the mic granted. The shell tells the page when it's hidden, and the Floating Orb shows the mic is open, because Hyprland and Caelestia show nothing.
+
 ## Not yet specified
 
 - **Other voices in the room.** A TV, a call, or someone else talking will look like speech. Whether Jarvis needs to tell the Owner's voice apart, or whether the opening mode (wake word, toggle) is enough protection, depends on what voice detection and the opening mode turn out to be.
-- **Failure and Jarvis Health.** What happens when the mic is denied, unplugged or switched, or voice detection fails to load, and whether "hearing" becomes a part of Jarvis Health.
+- **Failure and Jarvis Health.** What happens when the mic is denied, unplugged or switched, or voice detection fails to load, how the mic comes back after the Jarvis page crashes or reloads, and whether "hearing" becomes a part of Jarvis Health.
 - **How the Orb, Floating Orb and Caption show the new states.** This waits on the new Jarvis State(s) and on the privacy decision.
 - **What happens to the Push-to-talk machinery:** the hold arbitration, the portal Global Shortcut, Space and holding the Orb. Retired, repurposed (for example as a mute or toggle key) or kept, depending on the opening mode.
 - **Very long Utterances.** Monologues, pauses mid-thought, and Whisper's upload limits. This depends on the end-of-turn pause and on whether transcription can run while the Owner speaks.
