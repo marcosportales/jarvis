@@ -4,13 +4,13 @@
 
 **Blocked by:** 02: A hands-free Turn on the Jarvis page; 04: Interrupted Reply, end to end
 
-**Status:** ready-for-agent
+**Status:** done
 
 Spec: [Hands-free conversation](../spec.md)
 
-- [ ] Speech heard during Thinking keeps the State on Thinking and sets `queued` on the snapshot
-- [ ] Its pieces are transcribed and several bits of speech in one Thinking join into one queued message
-- [ ] A Push-to-talk hold and a typed message during Thinking queue the same way, replacing today's "ignored"
-- [ ] When the pending Reply arrives, it is appended as an Interrupted Reply (never spoken), not spoken, and the queued message is sent at once with the unspoken mark on its request
-- [ ] A placeholder queued cue on the Orb, and the queued-speech sound if ticket 03 has landed
-- [ ] Session tests cover speech, a hold and a typed message during Thinking, joining, and the shown-not-spoken Reply
+- [x] Speech heard during Thinking keeps the State on Thinking and sets `queued` on the snapshot
+- [x] Its pieces are transcribed and several bits of speech in one Thinking join into one queued message
+- [x] A Push-to-talk hold and a typed message during Thinking queue the same way, replacing today's "ignored"
+- [x] When the pending Reply arrives, it is appended as an Interrupted Reply (never spoken), not spoken, and the queued message is sent at once with the unspoken mark on its request
+- [x] A placeholder queued cue on the Orb, and the queued-speech sound if ticket 03 has landed
+- [x] Session tests cover speech, a hold and a typed message during Thinking, joining, and the shown-not-spoken Reply

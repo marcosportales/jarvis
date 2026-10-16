@@ -159,32 +159,6 @@ describe("Jarvis Session", () => {
     })
   })
 
-  it("ignores push-to-talk and typed messages while Thinking", async () => {
-    const { session, listener, brain, voice, transcript } = setup()
-    session.sendTypedMessage("Primero")
-    await flush()
-
-    session.pressPushToTalk()
-    session.releasePushToTalk()
-    session.sendTypedMessage("Segundo")
-    await flush()
-
-    expect(session.getSnapshot().state).toBe("thinking")
-    expect(listener.calls).toEqual([])
-    expect(brain.calls).toHaveLength(1)
-
-    brain.answer("Respuesta.")
-    await flush()
-    voice.finish()
-    await flush()
-
-    expect(session.getSnapshot().state).toBe("idle")
-    expect(transcript()).toEqual([
-      { role: "owner", text: "Primero" },
-      { role: "jarvis", text: "Respuesta." },
-    ])
-  })
-
   it("shows an inline error when the microphone is denied, and typing still works", async () => {
     const { session, brain, voice, transcript } = setup({
       listener: fakeListener({
@@ -1412,6 +1386,368 @@ describe("Jarvis Session", () => {
       ctx.session.teardown()
 
       expect(ctx.listener.speaking).toEqual(["bargeIn", false])
+    })
+  })
+
+  describe("Speech during Thinking", () => {
+    const PENDING = "Le pongo una alarma, señor."
+
+    /** Hands-free on (unless `off`) and a typed Turn waiting on its Reply. */
+    async function thinking({ off = false } = {}) {
+      const ctx = setup({
+        transcriber: fakeTranscriber((audio) => audio.text()),
+      })
+      if (!off) ctx.session.tap()
+      await flush()
+      ctx.session.sendTypedMessage("Pon una alarma")
+      await flush()
+      expect(ctx.session.getSnapshot().state).toBe("thinking")
+      return ctx
+    }
+
+    /** Speech heard as one bit, with one piece. */
+    function say(ctx: ReturnType<typeof setup>, text: string) {
+      ctx.listener.fire.speechStarted()
+      ctx.listener.fire.pieceReady(ctx.listener.audio(text), 900)
+      ctx.listener.fire.endOfTurn()
+    }
+
+    const replyEntry = (ctx: ReturnType<typeof setup>) =>
+      ctx.session.getSnapshot().transcript.find(({ role }) => role === "jarvis")
+
+    it("keeps Thinking and queues what the Owner says, with a cue", async () => {
+      const ctx = await thinking()
+
+      ctx.listener.fire.speechStarted()
+      await flush()
+
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: true,
+      })
+      expect(ctx.cues.played).toContain("speechQueued")
+
+      ctx.listener.fire.pieceReady(ctx.listener.audio("a las siete"), 900)
+      ctx.listener.fire.endOfTurn()
+      await flush()
+
+      expect(ctx.transcriber.calls).toHaveLength(1)
+      expect(ctx.brain.calls).toHaveLength(1)
+      expect(ctx.states).toEqual(["idle", "thinking"])
+    })
+
+    it("shows the pending Reply unspoken, and sends the queued message at once with the mark", async () => {
+      const ctx = await thinking()
+      say(ctx, "a las siete")
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([])
+      expect(replyEntry(ctx)).toMatchObject({
+        text: PENDING,
+        interrupted: { unspoken: true },
+      })
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "a las siete",
+        interrupted: { unspoken: true },
+      })
+      expect(ctx.transcript()).toEqual([
+        { role: "owner", text: "Pon una alarma" },
+        { role: "jarvis", text: PENDING },
+        { role: "owner", text: "a las siete" },
+      ])
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: false,
+      })
+
+      ctx.brain.answer("Hecho, a las siete.")
+      await flush()
+      ctx.voice.finish()
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual(["Hecho, a las siete."])
+      expect(ctx.states).toEqual(["idle", "thinking", "speaking", "idle"])
+      expect(ctx.listener.speaking).toEqual(["bargeIn", false])
+    })
+
+    it("joins several bits of speech in one Thinking into one queued message", async () => {
+      const ctx = await thinking()
+      say(ctx, "a las siete")
+      await flush()
+      say(ctx, "no, espera, a las ocho")
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.transcriber.calls).toHaveLength(2)
+      expect(ctx.brain.calls.at(-1)).toMatchObject({
+        text: "a las siete no, espera, a las ocho",
+      })
+    })
+
+    it("queues a Push-to-talk hold the same way, closing the mic after it with Hands-free off", async () => {
+      const ctx = await thinking({ off: true })
+
+      ctx.session.pressPushToTalk()
+      await flush()
+
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: true,
+        micOpen: true,
+      })
+
+      ctx.session.releasePushToTalk()
+      await flush()
+
+      expect(ctx.listener.calls).toEqual([
+        "holdStart",
+        "open",
+        "holdEnd",
+        "close",
+      ])
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: true,
+        micOpen: false,
+      })
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([])
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "audio",
+        interrupted: { unspoken: true },
+      })
+    })
+
+    it("queues a typed message the same way", async () => {
+      const ctx = await thinking({ off: true })
+
+      ctx.session.sendTypedMessage("a las siete")
+      await flush()
+
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: true,
+      })
+      expect(ctx.brain.calls).toHaveLength(1)
+      expect(ctx.cues.played).toContain("speechQueued")
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([])
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { unspoken: true } })
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "a las siete",
+        interrupted: { unspoken: true },
+      })
+    })
+
+    it("joins typed and spoken additions in the order they came", async () => {
+      const ctx = await thinking()
+      say(ctx, "a las siete")
+      ctx.session.sendTypedMessage("y otra a las ocho")
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toMatchObject({
+        text: "a las siete y otra a las ocho",
+      })
+    })
+
+    it("keeps Listening to speech still going when the Reply arrives, and sends it at its end", async () => {
+      const ctx = await thinking()
+      ctx.listener.fire.speechStarted()
+      ctx.listener.fire.pieceReady(ctx.listener.audio("a las siete"), 900)
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([])
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { unspoken: true } })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "listening",
+        queued: false,
+      })
+      expect(ctx.brain.calls).toHaveLength(1)
+
+      ctx.listener.fire.pieceReady(ctx.listener.audio("y media"), 600)
+      ctx.listener.fire.endOfTurn()
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "a las siete y media",
+        interrupted: { unspoken: true },
+      })
+      expect(ctx.states).toEqual(["idle", "thinking", "listening", "thinking"])
+    })
+
+    it("lets go of queued speech with no words, and speaks the Reply", async () => {
+      const ctx = await thinking()
+      say(ctx, "")
+      await flush()
+
+      expect(ctx.session.getSnapshot().queued).toBe(false)
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([PENDING])
+      expect(replyEntry(ctx)).not.toHaveProperty("interrupted")
+      expect(ctx.brain.calls).toHaveLength(1)
+    })
+
+    it("speaks the Reply after all when what was queued turns out to have no words", async () => {
+      const ctx = await thinking()
+      ctx.listener.fire.speechStarted()
+      ctx.listener.fire.pieceReady(ctx.listener.audio(""), 300)
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+      ctx.listener.fire.endOfTurn()
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([PENDING])
+      expect(replyEntry(ctx)).not.toHaveProperty("interrupted")
+      expect(ctx.brain.calls).toHaveLength(1)
+      expect(ctx.session.getSnapshot().state).toBe("speaking")
+
+      ctx.voice.finish()
+      await flush()
+      ctx.session.sendTypedMessage("Gracias")
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Gracias",
+      })
+    })
+
+    it("shows a failed queued part's error and still sends the rest of the queue", async () => {
+      const ctx = await thinking()
+      ctx.listener.fire.speechStarted()
+      ctx.session.sendTypedMessage("a las siete")
+      await flush()
+      ctx.listener.fire.failed(new Error("mic unplugged"))
+      await flush()
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.transcript()).toEqual([
+        { role: "owner", text: "Pon una alarma" },
+        { role: "jarvis", text: PENDING },
+        { role: "error", text: expect.stringMatching(/micrófono/i) },
+        { role: "owner", text: "a las siete" },
+      ])
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "a las siete",
+        interrupted: { unspoken: true },
+      })
+    })
+
+    it("drops queued speech when Hands-free turns off, and still speaks the Reply", async () => {
+      const ctx = await thinking()
+      ctx.listener.fire.speechStarted()
+      await flush()
+
+      ctx.session.tap()
+      await flush()
+
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: false,
+        handsFree: false,
+      })
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.voice.spoken).toEqual([PENDING])
+      expect(ctx.brain.calls).toHaveLength(1)
+    })
+
+    it("sends the queued message after a Turn that failed", async () => {
+      const ctx = await thinking()
+      say(ctx, "a las siete")
+      await flush()
+
+      ctx.brain.fail(new Error("Nan is down"))
+      await flush()
+
+      expect(ctx.transcript()).toEqual([
+        { role: "owner", text: "Pon una alarma" },
+        { role: "error", text: expect.stringMatching(/respuesta/i) },
+        { role: "owner", text: "a las siete" },
+      ])
+      expect(ctx.brain.calls.at(-1)).toEqual({ text: "a las siete" })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "thinking",
+        queued: false,
+      })
+    })
+
+    it("queues speech heard while an Utterance is still being Transcribed", async () => {
+      const heard = deferred<string>()
+      const ctx = setup({
+        transcriber: fakeTranscriber(async (audio) => {
+          const text = await audio.text()
+          return text === "Pon una alarma" ? heard.promise : text
+        }),
+      })
+      ctx.session.tap()
+      await flush()
+      say(ctx, "Pon una alarma")
+      await flush()
+      expect(ctx.session.getSnapshot().state).toBe("thinking")
+
+      say(ctx, "a las siete")
+      await flush()
+      heard.resolve("Pon una alarma")
+      await flush()
+
+      expect(ctx.brain.calls).toEqual([{ text: "Pon una alarma" }])
+
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toMatchObject({
+        text: "a las siete",
+        interrupted: { unspoken: true },
+      })
+    })
+
+    it("is not queued in a new Session, and forgets the queue on teardown", async () => {
+      const ctx = await thinking()
+      expect(ctx.session.getSnapshot().queued).toBe(false)
+      say(ctx, "a las siete")
+      await flush()
+
+      ctx.session.teardown()
+      ctx.brain.answer(PENDING)
+      await flush()
+
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "idle",
+        queued: false,
+      })
+      expect(ctx.brain.calls).toHaveLength(1)
     })
   })
 

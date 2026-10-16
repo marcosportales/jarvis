@@ -1,6 +1,6 @@
 "use client"
 
-import { SquareIcon } from "lucide-react"
+import { PlusIcon, SquareIcon } from "lucide-react"
 
 import { Persona } from "@workspace/ui/components/ai-elements/persona"
 import { cn } from "@workspace/ui/lib/utils"
@@ -16,13 +16,15 @@ import type { JarvisState } from "@/lib/jarvis/session"
  * The mic-open look is a placeholder ring, steady while Jarvis is busy and
  * breathing while Idle with Hands-free on, so "waiting for you" looks
  * different from "not listening". Where a tap stops the Reply, Speaking
- * shows a placeholder stop badge. The look-and-sounds ticket replaces both.
+ * shows a placeholder stop badge, and Thinking with something queued a
+ * placeholder plus badge. The look-and-sounds ticket replaces them.
  */
 export function Orb({
   state,
   micOpen = false,
   handsFree = false,
   tapStopsReply = false,
+  queued = false,
   label = "Mantén pulsado para hablar con Jarvis",
   className,
   onPress,
@@ -36,6 +38,8 @@ export function Orb({
   handsFree?: boolean
   /** A tap while Speaking stops the Reply, so Speaking shows it. */
   tapStopsReply?: boolean
+  /** What the Owner added while Thinking is queued as the next Turn. */
+  queued?: boolean
   /** What the button does, for assistive technology. */
   label?: string
   /** The Orb's size, e.g. `size-48`. */
@@ -79,6 +83,15 @@ export function Orb({
           className="absolute right-[12%] bottom-[12%] flex size-10 items-center justify-center rounded-full bg-background/80 text-foreground shadow ring-1 ring-border"
         >
           <SquareIcon className="size-4 fill-current" />
+        </span>
+      )}
+      {queued && state === "thinking" && (
+        <span
+          aria-hidden
+          data-queued
+          className="absolute right-[12%] bottom-[12%] flex size-10 items-center justify-center rounded-full bg-background/80 text-foreground shadow ring-1 ring-border"
+        >
+          <PlusIcon className="size-5" />
         </span>
       )}
     </button>

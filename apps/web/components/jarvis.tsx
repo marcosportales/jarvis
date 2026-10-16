@@ -31,6 +31,9 @@ const STATE_LABELS: Record<JarvisState, string> = {
   speaking: "Hablando… Toca para que pare",
 }
 
+/** Thinking, with what the Owner added since queued as the next Turn. */
+const QUEUED_LABEL = "Pensando… Lo siguiente queda anotado"
+
 /** Idle with Hands-free on: Jarvis is waiting for the Owner to speak. */
 const WAITING_LABEL = "Te escucho. Toca para dejar de escuchar"
 
@@ -91,6 +94,7 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     state,
     handsFree,
     micOpen,
+    queued,
     transcript,
     hint,
     sessionId,
@@ -193,6 +197,7 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
           state={state}
           micOpen={micOpen}
           handsFree={handsFree}
+          queued={queued}
           tapStopsReply
           label={
             ORB_LABELS[
@@ -204,7 +209,11 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
           onRelease={() => orbInput.release("orb")}
         />
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {state === "idle" && handsFree ? WAITING_LABEL : STATE_LABELS[state]}
+          {state === "idle" && handsFree
+            ? WAITING_LABEL
+            : state === "thinking" && queued
+              ? QUEUED_LABEL
+              : STATE_LABELS[state]}
         </p>
         <p className="h-5 text-sm text-muted-foreground" aria-live="polite">
           {hint}

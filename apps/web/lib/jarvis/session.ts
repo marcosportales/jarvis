@@ -45,6 +45,8 @@ export type JarvisSnapshot = {
   handsFree: boolean
   /** The mic is open: Hands-free is on or a Push-to-talk hold is going on. */
   micOpen: boolean
+  /** What the Owner added while Thinking waits to be the next Turn. */
+  queued: boolean
 }
 
 export const MIN_UTTERANCE_MS = 500
@@ -257,6 +259,7 @@ export function createJarvisSession(
     browseJustEnded: false,
     handsFree: false,
     micOpen: false,
+    queued: false,
   }
   // Bumped whenever a Turn is cut short, so its late callbacks are ignored.
   let generation = 0
@@ -269,11 +272,20 @@ export function createJarvisSession(
   // The Utterance being captured: what it has so far, and how it ends.
   let capture: {
     captured: Captured
-    /** Under Hands-free: each piece is Transcribed as soon as it's ready. */
+    /** Under Hands-free or queued: each piece is Transcribed once ready. */
     transcribeAtOnce: boolean
+    /** A Push-to-talk hold's, ending only on its release. */
+    hold: boolean
+    /** Heard while Thinking: its text, as a part of the queued Turn. */
+    part?: Promise<string>
+    /** The queued Turn went out while it was still being heard. */
+    sentWhileHeard?: boolean
     end: (captured: Captured) => void
     fail: (error: unknown) => void
   } | null = null
+  // What the Owner added while Thinking, in order: each part's text, sent
+  // together as the next Turn once the pending one is over.
+  let queue: Promise<string>[] = []
   // Settles with the captured Utterance at its end of turn.
   let utteranceEnded: Promise<Captured> = Promise.resolve({
     pieces: [],
@@ -289,6 +301,7 @@ export function createJarvisSession(
   const stopListening = listener.listen({
     speechStarted() {
       if (!snapshot.handsFree || capture) return
+      if (snapshot.state === "thinking") return queueCapture()
       if (snapshot.state === "speaking") {
         // Half duplex: what it hears may be its own Reply.
         if (!bargeIn) return
@@ -315,6 +328,8 @@ export function createJarvisSession(
       const ended = capture
       capture = null
       ended?.end(ended.captured)
+      // The queued Turn took it while it was being heard: now it's sent.
+      if (ended?.sentWhileHeard) setState("thinking")
     },
     failed(error) {
       const ended = capture
@@ -324,17 +339,62 @@ export function createJarvisSession(
   })
 
   /** Starts gathering the pieces of a new Utterance. */
-  function startCapture({ transcribeAtOnce = false } = {}) {
+  function startCapture({ transcribeAtOnce = false, hold = false } = {}) {
+    const started: NonNullable<typeof capture> = {
+      captured: { pieces: [], texts: [] },
+      transcribeAtOnce,
+      hold,
+      end: () => {},
+      fail: () => {},
+    }
     utteranceEnded = new Promise<Captured>((end, fail) => {
-      capture = {
-        captured: { pieces: [], texts: [] },
-        transcribeAtOnce,
-        end,
-        fail,
-      }
+      started.end = end
+      started.fail = fail
     })
     // Its failure is reported on release, not as an unhandled rejection.
     utteranceEnded.catch(() => {})
+    capture = started
+    return started
+  }
+
+  /**
+   * Starts capturing speech heard while Thinking, as a part of the queued
+   * Turn. Dropped, or with no words in it, it is let go of again.
+   */
+  function queueCapture({ hold = false } = {}) {
+    const started = startCapture({ transcribeAtOnce: true, hold })
+    const part = utteranceEnded.then(
+      async ({ texts }) =>
+        joinTexts(await orFail(Promise.all(texts), ERRORS.transcription)),
+      (error: unknown) => {
+        if (error instanceof TurnSuperseded) return ""
+        throw new TurnFailed(ERRORS.microphone, { cause: error })
+      }
+    )
+    started.part = part
+    enqueue(part)
+    // Noise, or dropped: the pending Reply needn't give way to it.
+    void part.then(
+      (text) => {
+        if (!text) dequeue(part)
+      },
+      () => {}
+    )
+  }
+
+  /** Adds a part to the queued Turn; a cue says it was heard and queued. */
+  function enqueue(part: Promise<string>) {
+    // Its failure is reported when the queued Turn goes out.
+    part.catch(() => {})
+    queue = [...queue, part]
+    cues.play("speechQueued")
+    update({ queued: true })
+  }
+
+  function dequeue(part: Promise<string>) {
+    if (!queue.includes(part)) return
+    queue = queue.filter((queued) => queued !== part)
+    if (!queue.length) update({ queued: false })
   }
 
   function update(patch: Partial<JarvisSnapshot>) {
@@ -377,18 +437,22 @@ export function createJarvisSession(
 
   /**
    * Marks the last Reply as an Interrupted Reply, in the Transcript and on
-   * the next Turn's request, so the server saves it and tells Jarvis.
+   * the next Turn's request, so the server saves it and tells Jarvis; null
+   * takes the mark off again.
    */
-  function markLastReplyInterrupted(interrupted: Interrupted) {
+  function markLastReplyInterrupted(interrupted: Interrupted | null) {
     const index = snapshot.transcript
       .map(({ role }) => role)
       .lastIndexOf("jarvis")
     if (index === -1) return
     lastReplyInterrupted = interrupted
     update({
-      transcript: snapshot.transcript.map((entry, at) =>
-        at === index ? { ...entry, interrupted } : entry
-      ),
+      transcript: snapshot.transcript.map((entry, at) => {
+        if (at !== index) return entry
+        if (interrupted) return { ...entry, interrupted }
+        const { interrupted: _, ...unmarked } = entry
+        return unmarked
+      }),
     })
   }
 
@@ -425,6 +489,15 @@ export function createJarvisSession(
     // The Turn may have started or stopped a Browse Task.
     void loadBrowse()
     append("jarvis", text, memoryEvents)
+    // The Owner already said more: show this Reply, but don't recite it.
+    if (queue.length) {
+      markLastReplyInterrupted({ unspoken: true })
+      return takeQueued(text)
+    }
+    await speak(text, turnGeneration)
+  }
+
+  async function speak(text: string, turnGeneration: number) {
     setState("speaking")
     const played = await voice.speak(text).then(
       () => true,
@@ -482,8 +555,54 @@ export function createJarvisSession(
     clearTimeout(browseTimer)
   }
 
+  /** A Turn is over with nothing to speak: the queued Turn goes, or Idle. */
+  function endTurn(patch: Partial<JarvisSnapshot> = {}) {
+    if (queue.length) return takeQueued()
+    update({ state: "idle", ...patch })
+  }
+
   function discardUtterance() {
-    update({ state: "idle", hint: DISCARDED_UTTERANCE_HINT })
+    endTurn({ hint: DISCARDED_UTTERANCE_HINT })
+  }
+
+  /**
+   * Sends what was queued as the next Turn, once each part's text is back.
+   * Speech still being heard is Listening until its end of turn. A part
+   * that failed shows its error; the rest still go. If nothing with words
+   * was queued after all, the Reply left `unspoken` for it is spoken.
+   */
+  function takeQueued(unspoken?: string) {
+    const parts = queue
+    queue = []
+    const heard = capture?.part && parts.includes(capture.part) ? capture : null
+    if (heard) heard.sentWhileHeard = true
+    update({ state: heard ? "listening" : "thinking", queued: false })
+    const turnGeneration = generation
+    void runTurn(turnGeneration, async () => {
+      const settled = await Promise.allSettled(parts)
+      ensureCurrent(turnGeneration)
+      const failed = settled.find(
+        (part): part is PromiseRejectedResult => part.status === "rejected"
+      )
+      if (failed) {
+        if (!(failed.reason instanceof TurnFailed)) throw failed.reason
+        append("error", failed.reason.message)
+      }
+      const text = joinTexts(
+        settled.flatMap((part) =>
+          part.status === "fulfilled" ? [part.value] : []
+        )
+      )
+      if (text) {
+        append("owner", text)
+        return reply(text, turnGeneration)
+      }
+      if (unspoken === undefined) return endTurn()
+      // More was queued meanwhile: that is what the Reply gives way to now.
+      if (queue.length) return takeQueued(unspoken)
+      markLastReplyInterrupted(null)
+      await speak(unspoken, turnGeneration)
+    })
   }
 
   async function runTurn(turnGeneration: number, work: () => Promise<void>) {
@@ -496,11 +615,12 @@ export function createJarvisSession(
         error instanceof TurnFailed &&
         error.cause instanceof SessionGoneError
       ) {
-        return update({ state: "idle", gone: true })
+        queue = []
+        return update({ state: "idle", gone: true, queued: false })
       }
       if (!(error instanceof TurnFailed)) throw error
       append("error", error.message)
-      setState("idle")
+      endTurn()
     }
   }
 
@@ -519,7 +639,7 @@ export function createJarvisSession(
         await orFail(Promise.all(texts), ERRORS.transcription)
       )
       ensureCurrent(turnGeneration)
-      if (!text) return setState("idle")
+      if (!text) return endTurn()
       append("owner", text)
       await reply(text, turnGeneration)
     })
@@ -544,13 +664,15 @@ export function createJarvisSession(
         // Turned off meanwhile: the Owner no longer waits on the mic.
         if (!holding && !snapshot.handsFree) return false
         // A hold waiting on the mic ends here, before it is released.
-        const held = holding
+        const held = holding ? capture : null
         if (held) capture = null
         append("error", ERRORS.microphone)
+        // One queued while Thinking is let go of; the pending Turn goes on.
+        held?.fail(new TurnSuperseded())
         updateMic({
           holding: false,
           handsFree: false,
-          ...(held ? { state: "idle" } : {}),
+          ...(held && !held.part ? { state: "idle" } : {}),
         })
         return false
       }
@@ -566,12 +688,15 @@ export function createJarvisSession(
       return
     }
     // The Utterance being heard is dropped; a hold's is still sent.
-    if (capture?.transcribeAtOnce) {
+    if (capture && !capture.hold) {
       const dropped = capture
       capture = null
-      generation++
       dropped.fail(new TurnSuperseded())
-      setState("idle")
+      // Only queued, it is let go of, and the pending Turn goes on.
+      if (!dropped.part || dropped.sentWhileHeard) {
+        generation++
+        setState("idle")
+      }
     }
     // A hold keeps the mic until its release.
     if (!holding) listener.close()
@@ -597,15 +722,31 @@ export function createJarvisSession(
       }
     },
     pressPushToTalk() {
-      if (!canStartTurn()) return
+      // While Thinking, the hold is queued as the next Turn.
+      const queueHold = snapshot.state === "thinking" && !capture
+      if (!queueHold && !canStartTurn()) return
       interruptSpeaking()
-      updateMic({ holding: true, state: "listening", hint: null })
-      startCapture()
+      if (queueHold) {
+        updateMic({ holding: true })
+        queueCapture({ hold: true })
+      } else {
+        updateMic({ holding: true, state: "listening", hint: null })
+        startCapture({ hold: true })
+      }
       listener.holdStart()
       // Under Hands-free the mic is already open.
       if (!snapshot.handsFree) openMic()
     },
     async releasePushToTalk() {
+      const held = holding ? capture : null
+      // Queued while Thinking: its text goes with the queued Turn.
+      if (held?.part) {
+        if (!(await micOpened) || capture !== held) return
+        listener.holdEnd()
+        await utteranceEnded.catch(() => {})
+        if (!snapshot.handsFree) listener.close()
+        return updateMic({ holding: false })
+      }
       if (snapshot.state !== "listening") return
       const turnGeneration = generation
       setState("thinking")
@@ -645,6 +786,7 @@ export function createJarvisSession(
       })
     },
     async sendTypedMessage(text: string) {
+      if (snapshot.state === "thinking") return enqueue(Promise.resolve(text))
       if (!canStartTurn()) return
       interruptSpeaking()
       update({ hint: null })
@@ -691,6 +833,7 @@ export function createJarvisSession(
       stopWatchingBrowse()
       stopListening()
       capture = null
+      queue = []
       if (state === "speaking") voice.stop()
       // Releases the microphone, even mid-capture; the Utterance is never sent.
       void micOpened.then((opened) => {
@@ -701,6 +844,7 @@ export function createJarvisSession(
         state: "idle",
         hint: null,
         handsFree: false,
+        queued: false,
       })
     },
   }
