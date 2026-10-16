@@ -1,5 +1,7 @@
 "use client"
 
+import { SquareIcon } from "lucide-react"
+
 import { Persona } from "@workspace/ui/components/ai-elements/persona"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -13,12 +15,14 @@ import type { JarvisState } from "@/lib/jarvis/session"
  *
  * The mic-open look is a placeholder ring, steady while Jarvis is busy and
  * breathing while Idle with Hands-free on, so "waiting for you" looks
- * different from "not listening". The look-and-sounds ticket replaces it.
+ * different from "not listening". Where a tap stops the Reply, Speaking
+ * shows a placeholder stop badge. The look-and-sounds ticket replaces both.
  */
 export function Orb({
   state,
   micOpen = false,
   handsFree = false,
+  tapStopsReply = false,
   label = "Mantén pulsado para hablar con Jarvis",
   className,
   onPress,
@@ -30,6 +34,8 @@ export function Orb({
   micOpen?: boolean
   /** Hands-free is on, so the button shows as pressed. */
   handsFree?: boolean
+  /** A tap while Speaking stops the Reply, so Speaking shows it. */
+  tapStopsReply?: boolean
   /** What the button does, for assistive technology. */
   label?: string
   /** The Orb's size, e.g. `size-48`. */
@@ -48,7 +54,7 @@ export function Orb({
       aria-pressed={handsFree || state === "listening"}
       data-mic-open={micOpen}
       className={cn(
-        "touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
+        "relative touch-none rounded-full outline-none select-none focus-visible:ring-2 focus-visible:ring-ring",
         micOpen &&
           "ring-4 ring-emerald-500/70 ring-offset-4 ring-offset-background",
         micOpen && state === "idle" && "animate-pulse"
@@ -67,6 +73,14 @@ export function Orb({
         state={state}
         variant="obsidian"
       />
+      {tapStopsReply && state === "speaking" && (
+        <span
+          aria-hidden
+          className="absolute right-[12%] bottom-[12%] flex size-10 items-center justify-center rounded-full bg-background/80 text-foreground shadow ring-1 ring-border"
+        >
+          <SquareIcon className="size-4 fill-current" />
+        </span>
+      )}
     </button>
   )
 }

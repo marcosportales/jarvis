@@ -28,7 +28,7 @@ const STATE_LABELS: Record<JarvisState, string> = {
   idle: "Toca para hablar sin manos, o mantén pulsado para hablar",
   listening: "Escuchando…",
   thinking: "Pensando…",
-  speaking: "Hablando…",
+  speaking: "Hablando… Toca para que pare",
 }
 
 /** Idle with Hands-free on: Jarvis is waiting for the Owner to speak. */
@@ -37,6 +37,7 @@ const WAITING_LABEL = "Te escucho. Toca para dejar de escuchar"
 const ORB_LABELS = {
   off: "Toca para hablar sin manos con Jarvis, o mantén pulsado para hablar",
   on: "Toca para dejar de escuchar, o mantén pulsado para hablar",
+  speaking: "Toca para que Jarvis deje de hablar, o mantén pulsado para hablar",
 }
 
 /** Shows the Transcript Widget, if Hidden, with its text box ready. */
@@ -192,7 +193,12 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
           state={state}
           micOpen={micOpen}
           handsFree={handsFree}
-          label={ORB_LABELS[handsFree ? "on" : "off"]}
+          tapStopsReply
+          label={
+            ORB_LABELS[
+              state === "speaking" ? "speaking" : handsFree ? "on" : "off"
+            ]
+          }
           className="size-64 max-sm:size-48"
           onPress={() => orbInput.press("orb")}
           onRelease={() => orbInput.release("orb")}

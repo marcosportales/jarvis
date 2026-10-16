@@ -104,6 +104,14 @@ export type ListenerEvents = {
   failed(error: unknown): void
 }
 
+/**
+ * How the Listener hears the Owner while Jarvis is Speaking:
+ * - `bargeIn`: through the stricter interrupt gate, so only a longer stretch
+ *   of speech, never a cough or an "mm-hm", starts an Utterance.
+ * - `halfDuplex`: not at all, where Jarvis might hear its own Reply.
+ */
+export type WhileSpeaking = "bargeIn" | "halfDuplex"
+
 /** The mic, capturing the Owner's Utterances. */
 export interface Listener {
   /** Gets the mic; rejects when it is denied or missing. */
@@ -114,6 +122,8 @@ export interface Listener {
   holdStart(): void
   /** The hold is released: its audio comes as a last piece, then end of turn. */
   holdEnd(): void
+  /** Jarvis started Speaking, heard this way, or (false) stopped. */
+  setSpeaking(gate: WhileSpeaking | false): void
   /** Reports the Listener's events; returns a function that stops them. */
   listen(events: ListenerEvents): () => void
 }
@@ -203,6 +213,14 @@ export type JarvisSession = ReturnType<typeof createJarvisSession>
 /** A Session saved earlier, to resume where it was left. */
 export type SavedSession = { sessionId: string; turns: SavedTurn[] }
 
+export type SessionOptions = {
+  /**
+   * The Owner can talk over a Reply to cut it short. Off, the Listener is
+   * half duplex while Speaking, and only a tap or a hold cuts the Reply.
+   */
+  bargeIn?: boolean
+}
+
 export function createJarvisSession(
   {
     listener,
@@ -213,7 +231,8 @@ export function createJarvisSession(
     browse,
     cues,
   }: JarvisAdapters,
-  saved?: SavedSession
+  saved?: SavedSession,
+  { bargeIn = true }: SessionOptions = {}
 ) {
   let nextId = 0
   let snapshot: JarvisSnapshot = {
@@ -269,7 +288,14 @@ export function createJarvisSession(
 
   const stopListening = listener.listen({
     speechStarted() {
-      if (!snapshot.handsFree || snapshot.state !== "idle" || capture) return
+      if (!snapshot.handsFree || capture) return
+      if (snapshot.state === "speaking") {
+        // Half duplex: what it hears may be its own Reply.
+        if (!bargeIn) return
+        // Past the stricter gate: the Owner is talking over the Reply, and
+        // what they say is the next Utterance.
+        interruptSpeaking()
+      } else if (snapshot.state !== "idle") return
       update({ state: "listening", hint: null })
       startCapture({ transcribeAtOnce: true })
       void takeHandsFreeUtterance(utteranceEnded)
@@ -312,7 +338,13 @@ export function createJarvisSession(
   }
 
   function update(patch: Partial<JarvisSnapshot>) {
+    const wasSpeaking = snapshot.state === "speaking"
     snapshot = { ...snapshot, ...patch }
+    // However Speaking starts or ends, the Listener hears it.
+    const isSpeaking = snapshot.state === "speaking"
+    if (isSpeaking !== wasSpeaking) {
+      listener.setSpeaking(isSpeaking && (bargeIn ? "bargeIn" : "halfDuplex"))
+    }
     listeners.forEach((listener) => listener())
   }
 
@@ -548,9 +580,15 @@ export function createJarvisSession(
   return {
     getSnapshot: () => snapshot,
     setHandsFree,
-    /** The Owner tapped the Orb or Space: Hands-free goes on or off. */
+    /**
+     * The Owner tapped the Orb or Space: Hands-free goes on or off, or while
+     * Speaking, only the Reply stops.
+     */
     tap() {
-      setHandsFree(!snapshot.handsFree)
+      if (snapshot.state !== "speaking")
+        return setHandsFree(!snapshot.handsFree)
+      interruptSpeaking()
+      setState("idle")
     },
     subscribe(listener: () => void) {
       listeners.add(listener)

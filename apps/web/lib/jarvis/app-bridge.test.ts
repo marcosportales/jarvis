@@ -4,6 +4,7 @@ import { describe, expect, expectTypeOf, it } from "vitest"
 import type { JarvisAppApi as JarvisAppPreloadApi } from "../../../desktop/src/page-api"
 
 import {
+  bargeInFor,
   connectAppBridge,
   returnToJarvisOnPushToTalk,
   type JarvisAppApi,
@@ -283,5 +284,12 @@ describe("Without the Jarvis App", () => {
 
     expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
     expect(() => disconnect()).not.toThrow()
+  })
+})
+
+describe("Barge-in", () => {
+  it("is on in a browser tab, and off in the Jarvis App until its echo is measured", () => {
+    expect(bargeInFor(undefined)).toBe(true)
+    expect(bargeInFor({} as JarvisAppApi)).toBe(false)
   })
 })

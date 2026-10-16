@@ -4,13 +4,13 @@
 
 **Blocked by:** 02: A hands-free Turn on the Jarvis page; 04: Interrupted Reply, end to end
 
-**Status:** ready-for-agent
+**Status:** done
 
 Spec: [Hands-free conversation](../spec.md)
 
-- [ ] While Speaking, the Listener uses a stricter gate: about 500–600 ms of continuous speech before speech counts (configurable)
-- [ ] Speech that passes it stops the Voice, marks the Reply "cut short" with its share, and becomes the next Utterance with its pre-roll kept
-- [ ] A tap while Speaking stops the Reply only; Hands-free stays on or off as it was
-- [ ] A barge-in setting: on for the Jarvis page, off for the Jarvis App, where the Listener reports nothing while Speaking (half duplex); a tap or a hold still cuts the Reply there
-- [ ] The Orb has a placeholder Speaking look showing that a tap stops the Reply
-- [ ] Session tests cover barge-in, a tap while Speaking, a hold while Speaking, and half duplex ignoring Listener events
+- [x] While Speaking, the Listener uses a stricter gate: about 500–600 ms of continuous speech before speech counts (configurable)
+- [x] Speech that passes it stops the Voice, marks the Reply "cut short" with its share, and becomes the next Utterance with its pre-roll kept
+- [x] A tap while Speaking stops the Reply only; Hands-free stays on or off as it was
+- [x] A barge-in setting: on for the Jarvis page, off for the Jarvis App, where the Listener reports nothing while Speaking (half duplex); a tap or a hold still cuts the Reply there
+- [x] The Orb has a placeholder Speaking look showing that a tap stops the Reply
+- [x] Session tests cover barge-in, a tap while Speaking, a hold while Speaking, and half duplex ignoring Listener events

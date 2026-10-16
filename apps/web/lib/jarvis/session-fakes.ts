@@ -16,6 +16,7 @@ import {
   type Reply,
   type Transcriber,
   type Voice,
+  type WhileSpeaking,
   type WidgetChanges,
 } from "./session"
 import type { BrowseView } from "../browse/view"
@@ -48,6 +49,8 @@ export function fakeListener(
   options: { durationMs?: number; openError?: unknown; manual?: boolean } = {}
 ) {
   const calls: string[] = []
+  // What the Listener was told about Jarvis Speaking, in order.
+  const speaking: (WhileSpeaking | false)[] = []
   const subscribers = new Set<ListenerEvents>()
   const fire: ListenerEvents = {
     speechStarted: () =>
@@ -76,6 +79,9 @@ export function fakeListener(
       fire.pieceReady(audio(), options.durationMs ?? 2000)
       fire.endOfTurn()
     },
+    setSpeaking(gate) {
+      speaking.push(gate)
+    },
     listen(events) {
       subscribers.add(events)
       return () => {
@@ -83,7 +89,7 @@ export function fakeListener(
       }
     },
   }
-  return { listener, calls, fire, audio }
+  return { listener, calls, speaking, fire, audio }
 }
 
 /** Hears `text`, or what `text` makes of the audio, or fails with it. */
@@ -226,6 +232,8 @@ export function setup(
     transcriber?: ReturnType<typeof fakeTranscriber>
     saved?: Parameters<typeof createJarvisSession>[1]
     browse?: ReturnType<typeof fakeBrowse>
+    /** Off, as in the Jarvis App: the Listener is half duplex while Speaking. */
+    bargeIn?: boolean
   } = {}
 ) {
   const listener = options.listener ?? fakeListener()
@@ -246,7 +254,8 @@ export function setup(
       browse: browse.browse,
       cues: cues.cues,
     },
-    options.saved
+    options.saved,
+    { bargeIn: options.bargeIn ?? true }
   )
   const states: JarvisState[] = [session.getSnapshot().state]
   session.subscribe(() => {

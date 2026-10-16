@@ -1174,6 +1174,247 @@ describe("Jarvis Session", () => {
     })
   })
 
+  describe("Barge-in, while Speaking", () => {
+    const STORY = "Había una vez un mayordomo muy paciente."
+
+    /** Hands-free on (unless `off`) and a typed Turn's Reply being spoken. */
+    async function speaking(
+      ctx: ReturnType<typeof setup>,
+      { off = false } = {}
+    ) {
+      if (!off) ctx.session.tap()
+      await flush()
+      ctx.session.sendTypedMessage("Cuéntame algo")
+      await flush()
+      ctx.brain.answer(STORY)
+      await flush()
+      expect(ctx.session.getSnapshot().state).toBe("speaking")
+    }
+
+    const replyEntry = (ctx: ReturnType<typeof setup>) =>
+      ctx.session.getSnapshot().transcript.find(({ role }) => role === "jarvis")
+
+    it("puts the Listener on the stricter interrupt gate while Speaking, and back after", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+
+      expect(ctx.listener.speaking).toEqual(["bargeIn"])
+
+      ctx.voice.finish()
+      await flush()
+
+      expect(ctx.listener.speaking).toEqual(["bargeIn", false])
+    })
+
+    it("cuts the Reply when the Owner talks over it, and what they said becomes the next Utterance", async () => {
+      const ctx = setup({
+        transcriber: fakeTranscriber((audio) => audio.text()),
+      })
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.3)
+
+      ctx.listener.fire.speechStarted()
+      await flush()
+
+      expect(ctx.voice.stopped()).toBe(1)
+      expect(replyEntry(ctx)).toMatchObject({
+        text: STORY,
+        interrupted: { cut: 0.3 },
+      })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "listening",
+        handsFree: true,
+      })
+      expect(ctx.listener.speaking).toEqual(["bargeIn", false])
+
+      ctx.listener.fire.pieceReady(ctx.listener.audio("No, espera"), 900)
+      ctx.listener.fire.endOfTurn()
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "No, espera",
+        interrupted: { cut: 0.3 },
+      })
+      expect(ctx.transcript().at(-1)).toEqual({
+        role: "owner",
+        text: "No, espera",
+      })
+      expect(ctx.states).toEqual([
+        "idle",
+        "thinking",
+        "speaking",
+        "listening",
+        "thinking",
+      ])
+    })
+
+    it("stops only the Reply on a tap, leaving Hands-free on", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.6)
+
+      ctx.session.tap()
+      await flush()
+
+      expect(ctx.voice.stopped()).toBe(1)
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { cut: 0.6 } })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "idle",
+        handsFree: true,
+        micOpen: true,
+      })
+      expect(ctx.listener.calls).toEqual(["open"])
+      expect(ctx.cues.played).toEqual(["handsFreeOn", "turnSent"])
+    })
+
+    it("stops only the Reply on a tap, leaving Hands-free off", async () => {
+      const ctx = setup()
+      await speaking(ctx, { off: true })
+
+      ctx.session.tap()
+      await flush()
+
+      expect(ctx.voice.stopped()).toBe(1)
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { cut: 0.5 } })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "idle",
+        handsFree: false,
+        micOpen: false,
+      })
+      expect(ctx.listener.calls).toEqual([])
+    })
+
+    it("hears the Owner again once a tap has stopped the Reply", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.session.tap()
+      await flush()
+
+      ctx.listener.fire.speechStarted()
+      ctx.listener.fire.pieceReady(ctx.listener.audio(), 900)
+      ctx.listener.fire.endOfTurn()
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Hola Jarvis",
+        interrupted: { cut: 0.5 },
+      })
+    })
+
+    it("cuts the Reply on a hold and starts Push-to-talk, Hands-free staying on", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+      ctx.voice.playsUpTo(0.2)
+
+      ctx.session.pressPushToTalk()
+      await flush()
+
+      expect(ctx.voice.stopped()).toBe(1)
+      expect(replyEntry(ctx)).toMatchObject({ interrupted: { cut: 0.2 } })
+      expect(ctx.session.getSnapshot()).toMatchObject({
+        state: "listening",
+        handsFree: true,
+      })
+
+      ctx.session.releasePushToTalk()
+      await flush()
+
+      expect(ctx.brain.calls.at(-1)).toEqual({
+        sessionId: "session-1",
+        text: "Hola Jarvis",
+        interrupted: { cut: 0.2 },
+      })
+      expect(ctx.listener.calls).toEqual(["open", "holdStart", "holdEnd"])
+      expect(ctx.session.getSnapshot().handsFree).toBe(true)
+    })
+
+    describe("half duplex, with barge-in off as in the Jarvis App", () => {
+      it("tells the Listener to hear nothing while Speaking, and to hear again after", async () => {
+        const ctx = setup({ bargeIn: false })
+        await speaking(ctx)
+
+        expect(ctx.listener.speaking).toEqual(["halfDuplex"])
+
+        ctx.voice.finish()
+        await flush()
+
+        expect(ctx.listener.speaking).toEqual(["halfDuplex", false])
+      })
+
+      it("ignores the Listener's events while Speaking", async () => {
+        const ctx = setup({ bargeIn: false })
+        await speaking(ctx)
+
+        ctx.listener.fire.speechStarted()
+        ctx.listener.fire.pieceReady(ctx.listener.audio(), 900)
+        ctx.listener.fire.endOfTurn()
+        await flush()
+
+        expect(ctx.voice.stopped()).toBe(0)
+        expect(replyEntry(ctx)?.interrupted).toBeUndefined()
+        expect(ctx.session.getSnapshot().state).toBe("speaking")
+        expect(ctx.transcriber.calls).toEqual([])
+        expect(ctx.brain.calls).toHaveLength(1)
+      })
+
+      it("still cuts the Reply on a tap or a hold", async () => {
+        const ctx = setup({ bargeIn: false })
+        await speaking(ctx)
+
+        ctx.session.tap()
+        await flush()
+
+        expect(replyEntry(ctx)).toMatchObject({ interrupted: { cut: 0.5 } })
+        expect(ctx.session.getSnapshot()).toMatchObject({
+          state: "idle",
+          handsFree: true,
+        })
+
+        ctx.session.sendTypedMessage("Otra")
+        await flush()
+        ctx.brain.answer("Otra historia.")
+        await flush()
+        ctx.voice.playsUpTo(0.1)
+        ctx.session.pressPushToTalk()
+        await flush()
+
+        expect(ctx.session.getSnapshot().transcript.at(-1)).toMatchObject({
+          text: "Otra historia.",
+          interrupted: { cut: 0.1 },
+        })
+        expect(ctx.session.getSnapshot().state).toBe("listening")
+      })
+
+      it("hears the Owner again once the Reply is over", async () => {
+        const ctx = setup({ bargeIn: false })
+        await speaking(ctx)
+        ctx.voice.finish()
+        await flush()
+
+        ctx.listener.fire.speechStarted()
+        ctx.listener.fire.pieceReady(ctx.listener.audio(), 900)
+        ctx.listener.fire.endOfTurn()
+        await flush()
+
+        expect(ctx.brain.calls.at(-1)).toEqual({
+          sessionId: "session-1",
+          text: "Hola Jarvis",
+        })
+      })
+    })
+
+    it("tells the Listener Speaking is over when the Session is torn down mid-Reply", async () => {
+      const ctx = setup()
+      await speaking(ctx)
+
+      ctx.session.teardown()
+
+      expect(ctx.listener.speaking).toEqual(["bargeIn", false])
+    })
+  })
+
   describe("Cues", () => {
     it("plays the on cue when Hands-free turns on, and the off cue when it turns off", async () => {
       const { session, cues } = setup()

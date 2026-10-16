@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react"
 
-import { connectAppBridge } from "@/lib/jarvis/app-bridge"
+import { bargeInFor, connectAppBridge } from "@/lib/jarvis/app-bridge"
 import { createBrowserAdapters } from "@/lib/jarvis/browser-adapters"
 import { createOrbInput } from "@/lib/jarvis/orb-input"
 import { createJarvisSession, type SavedSession } from "@/lib/jarvis/session"
@@ -10,7 +10,11 @@ import { createJarvisSession, type SavedSession } from "@/lib/jarvis/session"
 /** The live view of one Session: a saved one to resume, or a new one. */
 export function useJarvisSession(saved?: SavedSession) {
   const [session] = useState(() =>
-    createJarvisSession(createBrowserAdapters(), saved)
+    createJarvisSession(createBrowserAdapters(), saved, {
+      bargeIn: bargeInFor(
+        typeof window === "undefined" ? undefined : window.jarvisApp
+      ),
+    })
   )
   const [orbInput] = useState(() => createOrbInput(session))
   // Leaving the Session (opening another, or another page) silences it and

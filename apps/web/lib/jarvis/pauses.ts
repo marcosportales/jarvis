@@ -21,6 +21,11 @@ export type PauseOptions = {
   endThreshold: number
   /** Less speech than this in an Utterance is a noise, never an Utterance. */
   minSpeechMs: number
+  /**
+   * While Jarvis is Speaking, speech must last this long without a pause to
+   * start an Utterance and cut the Reply, so a cough or an "mm-hm" doesn't.
+   */
+  interruptMinSpeechMs: number
   /** Audio kept from before speech starts, so the first word isn't cut. */
   preRollMs: number
   /** A pause this long ends a piece, which is Transcribed at once. */
@@ -33,6 +38,7 @@ export const DEFAULT_PAUSES: PauseOptions = {
   startThreshold: 0.3,
   endThreshold: 0.25,
   minSpeechMs: 250,
+  interruptMinSpeechMs: 550,
   preRollMs: 400,
   piecePauseMs: 500,
   endOfTurnPauseMs: 1200,
@@ -48,20 +54,27 @@ const toFrames = (ms: number) => Math.floor(ms / FRAME_MS)
 /**
  * Feeds frames one at a time; each returns what it ended or started. Speech
  * counts as started only once it has lasted `minSpeechMs`, so a noise never
- * starts an Utterance. Pieces finished before then are held and come right
- * after `speechStarted`. Every frame belongs to at most one piece.
+ * starts an Utterance; behind the interrupt gate, only once it has lasted
+ * `interruptMinSpeechMs` with no quiet frame in it. Pieces finished before
+ * then are held and come right after `speechStarted`, except behind the
+ * interrupt gate. Every frame belongs to at most one piece.
  */
 export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
   const preRollFrames = toFrames(options.preRollMs)
   const minSpeechFrames = toFrames(options.minSpeechMs)
+  const interruptSpeechFrames = toFrames(options.interruptMinSpeechMs)
   const pieceFrames = toFrames(options.piecePauseMs)
   const endOfTurnFrames = toFrames(options.endOfTurnPauseMs)
 
   // Frames since the last piece ended, at most the pre-roll while no piece.
   let recent: Float32Array[] = []
   let piece: { frames: Float32Array[]; quiet: number } | null = null
+  // Jarvis is Speaking: the stricter gate decides when speech starts.
+  let interruptGate = false
   let utterance: {
     speechFrames: number
+    /** Speech frames since the last quiet one. */
+    speechRun: number
     quiet: number
     started: boolean
     /** Pieces finished before speech counted as started. */
@@ -74,6 +87,9 @@ export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
     piece = null
     recent = []
     if (utterance?.started) events.push({ type: "piece", frames })
+    // Behind the interrupt gate, what came before the speech that passes it
+    // is a noise or the Reply's echo; only its tail is kept, as pre-roll.
+    else if (interruptGate) recent = frames.slice(-preRollFrames)
     else utterance?.held.push(frames)
   }
 
@@ -82,8 +98,15 @@ export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
       const events: PauseEvent[] = []
       const isSpeech = probability >= options.startThreshold
       if (isSpeech) {
-        utterance ??= { speechFrames: 0, quiet: 0, started: false, held: [] }
+        utterance ??= {
+          speechFrames: 0,
+          speechRun: 0,
+          quiet: 0,
+          started: false,
+          held: [],
+        }
         utterance.speechFrames++
+        utterance.speechRun++
         utterance.quiet = 0
         if (piece) piece.quiet = 0
         else {
@@ -100,7 +123,9 @@ export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
       if (
         utterance &&
         !utterance.started &&
-        utterance.speechFrames >= minSpeechFrames
+        (interruptGate
+          ? utterance.speechRun >= interruptSpeechFrames
+          : utterance.speechFrames >= minSpeechFrames)
       ) {
         utterance.started = true
         events.push({ type: "speechStarted" })
@@ -110,6 +135,7 @@ export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
       }
 
       if (probability < options.endThreshold) {
+        if (utterance) utterance.speechRun = 0
         if (piece && ++piece.quiet >= pieceFrames) endPiece(events)
         if (utterance && ++utterance.quiet >= endOfTurnFrames) {
           endPiece(events)
@@ -118,6 +144,18 @@ export function createPauses(options: PauseOptions = DEFAULT_PAUSES) {
         }
       }
       return events
+    },
+    /**
+     * Switches the interrupt gate on while Jarvis Speaks, or back off. Speech
+     * that never passed it is forgotten then, as it may be the Reply's echo;
+     * an Utterance that passed it goes on.
+     */
+    setInterruptGate(on: boolean) {
+      interruptGate = on
+      if (on || !utterance || utterance.started) return
+      recent = (piece?.frames ?? recent).slice(-preRollFrames)
+      piece = null
+      utterance = null
     },
     /** Forgets everything heard so far, e.g. when a hold takes over. */
     reset() {

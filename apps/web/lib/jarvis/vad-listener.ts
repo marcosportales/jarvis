@@ -7,7 +7,7 @@ import {
   SAMPLE_RATE,
   type PauseOptions,
 } from "./pauses"
-import type { Listener, ListenerEvents } from "./session"
+import type { Listener, ListenerEvents, WhileSpeaking } from "./session"
 
 /**
  * Where vad-web's model and worklet, and ONNX Runtime's wasm, are served
@@ -41,7 +41,8 @@ async function toWav(frames: Float32Array[]): Promise<Blob> {
  * The Listener on Silero VAD v6 through vad-web, running in the page. One
  * mic stream feeds voice detection; its speech probabilities alone decide
  * when the Owner starts and stops speaking (see `createPauses`), never the
- * loudness. A hold ignores them and captures until its release. Audio is
+ * loudness. While Jarvis Speaks, they pass a stricter gate, or are ignored
+ * in half duplex. A hold ignores them and captures until its release. Audio is
  * only ever held in memory, until its piece is handed over.
  */
 export function createVadListener(
@@ -57,6 +58,8 @@ export function createVadListener(
   let mic = Promise.resolve()
   // Timed from its start, so waiting on the mic still counts.
   let hold: { startedAt: number; frames: Float32Array[] } | null = null
+  // Half duplex while Jarvis Speaks: every frame is ignored.
+  let halfDuplex = false
   // Pieces are encoded in order, so they're handed over in order.
   let handOver = Promise.resolve()
 
@@ -78,7 +81,7 @@ export function createVadListener(
   }
 
   function onFrame(probability: number, frame: Float32Array) {
-    if (!wanted) return
+    if (!wanted || halfDuplex) return
     // vad-web may reuse the frame's buffer.
     const copy = new Float32Array(frame)
     if (hold) return void hold.frames.push(copy)
@@ -157,6 +160,13 @@ export function createVadListener(
       wanted = false
       forget()
       void syncMic().catch(() => {})
+    },
+    setSpeaking(gate: WhileSpeaking | false) {
+      // Speech from before the Reply never cuts it, and once out of half
+      // duplex, what was kept from before the Reply is stale.
+      if (gate || halfDuplex) pauses.reset()
+      halfDuplex = gate === "halfDuplex"
+      pauses.setInterruptGate(gate === "bargeIn")
     },
     holdStart() {
       // The pre-roll keeps a word begun before the press became a hold.
