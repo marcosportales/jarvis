@@ -8,11 +8,15 @@ import {
   createJarvisSession,
   type Brain,
   type BrowseSource,
+  type Cue,
+  type Cues,
   type JarvisState,
-  type Recorder,
+  type Listener,
+  type ListenerEvents,
   type Reply,
   type Transcriber,
   type Voice,
+  type WhileSpeaking,
   type WidgetChanges,
 } from "./session"
 import type { BrowseView } from "../browse/view"
@@ -37,33 +41,67 @@ export function deferred<T>(): Deferred<T> {
 
 export const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
-export function fakeRecorder(
-  options: { durationMs?: number; startError?: unknown } = {}
+/**
+ * A Listener whose events a test fires by hand. Unless `manual`, releasing a
+ * hold yields it at once as one piece of `durationMs`, then end of turn.
+ */
+export function fakeListener(
+  options: { durationMs?: number; openError?: unknown; manual?: boolean } = {}
 ) {
   const calls: string[] = []
-  const recorder: Recorder = {
-    async start() {
-      calls.push("start")
-      if (options.startError) throw options.startError
+  // What the Listener was told about Jarvis Speaking, in order.
+  const speaking: (WhileSpeaking | false)[] = []
+  const subscribers = new Set<ListenerEvents>()
+  const fire: ListenerEvents = {
+    speechStarted: () =>
+      subscribers.forEach((events) => events.speechStarted()),
+    pieceReady: (audio, durationMs) =>
+      subscribers.forEach((events) => events.pieceReady(audio, durationMs)),
+    endOfTurn: () => subscribers.forEach((events) => events.endOfTurn()),
+    failed: (error) => subscribers.forEach((events) => events.failed(error)),
+  }
+  const audio = (content = "audio") =>
+    new Blob([content], { type: "audio/webm" })
+  const listener: Listener = {
+    async open() {
+      calls.push("open")
+      if (options.openError) throw options.openError
     },
-    async stop() {
-      calls.push("stop")
-      return {
-        audio: new Blob(["audio"], { type: "audio/webm" }),
-        durationMs: options.durationMs ?? 2000,
+    close() {
+      calls.push("close")
+    },
+    holdStart() {
+      calls.push("holdStart")
+    },
+    holdEnd() {
+      calls.push("holdEnd")
+      if (options.manual) return
+      fire.pieceReady(audio(), options.durationMs ?? 2000)
+      fire.endOfTurn()
+    },
+    setSpeaking(gate) {
+      speaking.push(gate)
+    },
+    listen(events) {
+      subscribers.add(events)
+      return () => {
+        subscribers.delete(events)
       }
     },
   }
-  return { recorder, calls }
+  return { listener, calls, speaking, fire, audio }
 }
 
-export function fakeTranscriber(text: string | Error = "Hola Jarvis") {
+/** Hears `text`, or what `text` makes of the audio, or fails with it. */
+export function fakeTranscriber(
+  text: string | Error | ((audio: Blob) => Promise<string>) = "Hola Jarvis"
+) {
   const calls: Blob[] = []
   const transcriber: Transcriber = {
     async transcribe(audio) {
       calls.push(audio)
       if (text instanceof Error) throw text
-      return text
+      return typeof text === "function" ? text(audio) : text
     },
   }
   return { transcriber, calls }
@@ -149,6 +187,8 @@ export function fakeWidgets(events: Events) {
 export function fakeVoice(events: Events = []) {
   const spoken: string[] = []
   let stopped = 0
+  // The share of the clip played by the time it is stopped.
+  let played = 0.5
   const pending: Deferred<void>[] = []
   const voice: Voice = {
     speak(text) {
@@ -161,42 +201,61 @@ export function fakeVoice(events: Events = []) {
     stop() {
       stopped++
       pending.shift()?.resolve()
+      return played
     },
   }
   return {
     voice,
     spoken,
     stopped: () => stopped,
+    /** Stopping the Reply finds this share of it played. */
+    playsUpTo: (share: number) => (played = share),
     finish: () => pending.shift()!.resolve(),
     fail: (error: unknown) => pending.shift()!.reject(error),
   }
 }
 
+/** Remembers which cue was asked for, in order; plays nothing. */
+export function fakeCues() {
+  const played: Cue[] = []
+  const cues: Cues = {
+    play(cue) {
+      played.push(cue)
+    },
+  }
+  return { cues, played }
+}
+
 export function setup(
   options: {
-    recorder?: ReturnType<typeof fakeRecorder>
+    listener?: ReturnType<typeof fakeListener>
     transcriber?: ReturnType<typeof fakeTranscriber>
     saved?: Parameters<typeof createJarvisSession>[1]
     browse?: ReturnType<typeof fakeBrowse>
+    /** Off, as in the Jarvis App: the Listener is half duplex while Speaking. */
+    bargeIn?: boolean
   } = {}
 ) {
-  const recorder = options.recorder ?? fakeRecorder()
+  const listener = options.listener ?? fakeListener()
   const transcriber = options.transcriber ?? fakeTranscriber()
   const events: Events = []
   const brain = fakeBrain()
   const voice = fakeVoice(events)
   const widgets = fakeWidgets(events)
   const browse = options.browse ?? fakeBrowse()
+  const cues = fakeCues()
   const session = createJarvisSession(
     {
-      recorder: recorder.recorder,
+      listener: listener.listener,
       transcriber: transcriber.transcriber,
       brain: brain.brain,
       voice: voice.voice,
       widgets: widgets.widgets,
       browse: browse.browse,
+      cues: cues.cues,
     },
-    options.saved
+    options.saved,
+    { bargeIn: options.bargeIn ?? true }
   )
   const states: JarvisState[] = [session.getSnapshot().state]
   session.subscribe(() => {
@@ -207,12 +266,13 @@ export function setup(
     session.getSnapshot().transcript.map(({ role, text }) => ({ role, text }))
   return {
     session,
-    recorder,
+    listener,
     transcriber,
     brain,
     voice,
     widgets,
     browse,
+    cues,
     events,
     states,
     transcript,

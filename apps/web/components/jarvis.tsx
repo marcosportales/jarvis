@@ -20,14 +20,27 @@ import { captionOf, type Caption } from "@/lib/jarvis/caption"
 import { shownResults } from "@/lib/search/browser-results"
 import type { JarvisState, SavedSession } from "@/lib/jarvis/session"
 import { MEMORY_EVENT_LABELS } from "@/lib/memory/events"
+import { interruptedLabel } from "@/lib/turns/interrupted"
 import { getWidgetBoard } from "@/lib/widgets/browser-board"
 import { TRANSCRIPT_WIDGET_ID } from "@/lib/widgets/catalog"
 
 const STATE_LABELS: Record<JarvisState, string> = {
-  idle: "Mantén pulsado para hablar",
+  idle: "Toca para hablar sin manos, o mantén pulsado para hablar",
   listening: "Escuchando…",
   thinking: "Pensando…",
-  speaking: "Hablando…",
+  speaking: "Hablando… Toca para que pare",
+}
+
+/** Thinking, with what the Owner added since queued as the next Turn. */
+const QUEUED_LABEL = "Pensando… Lo siguiente queda anotado"
+
+/** Idle with Hands-free on: Jarvis is waiting for the Owner to speak. */
+const WAITING_LABEL = "Te escucho. Toca para dejar de escuchar"
+
+const ORB_LABELS = {
+  off: "Toca para hablar sin manos con Jarvis, o mantén pulsado para hablar",
+  on: "Toca para dejar de escuchar, o mantén pulsado para hablar",
+  speaking: "Toca para que Jarvis deje de hablar, o mantén pulsado para hablar",
 }
 
 /** Shows the Transcript Widget, if Hidden, with its text box ready. */
@@ -77,8 +90,11 @@ export function Jarvis({ saved }: { saved?: SavedSession }) {
 function JarvisSession({ saved }: { saved?: SavedSession }) {
   const {
     session,
-    pushToTalk,
+    orbInput,
     state,
+    handsFree,
+    micOpen,
+    queued,
     transcript,
     hint,
     sessionId,
@@ -131,7 +147,7 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
     }
   }, [sessionId])
 
-  // Holding Space is push-to-talk, except while typing in a text field;
+  // Space taps or holds like the Orb, except while typing in a text field;
   // Enter or "/" there opens the Transcript Widget to type.
   useEffect(() => {
     function claimsSpace(event: KeyboardEvent) {
@@ -140,18 +156,18 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       return true
     }
     function onKeyDown(event: KeyboardEvent) {
-      if (claimsSpace(event) && !event.repeat) pushToTalk.press("space")
+      if (claimsSpace(event) && !event.repeat) orbInput.press("space")
       if (asksToType(event)) {
         event.preventDefault()
         startTyping()
       }
     }
     function onKeyUp(event: KeyboardEvent) {
-      if (claimsSpace(event)) pushToTalk.release("space")
+      if (claimsSpace(event)) orbInput.release("space")
     }
     // A keyup never arrives if the window loses focus mid-hold.
     function onBlur() {
-      pushToTalk.windowBlurred()
+      orbInput.windowBlurred()
     }
     window.addEventListener("keydown", onKeyDown)
     window.addEventListener("keyup", onKeyUp)
@@ -161,7 +177,7 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       window.removeEventListener("keyup", onKeyUp)
       window.removeEventListener("blur", onBlur)
     }
-  }, [pushToTalk])
+  }, [orbInput])
 
   if (gone) return <SessionGone />
 
@@ -179,12 +195,25 @@ function JarvisSession({ saved }: { saved?: SavedSession }) {
       <section className="flex flex-col items-center gap-2">
         <Orb
           state={state}
+          micOpen={micOpen}
+          handsFree={handsFree}
+          queued={queued}
+          tapStopsReply
+          label={
+            ORB_LABELS[
+              state === "speaking" ? "speaking" : handsFree ? "on" : "off"
+            ]
+          }
           className="size-64 max-sm:size-48"
-          onPress={() => pushToTalk.press("orb")}
-          onRelease={() => pushToTalk.release("orb")}
+          onPress={() => orbInput.press("orb")}
+          onRelease={() => orbInput.release("orb")}
         />
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          {STATE_LABELS[state]}
+          {state === "idle" && handsFree
+            ? WAITING_LABEL
+            : state === "thinking" && queued
+              ? QUEUED_LABEL
+              : STATE_LABELS[state]}
         </p>
         <p className="h-5 text-sm text-muted-foreground" aria-live="polite">
           {hint}
@@ -218,8 +247,9 @@ function CaptionStrip({ caption }: { caption: Caption }) {
     <div className="max-w-full rounded-lg bg-black/70 px-4 py-2 text-center text-white">
       {caption.kind === "welcome" ? (
         <p>
-          Hola, soy Jarvis. Mantén pulsado el orbe o la barra espaciadora para
-          hablar, o pulsa Enter para escribir.
+          Hola, soy Jarvis. Toca el orbe o la barra espaciadora para hablar sin
+          manos, mantenlos pulsados para hablar una vez, o pulsa Enter para
+          escribir.
         </p>
       ) : (
         <>
@@ -227,6 +257,11 @@ function CaptionStrip({ caption }: { caption: Caption }) {
             <p className="text-xs opacity-70">Tú: {caption.owner}</p>
           )}
           {caption.reply && <p className="line-clamp-4">{caption.reply}</p>}
+          {caption.interrupted && (
+            <p className="text-xs italic opacity-70">
+              {interruptedLabel(caption.interrupted)}
+            </p>
+          )}
           {caption.memoryEvents?.map(({ kind, title }, index) => (
             <p key={index} className="text-xs opacity-70">
               {MEMORY_EVENT_LABELS[kind]}: {title}

@@ -23,6 +23,7 @@ import {
 import { shownJarvisState } from "@/lib/jarvis/browser-state"
 import { shownTranscript } from "@/lib/jarvis/browser-transcript"
 import { MEMORY_EVENT_LABELS } from "@/lib/memory/events"
+import { interruptedLabel } from "@/lib/turns/interrupted"
 
 /** Every Turn of the open Session, and the box where the Owner types one. */
 export function TranscriptWidget() {
@@ -72,6 +73,11 @@ export function TranscriptWidget() {
                   from={entry.role === "owner" ? "user" : "assistant"}
                 >
                   <MessageContent>{entry.text}</MessageContent>
+                  {entry.interrupted && (
+                    <p className="text-xs text-muted-foreground italic">
+                      {interruptedLabel(entry.interrupted)}
+                    </p>
+                  )}
                   {entry.memoryEvents?.map(({ kind, title }, index) => (
                     <p key={index} className="text-xs text-muted-foreground">
                       {MEMORY_EVENT_LABELS[kind]}: {title}

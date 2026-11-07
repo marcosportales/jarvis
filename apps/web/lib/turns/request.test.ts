@@ -70,6 +70,37 @@ describe("Reading a Turn request", () => {
     ).toEqual({ ok: false, field: "results" })
   })
 
+  it.each([
+    ["cut short", { cut: 0.4 }],
+    ["never spoken", { unspoken: true }],
+  ])("accepts a previous Reply marked %s", (_, interrupted) => {
+    expect(
+      parseTurnRequest({ text: "Hola", widgets: LAYOUT, interrupted })
+    ).toEqual({
+      ok: true,
+      request: { text: "Hola", widgets: LAYOUT, interrupted },
+    })
+  })
+
+  it("reads a null mark as a previous Reply heard whole", () => {
+    expect(
+      parseTurnRequest({ text: "Hola", widgets: LAYOUT, interrupted: null })
+    ).toEqual({ ok: true, request: { text: "Hola", widgets: LAYOUT } })
+  })
+
+  it.each([
+    ["a share above 1", { cut: 1.2 }],
+    ["a negative share", { cut: -0.1 }],
+    ["a share that isn't a number", { cut: "40%" }],
+    ["unspoken set to false", { unspoken: false }],
+    ["both marks", { cut: 0.5, unspoken: true }],
+    ["no mark at all", {}],
+  ])("rejects a mark with %s", (_, interrupted) => {
+    expect(
+      parseTurnRequest({ text: "Hola", widgets: LAYOUT, interrupted })
+    ).toEqual({ ok: false, field: "interrupted" })
+  })
+
   it("names the first field that failed, as before", () => {
     expect(parseTurnRequest({ text: " ", widgets: LAYOUT })).toEqual({
       ok: false,

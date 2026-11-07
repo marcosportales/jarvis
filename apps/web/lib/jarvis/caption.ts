@@ -1,10 +1,11 @@
 import type { MemoryEvent } from "../memory/events"
+import type { Interrupted } from "../turns/interrupted"
 import { ERRORS, type JarvisState, type TranscriptEntry } from "./session"
 
 /**
  * What the Caption shows: the greeting before the first Turn, or the last
  * Turn, i.e. what Jarvis understood of the Owner, its Reply with any Memory
- * it Remembered or Forgot, and any error.
+ * it Remembered or Forgot and its Interrupted Reply mark, and any error.
  */
 export type Caption =
   | { kind: "welcome" }
@@ -13,6 +14,7 @@ export type Caption =
       owner?: string
       reply?: string
       memoryEvents?: MemoryEvent[]
+      interrupted?: Interrupted
       error?: string
     }
 
@@ -42,6 +44,7 @@ export function captionOf(
     ...(turn[0] ? { owner: turn[0].text } : {}),
     ...(reply ? { reply: reply.text } : {}),
     ...(reply?.memoryEvents ? { memoryEvents: reply.memoryEvents } : {}),
+    ...(reply?.interrupted ? { interrupted: reply.interrupted } : {}),
     ...(error ? { error } : {}),
   }
 }

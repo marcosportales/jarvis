@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
 Spec: [Hands-free conversation](../spec.md)
 
-- [ ] The Session takes a Listener adapter in place of the Recorder; the Recorder interface is gone
-- [ ] A Push-to-talk hold goes through the Listener's hold start/end, and its release yields the Utterance as a piece plus end of turn
-- [ ] Push-to-talk behaves exactly as before on the Jarvis page and in the Jarvis App: the 500 ms minimum, the "No te entendí" hint, the microphone error, interrupting Speaking, ignored while Thinking, teardown releasing the mic
-- [ ] The Session tests run against a fake Listener in the session fakes, whose events a test fires by hand, and all existing Session scenarios still pass
-- [ ] Typecheck, lint and tests pass
+- [x] The Session takes a Listener adapter in place of the Recorder; the Recorder interface is gone
+- [x] A Push-to-talk hold goes through the Listener's hold start/end, and its release yields the Utterance as a piece plus end of turn
+- [x] Push-to-talk behaves exactly as before on the Jarvis page and in the Jarvis App: the 500 ms minimum, the "No te entendí" hint, the microphone error, interrupting Speaking, ignored while Thinking, teardown releasing the mic
+- [x] The Session tests run against a fake Listener in the session fakes, whose events a test fires by hand, and all existing Session scenarios still pass
+- [x] Typecheck, lint and tests pass

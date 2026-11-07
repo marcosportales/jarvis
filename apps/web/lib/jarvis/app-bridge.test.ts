@@ -4,13 +4,14 @@ import { describe, expect, expectTypeOf, it } from "vitest"
 import type { JarvisAppApi as JarvisAppPreloadApi } from "../../../desktop/src/page-api"
 
 import {
+  bargeInFor,
   connectAppBridge,
   returnToJarvisOnPushToTalk,
   type JarvisAppApi,
 } from "./app-bridge"
-import { createPushToTalk } from "./push-to-talk"
+import { createOrbInput } from "./orb-input"
 import { DISCARDED_UTTERANCE_HINT, type JarvisState } from "./session"
-import { fakeRecorder, flush, setup } from "./session-fakes"
+import { fakeListener, flush, setup } from "./session-fakes"
 
 /** The Jarvis App's preload API, as the Jarvis page sees it. */
 function fakeJarvisApp() {
@@ -40,14 +41,15 @@ function fakeJarvisApp() {
 /** A Jarvis Session on a Jarvis page inside the Jarvis App. */
 function setupInApp(options: Parameters<typeof setup>[0] = {}) {
   const jarvis = setup(options)
-  const pushToTalk = createPushToTalk(jarvis.session)
+  // A page press holds at once here; tap versus hold is Orb input's test.
+  const orbInput = createOrbInput(jarvis.session, { holdThresholdMs: 0 })
   const jarvisApp = fakeJarvisApp()
   const disconnect = connectAppBridge({
     session: jarvis.session,
-    pushToTalk,
+    orbInput,
     app: jarvisApp.app,
   })
-  return { ...jarvis, pushToTalk, jarvisApp, disconnect }
+  return { ...jarvis, orbInput, jarvisApp, disconnect }
 }
 
 describe("The App Bridge", () => {
@@ -80,7 +82,7 @@ describe("The App Bridge", () => {
 
   it("discards a short hold with the usual hint", async () => {
     const { session, jarvisApp, brain, transcript } = setupInApp({
-      recorder: fakeRecorder({ durationMs: 300 }),
+      listener: fakeListener({ durationMs: 300 }),
     })
 
     jarvisApp.press()
@@ -131,11 +133,11 @@ describe("The App Bridge", () => {
   })
 
   it("keeps a Jarvis App hold through a window blur", async () => {
-    const { session, pushToTalk, jarvisApp, brain } = setupInApp()
+    const { session, orbInput, jarvisApp, brain } = setupInApp()
 
     jarvisApp.press()
     await flush()
-    pushToTalk.windowBlurred()
+    orbInput.windowBlurred()
     await flush()
 
     expect(session.getSnapshot().state).toBe("listening")
@@ -147,11 +149,11 @@ describe("The App Bridge", () => {
   })
 
   it("still ends a Space hold on a window blur", async () => {
-    const { session, pushToTalk, brain } = setupInApp()
+    const { session, orbInput, brain } = setupInApp()
 
-    pushToTalk.press("space")
+    orbInput.press("space")
     await flush()
-    pushToTalk.windowBlurred()
+    orbInput.windowBlurred()
     await flush()
 
     expect(session.getSnapshot().state).not.toBe("listening")
@@ -159,9 +161,9 @@ describe("The App Bridge", () => {
   })
 
   it("leaves a Space hold alone when the Jarvis App releases", async () => {
-    const { session, pushToTalk, jarvisApp } = setupInApp()
+    const { session, orbInput, jarvisApp } = setupInApp()
 
-    pushToTalk.press("space")
+    orbInput.press("space")
     await flush()
     jarvisApp.press()
     jarvisApp.release()
@@ -206,7 +208,7 @@ describe("The App Bridge", () => {
     jarvisApp.press()
     connectAppBridge({
       session,
-      pushToTalk: createPushToTalk(session),
+      orbInput: createOrbInput(session),
       app: {
         ...jarvisApp.app,
         onPushToTalk(listener) {
@@ -272,15 +274,22 @@ describe("The Jarvis App's API", () => {
 describe("Without the Jarvis App", () => {
   it("wires nothing, and Push-to-talk works as before", async () => {
     const { session, brain } = setup()
-    const pushToTalk = createPushToTalk(session)
+    const orbInput = createOrbInput(session, { holdThresholdMs: 0 })
 
-    const disconnect = connectAppBridge({ session, pushToTalk, app: undefined })
-    pushToTalk.press("space")
+    const disconnect = connectAppBridge({ session, orbInput, app: undefined })
+    orbInput.press("space")
     await flush()
-    pushToTalk.release("space")
+    orbInput.release("space")
     await flush()
 
     expect(brain.calls).toEqual([{ text: "Hola Jarvis" }])
     expect(() => disconnect()).not.toThrow()
+  })
+})
+
+describe("Barge-in", () => {
+  it("is on in a browser tab, and off in the Jarvis App until its echo is measured", () => {
+    expect(bargeInFor(undefined)).toBe(true)
+    expect(bargeInFor({} as JarvisAppApi)).toBe(false)
   })
 })

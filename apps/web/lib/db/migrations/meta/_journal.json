@@ -36,6 +36,13 @@
       "when": 1791970348175,
       "tag": "0004_browse_task",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792108388778,
+      "tag": "0005_interrupted_reply",
+      "breakpoints": true
     }
   ]
 }

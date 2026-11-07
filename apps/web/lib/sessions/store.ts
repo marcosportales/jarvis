@@ -2,6 +2,7 @@ import { and, desc, eq, lt, max, or } from "drizzle-orm"
 
 import type { JarvisDatabase } from "../db"
 import type { MemoryEvent } from "../memory/events"
+import type { Interrupted } from "../turns/interrupted"
 import { sessions, turns } from "../db/schema"
 
 /** How many of the most recent Turns Jarvis is given. */
@@ -12,12 +13,14 @@ export const SESSIONS_PAGE_SIZE = 20
 
 /**
  * A saved Turn: what the Owner said and Jarvis's Reply, with what Jarvis
- * Remembered or Forgot during it (left out when nothing).
+ * Remembered or Forgot during it and how the Reply was interrupted (each left
+ * out when nothing).
  */
 export type SavedTurn = {
   owner: string
   reply: string
   memoryEvents?: MemoryEvent[]
+  interrupted?: Interrupted
 }
 
 /** A Session as the list shows it. */
@@ -47,6 +50,11 @@ export type SessionStore = {
   start(turn: SavedTurn): Promise<string>
   /** Appends a Turn and bumps the Session's last activity. */
   addTurn(sessionId: string, turn: SavedTurn): Promise<void>
+  /** Marks the Reply of the Session's last Turn as an Interrupted Reply. */
+  markLastReplyInterrupted(
+    sessionId: string,
+    interrupted: Interrupted
+  ): Promise<void>
   /**
    * The last Turns of a Session, oldest first, as the model sees them: without
    * Memory events. Null if it doesn't exist.
@@ -106,6 +114,7 @@ export function createSessionStore(
         owner: turns.ownerText,
         reply: turns.replyText,
         memoryEvents: turns.memoryEvents,
+        interrupted: turns.interrupted,
       })
       .from(turns)
       .where(eq(turns.sessionId, sessionId))
@@ -113,9 +122,12 @@ export function createSessionStore(
     const newestFirst = limit ? query.limit(limit).all() : query.all()
     return newestFirst
       .reverse()
-      .map(({ memoryEvents, ...turn }) =>
-        memoryEvents.length > 0 ? { ...turn, memoryEvents } : turn
-      )
+      .map(({ owner, reply, memoryEvents, interrupted }) => ({
+        owner,
+        reply,
+        ...(memoryEvents.length > 0 ? { memoryEvents } : {}),
+        ...(interrupted ? { interrupted } : {}),
+      }))
   }
 
   return {
@@ -167,12 +179,26 @@ export function createSessionStore(
       })
     },
 
+    async markLastReplyInterrupted(sessionId, interrupted) {
+      const last = db
+        .select({ position: max(turns.position) })
+        .from(turns)
+        .where(eq(turns.sessionId, sessionId))
+        .get()
+      if (last?.position == null) return
+      db.update(turns)
+        .set({ interrupted })
+        .where(
+          and(eq(turns.sessionId, sessionId), eq(turns.position, last.position))
+        )
+        .run()
+    },
+
     async recentTurns(sessionId) {
       if (!exists(sessionId)) return null
-      return turnsOf(sessionId, RECENT_TURNS).map(({ owner, reply }) => ({
-        owner,
-        reply,
-      }))
+      return turnsOf(sessionId, RECENT_TURNS).map(
+        ({ memoryEvents: _, ...turn }) => turn
+      )
     },
 
     async transcript(sessionId) {

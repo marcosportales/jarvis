@@ -11,13 +11,13 @@ import {
   type Brain,
   type BrowseSource,
   type JarvisAdapters,
-  type Recorder,
   type Reply,
   type Transcriber,
-  type Utterance,
   type Voice,
   type WidgetChanges,
 } from "./session"
+import { createToneCues } from "./tone-cues"
+import { createVadListener } from "./vad-listener"
 
 class HttpError extends Error {
   constructor(
@@ -43,45 +43,6 @@ async function post(url: string, body: Blob | object): Promise<Response> {
   return response
 }
 
-function createMediaRecorder(): Recorder {
-  let capture: {
-    mediaRecorder: MediaRecorder
-    chunks: Blob[]
-    startedAt: number
-  } | null = null
-
-  return {
-    async start() {
-      // Measured from the press, so waiting on the mic still counts.
-      const startedAt = performance.now()
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mediaRecorder = new MediaRecorder(stream)
-      const chunks: Blob[] = []
-      mediaRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) chunks.push(event.data)
-      })
-      mediaRecorder.start()
-      capture = { mediaRecorder, chunks, startedAt }
-    },
-    stop() {
-      const current = capture
-      capture = null
-      if (!current) return Promise.reject(new Error("No Utterance in progress"))
-      const { mediaRecorder, chunks, startedAt } = current
-      return new Promise<Utterance>((resolve) => {
-        mediaRecorder.addEventListener("stop", () => {
-          mediaRecorder.stream.getTracks().forEach((track) => track.stop())
-          resolve({
-            audio: new Blob(chunks, { type: mediaRecorder.mimeType }),
-            durationMs: performance.now() - startedAt,
-          })
-        })
-        mediaRecorder.stop()
-      })
-    },
-  }
-}
-
 const httpTranscriber: Transcriber = {
   async transcribe(audio) {
     const response = await post("/api/transcribe", audio)
@@ -97,7 +58,7 @@ const httpTranscriber: Transcriber = {
  * coordinates when the browser already allows it.
  */
 const httpBrain: Brain = {
-  async reply({ sessionId, text, search: latest }) {
+  async reply({ sessionId, text, search: latest, interrupted }) {
     const widgets = getWidgetBoard().describeLayout()
     const resultsShown = widgets.some(
       ({ id, shown }) => id === RESULTS_WIDGET_ID && shown
@@ -108,6 +69,7 @@ const httpBrain: Brain = {
       widgets,
       coords: await ownerLocationIfGranted(),
       results: latest && resultsShown ? toResultsOnScreen(latest) : undefined,
+      interrupted,
     }).catch((error: unknown) => {
       // The server doesn't know this Session, e.g. it was deleted.
       if (error instanceof HttpError && error.status === 404) {
@@ -197,18 +159,26 @@ function createAudioVoice(): Voice {
       })
     },
     stop() {
+      // Still being fetched or loaded: none of it was played yet.
+      const duration = audio?.duration ?? NaN
+      const played =
+        audio && Number.isFinite(duration) && duration > 0
+          ? Math.min(1, audio.currentTime / duration)
+          : 0
       finish?.()
+      return played
     },
   }
 }
 
 export function createBrowserAdapters(): JarvisAdapters {
   return {
-    recorder: createMediaRecorder(),
+    listener: createVadListener(),
     transcriber: httpTranscriber,
     brain: httpBrain,
     voice: createAudioVoice(),
     widgets: boardWidgetChanges,
     browse: httpBrowse,
+    cues: createToneCues(),
   }
 }

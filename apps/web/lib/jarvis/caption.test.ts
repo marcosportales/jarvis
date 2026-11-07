@@ -43,6 +43,20 @@ describe("the Caption", () => {
     })
   })
 
+  it("shows the last Reply's Interrupted Reply mark", () => {
+    const cut: TranscriptEntry = {
+      ...jarvis("Había una vez un mayordomo."),
+      interrupted: { cut: 0.3 },
+    }
+
+    expect(captionOf([owner("Cuéntame algo"), cut], "idle")).toEqual({
+      kind: "turn",
+      owner: "Cuéntame algo",
+      reply: "Había una vez un mayordomo.",
+      interrupted: { cut: 0.3 },
+    })
+  })
+
   it("shows the whole last Turn while Speaking and after it", () => {
     const transcript = [
       owner("hola"),

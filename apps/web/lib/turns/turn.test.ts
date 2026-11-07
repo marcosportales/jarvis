@@ -1330,6 +1330,125 @@ describe("Taking a Turn", () => {
 
 // Today's built-in tool factories can't be made to clash from a Turn, so
 // this one rule is checked on the merge itself.
+describe("A Turn after an Interrupted Reply", () => {
+  const REPLY =
+    "Mañana hará sol por la mañana y lloverá por la tarde en Madrid, así que lleva paraguas."
+
+  it("saves the cut on the previous Turn and tells the model about how much the Owner heard", async () => {
+    const { turns, sessions, firstCall } = setup([answer("Vale, ¿qué pasa?")])
+    const sessionId = await sessions.start({
+      owner: "¿Qué tiempo hará?",
+      reply: REPLY,
+    })
+
+    await turns.take({
+      sessionId,
+      text: "Espera, una cosa",
+      widgets: LAYOUT,
+      interrupted: { cut: 0.4 },
+    })
+
+    expect(prompt(firstCall()).messages).toEqual([
+      { role: "user", text: "¿Qué tiempo hará?" },
+      { role: "assistant", text: REPLY },
+      {
+        role: "user",
+        text: expect.stringMatching(
+          /^\(Nota: .*primer 40 %: «Mañana hará sol por la mañana y…».*\)\n\nEspera, una cosa$/
+        ),
+      },
+    ])
+    expect(await sessions.transcript(sessionId)).toEqual([
+      {
+        owner: "¿Qué tiempo hará?",
+        reply: REPLY,
+        interrupted: { cut: 0.4 },
+      },
+      { owner: "Espera, una cosa", reply: "Vale, ¿qué pasa?" },
+    ])
+  })
+
+  it("tells the model the Owner didn't hear a Reply that was never spoken", async () => {
+    const { turns, sessions, firstCall } = setup([answer("Claro.")])
+    const sessionId = await sessions.start({
+      owner: "¿Qué tiempo hará?",
+      reply: REPLY,
+    })
+
+    await turns.take({
+      sessionId,
+      text: "En Sevilla, digo",
+      widgets: LAYOUT,
+      interrupted: { unspoken: true },
+    })
+
+    const last = prompt(firstCall()).messages.at(-1)!.text
+    expect(last).toMatch(/^\(Nota: el dueño no oyó tu respuesta anterior/)
+    expect(last).not.toContain("Mañana")
+    expect(last).toMatch(/\n\nEn Sevilla, digo$/)
+    expect((await sessions.transcript(sessionId))?.[0]).toEqual({
+      owner: "¿Qué tiempo hará?",
+      reply: REPLY,
+      interrupted: { unspoken: true },
+    })
+  })
+
+  it("says the Owner didn't hear a Reply cut before any of it played", async () => {
+    const { turns, sessions, firstCall } = setup([answer("Dime.")])
+    const sessionId = await sessions.start({ owner: "Hola", reply: REPLY })
+
+    await turns.take({
+      sessionId,
+      text: "Oye",
+      widgets: LAYOUT,
+      interrupted: { cut: 0 },
+    })
+
+    expect(prompt(firstCall()).messages.at(-1)!.text).toMatch(
+      /^\(Nota: el dueño no oyó tu respuesta anterior/
+    )
+  })
+
+  it("keeps telling the model in later Turns, from the saved mark", async () => {
+    const { turns, sessions, model } = setup([answer("Vale.")])
+    const sessionId = await sessions.start({ owner: "Hola", reply: REPLY })
+    await turns.take({
+      sessionId,
+      text: "Espera",
+      widgets: LAYOUT,
+      interrupted: { cut: 0.4 },
+    })
+
+    await turns.take({ sessionId, text: "Sigue", widgets: LAYOUT })
+
+    const later = model.doGenerateCalls[1]!
+    expect(prompt(later).messages.map(({ text }) => text)).toEqual([
+      "Hola",
+      REPLY,
+      expect.stringMatching(/^\(Nota: .*primer 40 %.*\n\nEspera$/s),
+      "Vale.",
+      "Sigue",
+    ])
+  })
+
+  it("ignores a mark on the first Turn of a new Session, which has no previous Reply", async () => {
+    const { turns, sessions, firstCall } = setup([answer("Hola.")])
+
+    const reply = await turns.take({
+      text: "Hola",
+      widgets: LAYOUT,
+      interrupted: { cut: 0.5 },
+    })
+
+    expect(prompt(firstCall()).messages).toEqual([
+      { role: "user", text: "Hola" },
+    ])
+    expect(await sessions.transcript(reply.sessionId)).toEqual([
+      { owner: "Hola", reply: "Hola." },
+    ])
+  })
+})
+
 describe("A Turn and Jarvis Health", () => {
   it("reports Thinking working once the model replied", async () => {
     const { health, reports } = fakeHealth()

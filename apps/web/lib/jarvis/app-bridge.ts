@@ -1,4 +1,4 @@
-import type { PushToTalk } from "./push-to-talk"
+import type { OrbInput } from "./orb-input"
 import type { JarvisSession, JarvisState } from "./session"
 
 /**
@@ -39,6 +39,18 @@ declare global {
 }
 
 /**
+ * Whether the Owner can talk over a Reply to cut it short: on a Jarvis page in
+ * a browser tab, not yet in the Jarvis App, where the Listener is half duplex
+ * while Speaking. Flip it once the Jarvis App's echo has been measured with
+ * the "Does Jarvis hear its own Reply on this machine's speakers?" test page.
+ */
+const BARGE_IN_IN_JARVIS_APP = false
+
+export function bargeInFor(app: JarvisAppApi | undefined): boolean {
+  return app ? BARGE_IN_IN_JARVIS_APP : true
+}
+
+/**
  * The App Bridge: connects a Session on the Jarvis page to the Jarvis App,
  * when the page runs inside it. Push-to-talk from the Jarvis App holds the
  * Session's Push-to-talk, and every change of its Jarvis State is published.
@@ -47,11 +59,11 @@ declare global {
  */
 export function connectAppBridge({
   session,
-  pushToTalk,
+  orbInput,
   app,
 }: {
   session: Pick<JarvisSession, "getSnapshot" | "subscribe">
-  pushToTalk: PushToTalk
+  orbInput: OrbInput
   app: Pick<JarvisAppApi, "onPushToTalk" | "publishJarvisState"> | undefined
 }): () => void {
   if (!app) return () => {}
@@ -66,8 +78,8 @@ export function connectAppBridge({
   })
 
   const stopListening = app.onPushToTalk((action) => {
-    if (action === "press") pushToTalk.press("jarvis-app")
-    else pushToTalk.release("jarvis-app")
+    if (action === "press") orbInput.press("jarvis-app")
+    else orbInput.release("jarvis-app")
   })
 
   return () => {

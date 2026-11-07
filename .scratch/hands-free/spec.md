@@ -141,7 +141,7 @@ Holding still works as **Push-to-talk**, for a noisy room or for speaking once w
     - `pieceReady` comes after about 500 ms of quiet.
     - `endOfTurn` comes after about 1200 ms of quiet.
   - `holdStart()` / `holdEnd()`: a Push-to-talk hold. Voice detection's own boundaries are ignored until the release, and the release yields the rest as the last piece plus `endOfTurn`.
-  - `setSpeaking(on)`: switches the Listener to the stricter interrupt gate (about 500–600 ms of speech before `speechStarted`), or to half duplex (no events at all) where barge-in isn't enabled.
+  - `setSpeaking(gate)`, with `gate` either `"bargeIn"`, `"halfDuplex"` or `false`: switches the Listener to the stricter interrupt gate (about 500–600 ms of speech before `speechStarted`), or to half duplex (no events at all) where barge-in isn't enabled.
 - The Listener keeps a pre-roll of about 400 ms, so a piece includes the start of the first word.
 - Turn flow under Hands-free:
   - `speechStarted` → Listening.

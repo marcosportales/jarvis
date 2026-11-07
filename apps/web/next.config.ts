@@ -14,6 +14,9 @@ const nextConfig: NextConfig = {
     // Read at runtime relative to the server's working directory.
     "/*": ["./lib/db/migrations/**/*"],
   },
+  experimental: {
+    agentUpgrade: "security",
+  },
 }
 
 export default nextConfig
